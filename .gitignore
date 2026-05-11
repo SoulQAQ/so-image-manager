@@ -1,0 +1,35 @@
+# Android
+*.iml
+.gradle
+local.properties
+.idea/
+.DS_Store
+/build/
+/app/build/
+/captures/
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+
+# Gradle
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# H5
+h5/node_modules/
+h5/dist/
+h5/.vite/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Secrets (never commit)
+*.jks
+*.keystore
+secrets.properties

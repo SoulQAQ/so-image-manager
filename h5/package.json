@@ -1,0 +1,23 @@
+{
+  "name": "image-ai-h5",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "build:android": "vue-tsc -b && vite build --mode android",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.13",
+    "vant": "^4.9.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.3",
+    "@types/node": "^22.15.0",
+    "typescript": "~5.7.3",
+    "vite": "^6.2.6",
+    "vue-tsc": "^2.2.8"
+  }
+}

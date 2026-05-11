@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(java -version)",
+      "Bash(pnpm -v)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm build:android)",
+      "Bash(gradle wrapper *)",
+      "Bash(powershell -Command \"Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/gradle/gradle/master/gradle/wrapper/gradle-wrapper.jar' -OutFile 'F:/ai/程序/so-image-manager/gradle/wrapper/gradle-wrapper.jar'\")",
+      "Bash(./gradlew tasks *)",
+      "Bash(./gradlew assembleDebug)"
+    ]
+  }
+}
