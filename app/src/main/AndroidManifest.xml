@@ -4,6 +4,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- 不申请媒体库权限，使用系统PhotoPicker让用户主动选择 -->
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

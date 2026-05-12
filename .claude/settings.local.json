@@ -13,7 +13,19 @@
       "Read(//c/Users/soul2/AppData/Local/**)",
       "Read(//d//**)",
       "Read(//c/Users/soul2/.android/**)",
-      "Bash(./gradlew assembleRelease)"
+      "Bash(./gradlew assembleRelease)",
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(./gradlew --stop)",
+      "Bash(D:/soft/ide/Android/Sdk/build-tools/36.0.0/apksigner verify *)",
+      "Bash(jarsigner -verify D:/ai-create/ai-project/so-image-manager/app/build/outputs/apk/release/app-release.apk)",
+      "Bash(D:/soft/ide/Android/Sdk/build-tools/34.0.0/apksigner.bat verify *)",
+      "Bash(python scripts/search.py \"productivity tool image manager minimal calm restrained desktop-quality information-dense\" --design-system -p \"ImageAI\" -f markdown)",
+      "Bash(python *)",
+      "Bash(powershell -Command \"Get-Command magick -ErrorAction SilentlyContinue\")",
+      "Bash(pip show *)",
+      "Bash(pip install *)"
     ]
   }
 }
