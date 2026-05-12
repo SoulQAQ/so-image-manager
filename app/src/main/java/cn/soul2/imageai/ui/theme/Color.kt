@@ -1,0 +1,51 @@
+package cn.soul2.imageai.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+// ==================== Light Theme ====================
+val LightBackground = Color(0xFFFAFAFA)
+val LightSurface = Color(0xFFFFFFFF)
+val LightSurfaceVariant = Color(0xFFF1F5F9)
+val LightPrimary = Color(0xFF5E6AD2)
+val LightOnPrimary = Color(0xFFFFFFFF)
+val LightSecondary = Color(0xFF64748B)
+val LightOnSecondary = Color(0xFFFFFFFF)
+val LightTertiary = Color(0xFF14B8A6)
+val LightOnTertiary = Color(0xFFFFFFFF)
+val LightOnBackground = Color(0xFF0F172A)
+val LightOnSurface = Color(0xFF0F172A)
+val LightOnSurfaceVariant = Color(0xFF64748B)
+val LightOutline = Color(0xFFE2E8F0)
+val LightOutlineVariant = Color(0xFFCBD5E1)
+val LightError = Color(0xFFEF4444)
+val LightOnError = Color(0xFFFFFFFF)
+val LightSuccess = Color(0xFF10B981)
+val LightScrim = Color(0xFF000000)
+
+// ==================== Dark Theme ====================
+val DarkBackground = Color(0xFF050506)
+val DarkSurface = Color(0xFF0A0A0C)
+val DarkSurfaceVariant = Color(0xFF111113)
+val DarkPrimary = Color(0xFF5E6AD2)
+val DarkOnPrimary = Color(0xFFFFFFFF)
+val DarkSecondary = Color(0xFF8A8F98)
+val DarkOnSecondary = Color(0xFF0A0A0C)
+val DarkTertiary = Color(0xFF14B8A6)
+val DarkOnTertiary = Color(0xFFFFFFFF)
+val DarkOnBackground = Color(0xFFEDEDEF)
+val DarkOnSurface = Color(0xFFEDEDEF)
+val DarkOnSurfaceVariant = Color(0xFF8A8F98)
+val DarkOutline = Color(0xFF1E1E22)
+val DarkOutlineVariant = Color(0xFF2A2A2E)
+val DarkError = Color(0xFFEF4444)
+val DarkOnError = Color(0xFFFFFFFF)
+val DarkSuccess = Color(0xFF10B981)
+val DarkScrim = Color(0xFF000000)
+
+// ==================== Legacy Colors (deprecated) ====================
+val Purple80 = Color(0xFFD0BCFF)
+val PurpleGrey80 = Color(0xFFCCC2DC)
+val Pink80 = Color(0xFFEFB8C8)
+val Purple40 = Color(0xFF6650a4)
+val PurpleGrey40 = Color(0xFF625b71)
+val Pink40 = Color(0xFF7D5260)
