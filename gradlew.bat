@@ -61,6 +61,10 @@ goto fail
 :init
 @rem Get command-line arguments, handling Windows variants
 
+if "%OS%"=="Windows_NT" set APP_HOME=%~dp0
+if "%APP_HOME%" == "" set APP_HOME=.
+for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
+
 if not "%OS%" == "Windows_NT" goto win9xME_args
 
 :win9xME_args

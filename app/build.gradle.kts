@@ -15,8 +15,8 @@ android {
         applicationId = "cn.soul2.imageai"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.3.1"
+        versionCode = 5
+        versionName = "0.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -28,7 +28,7 @@ android {
         }
         buildConfigField("String", "AI_API_URL", "\"${project.findProperty("aiApiUrl") ?: "https://api.sunskii.com/v1"}\"")
         buildConfigField("String", "AI_API_KEY", "\"$apiKeyFromFile\"")
-        buildConfigField("String", "AI_MODEL", "\"${project.findProperty("aiModel") ?: "5.4-mini"}\"")
+        buildConfigField("String", "AI_MODEL", "\"${project.findProperty("aiModel") ?: "gpt-5.4-mini"}\"")
     }
 
     signingConfigs {
@@ -111,6 +111,9 @@ dependencies {
 
     // Coil
     implementation(libs.coil.compose)
+
+    // Document tree / album picker
+    implementation(libs.androidx.documentfile)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
