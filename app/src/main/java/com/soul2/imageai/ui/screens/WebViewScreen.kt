@@ -3,10 +3,12 @@ package com.soul2.imageai.ui.screens
 import android.annotation.SuppressLint
 import android.content.Context
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -70,7 +72,7 @@ fun WebViewContent() {
                     override fun shouldInterceptRequest(
                         view: WebView?,
                         request: WebResourceRequest?
-                    ): WebView.WebResourceResponse? {
+                    ): WebResourceResponse? {
                         return request?.url?.let { assetLoader.shouldInterceptRequest(it) }
                     }
                 }
