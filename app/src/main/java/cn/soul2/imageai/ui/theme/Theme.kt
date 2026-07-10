@@ -1,16 +1,10 @@
 package cn.soul2.imageai.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalConfiguration
-import cn.soul2.imageai.ui.settings.ThemeMode
-import cn.soul2.imageai.ui.settings.themeSettings
-import androidx.compose.ui.platform.LocalContext
-import cn.soul2.imageai.ui.settings.themeSettings
 
 private val LightColorScheme = lightColorScheme(
     primary = LightPrimary,
@@ -65,24 +59,10 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun ImageAITheme(
-    content: @Composable () -> Unit
-) {
-    val context = LocalContext.current
-    val themeMode by context.themeSettings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
-    val isSystemDarkTheme = LocalConfiguration.current.uiMode.and(0x30) == 0x30
-
-    val useDarkTheme = when (themeMode) {
-        ThemeMode.SYSTEM -> isSystemDarkTheme
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK -> true
-    }
-
-    val colorScheme = if (useDarkTheme) DarkColorScheme else LightColorScheme
-
+fun SoImageManagerTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (isSystemInDarkTheme()) DarkColorScheme else LightColorScheme,
         typography = Typography,
-        content = content
+        content = content,
     )
 }

@@ -1,0 +1,61 @@
+package cn.soul2.imageai.ui.app
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import cn.soul2.imageai.ui.screens.HomeScreen
+import cn.soul2.imageai.ui.screens.LibraryScreen
+import cn.soul2.imageai.ui.screens.SettingsScreen
+import cn.soul2.imageai.ui.screens.TasksScreen
+
+@Composable
+fun SoImageManagerApp(navController: NavHostController = rememberNavController()) {
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route ?: AppDestination.start.route
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar(Modifier.testTag("bottom_navigation")) {
+                AppDestination.entries.forEach { destination ->
+                    NavigationBarItem(
+                        selected = currentRoute == destination.route,
+                        onClick = {
+                            navController.navigate(destination.route) {
+                                popUpTo(AppDestination.start.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(destination.icon, contentDescription = null) },
+                        label = { Text(stringResource(destination.labelRes)) },
+                        modifier = Modifier.testTag("destination_${destination.route}"),
+                    )
+                }
+            }
+        },
+    ) { contentPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = AppDestination.start.route,
+            modifier = Modifier.padding(contentPadding),
+        ) {
+            composable(AppDestination.HOME.route) { HomeScreen() }
+            composable(AppDestination.LIBRARY.route) { LibraryScreen() }
+            composable(AppDestination.TASKS.route) { TasksScreen() }
+            composable(AppDestination.SETTINGS.route) { SettingsScreen() }
+        }
+    }
+}

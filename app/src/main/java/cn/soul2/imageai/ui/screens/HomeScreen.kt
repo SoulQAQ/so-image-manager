@@ -5,4 +5,4 @@ import cn.soul2.imageai.R
 import cn.soul2.imageai.ui.components.FoundationScreen
 
 @Composable
-fun SettingsScreen() = FoundationScreen(R.string.nav_settings, R.string.settings_empty, "screen_settings")
+fun HomeScreen() = FoundationScreen(R.string.nav_home, R.string.home_empty, "screen_home")

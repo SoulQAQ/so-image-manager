@@ -46,11 +46,7 @@ fun AppNavigation(
         }
 
         composable(NavRoutes.SETTINGS) {
-            SettingsScreen(
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
-            )
+            SettingsScreen()
         }
 
         composable(NavRoutes.WEBVIEW) {
