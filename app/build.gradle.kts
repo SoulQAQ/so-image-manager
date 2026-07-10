@@ -7,13 +7,18 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+ksp {
+    arg("room.schemaLocation", file("$projectDir/schemas").path)
+    arg("room.incremental", "true")
+}
+
 android {
     namespace = "cn.soul2.imageai"
     compileSdk = 36
 
     defaultConfig {
         applicationId = "cn.soul2.imageai"
-        minSdk = 26
+        minSdk = 29
         targetSdk = 36
         versionCode = 5
         versionName = "0.3.2"
@@ -79,6 +84,9 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    testOptions { animationsDisabled = true }
 }
 
 dependencies {
@@ -117,4 +125,11 @@ dependencies {
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.room.testing)
 }
