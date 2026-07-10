@@ -1,7 +1,7 @@
 # So Image Manager Core Rebuild Design
 
 **Date:** 2026-07-10
-**Status:** Approved design, pending written-spec review
+**Status:** Frozen implementation baseline; Phase 1 authorized
 **Branch:** `codex/rebuild-core`
 
 ## 1. Product Definition
@@ -74,13 +74,16 @@ Dynamic model profiles must support user-operated LAN gateways that may only exp
 
 An HTTP provider profile is usable only after the user enables cleartext for that exact scheme, host, and port and accepts a persistent warning. The approval is stored on the profile and is not inherited by copied or redirected profiles. HTTPS remains the default for every preset.
 
-Automatic redirects are disabled. The model client may manually follow at most three redirects under these rules:
+Automatic redirects are disabled. Before the first dispatch, the model client validates the initial URL, scheme, host, port, profile approval, and credential destination. It may then process at most three redirects manually. Before sending any method, body, or credential to each redirect destination, it validates that destination again under these rules:
 
 - HTTPS-to-HTTP downgrade is always rejected.
-- A same-scheme, same-host, same-port redirect may retain authentication.
 - A host or port change requires an explicit destination allowlist on the provider profile.
-- Authorization, API-key, cookie, and user-declared secret headers are stripped on every cross-origin redirect and are never automatically reattached.
-- The final resolved URL is validated again before any body or credential is sent.
+- A cross-origin destination never automatically receives or replays a request containing an image, prompt, authorization value, cookie, API key, or user-declared secret. Secret headers are stripped and are never automatically reattached.
+- Only `307` and `308` may preserve the original method and replay a body, and only when the destination passes policy, the request remains same-origin, and the body source is explicitly repeatable.
+- `301`, `302`, and `303` never convert any model `POST` into `GET`; the redirect fails with a classified policy error. An existing non-sensitive `GET` or `HEAD` may follow after destination validation.
+- A one-shot or otherwise non-repeatable body fails on any redirect that would require replay; it is never partially reconstructed or silently omitted.
+
+Every actual redirect dispatch consumes the normal global/provider/model request-rate and budget counters. Redirect hops remain part of the existing business attempt and do not create new `ProcessingAttempt` rows. A redirect rejected before dispatch consumes no additional request counter, but the original dispatch remains counted.
 
 All model traffic uses this dedicated client. Other application networking does not gain an API for bypassing the profile policy merely because the manifest technically permits cleartext.
 
@@ -200,7 +203,7 @@ The logical model contains the following independently owned records:
 - **Image** - MediaStore identity, metadata, availability, fingerprint, optional SHA-256, and current processing state.
 - **ImageAnalysis** - versioned structured result, explicitly mapped extension data, model, protocol, prompt, schema version, and timestamps.
 - **UserCorrection** - tri-state user caption, tag/category additions and tombstones, and modification metadata.
-- **EffectiveImageMetadata** - transactionally materialized caption, tags, and categories derived from current MediaStore data, active analysis, and corrections.
+- **EffectiveImageMetadata** - transactionally materialized caption, tags, categories, and search tokens derived from current MediaStore data, active analysis, and corrections.
 - **Tag** and **ImageTag** - normalized tags, source, confidence, and user/AI ownership.
 - **ProcessingJob** - durable requested work and scheduling policy.
 - **ProcessingAttempt** - actual model, provider, protocol, timing, response status, error classification, and retry decision.
@@ -234,14 +237,22 @@ Tags and categories use normalized user additions plus normalized tombstones:
 - Restoring a deleted value is an explicit action that removes its tombstone; merely receiving the value from a later model does not restore it.
 - User-added values remain until explicitly removed, independently of model output.
 
-MediaStore fields such as file name, time, album, dimensions, and favorite state are authoritative for their own fields and cannot be overwritten by AI. User caption, tag, and category decisions take priority over the active AI analysis. Historical analyses are retained only for comparison and rollback; they are not searched.
+Search tokens are AI-owned derived terms rather than directly editable user metadata:
+
+- Only `searchTokens` from the current active successful analysis participate in the effective projection. Failed, inactive, and historical analyses contribute no token to UI, themes, FTS4, term, ngram, or pinyin indexes.
+- Tokens are normalized and deduplicated with the same key function used for tags and categories.
+- A tag or category tombstone suppresses an active-analysis token with the same normalized key. This prevents deletion of an AI tag or category from leaving an equivalent hidden token searchable.
+- Explicitly restoring the tombstoned tag or category removes that suppression, so a matching token from the still-active analysis becomes effective again.
+- Caption `SET` or `CLEARED` does not implicitly suppress unrelated search tokens. First release has no independent user token editor; changing token ownership or correction semantics requires a schema-versioned design change.
+
+MediaStore fields such as file name, time, album, dimensions, and favorite state are authoritative for their own fields and cannot be overwritten by AI. User caption, tag, and category decisions take priority over the active AI analysis. Historical analyses are retained only for comparison and rollback; neither their structured values nor their search tokens are searched.
 
 Activating an analysis is one Room transaction that:
 
 1. Inserts the successful analysis if it is not already stored.
 2. Changes the active-analysis pointer.
-3. Rebuilds effective caption, tag, and category projection rows.
-4. Rebuilds all FTS and fuzzy-search rows for that image.
+3. Replaces effective caption, tag, category, and active-analysis search-token projection rows, applying tombstone suppression before indexing.
+4. Replaces all related FTS4, term, ngram, lexical-pinyin, and long-text-pinyin rows for that image.
 5. Publishes the new database version to observers only after commit.
 
 Applying or reverting a user correction uses the same projection-and-index transaction. This guarantees that UI, themes, exact tag queries, and text search cannot observe different merge states.
@@ -355,15 +366,33 @@ Every outgoing request must obtain leases in this order:
 global quota -> provider quota -> model quota -> request
 ```
 
+Acquisition is bounded and never waits while holding a broader lease. The coordinator uses transactional try-acquire operations in that order. If provider, model, request-rate, or budget acquisition fails, it releases every already-acquired upper lease immediately in reverse order, relinquishes or defers the job claim with a persisted `notBefore` reason, and lets another eligible job proceed. It cannot occupy a global lease while waiting for provider/model capacity. No provider-call failure, retry count, or circuit-breaker sample is recorded until an HTTP dispatch has actually occurred.
+
 `ProcessingJob` rows are the durable queue. WorkManager schedules a small number of unique coordinator workers; it does not create one WorkRequest per image. A coordinator atomically claims jobs from Room and dispatches them within the acquired quotas. Lease and claim transactions prevent two workers or a restarted process from running the same attempt concurrently.
 
 ### 9.1 Android Execution Model
 
 The queue guarantees durable at-least-once execution. It does not claim exactly-once delivery to an external model provider. A request can be accepted and billed by a provider even if Android kills the process before the response is committed.
 
-Coordinator workers use bounded execution slices. A normal background slice stops claiming new jobs before eight minutes, checkpoints all state, and asks WorkManager to schedule the next slice. A user-started batch or any batch estimated to require more than eight minutes calls `setForeground` before its first network request and exposes a persistent progress notification with pause and open-task actions. Full-library processing is always treated as long-running work while requests are actively being sent.
+Coordinator workers use bounded execution slices. Every background or foreground slice stops claiming new jobs before eight minutes, checkpoints all state, and asks WorkManager to schedule the next slice. A user-started batch or any batch estimated to span multiple slices calls `setForeground` before its first network request and exposes a persistent progress notification with pause and open-task actions. Full-library processing is treated as long-running work while requests are actively being sent, but foreground status never implies unlimited runtime or quota exemption.
 
 Foreground execution is started only through WorkManager, not by directly starting a background service. The manifest declares the foreground service types and permissions required by the current target SDK, including the data-sync type where applicable. On Android 12+, background-start restrictions are respected. On Android 13+, if notification permission is denied, the app disables unattended high-throughput mode, explains the limitation, and degrades to conservative bounded background slices or processing while the app is visible.
+
+For targetSdk 36, platform quotas are explicit scheduling inputs:
+
+- On Android 15 / API 35 and later, all application `dataSync` foreground-service time shares the platform's cumulative six-hour allowance in a 24-hour window. The app maintains a persisted conservative local ledger and stops requesting new foreground slices at 5 hours 30 minutes, while treating the operating system as the final authority.
+- On Android 16 / API 36 and later, a WorkManager long-running worker also consumes its underlying JobScheduler quota; calling `setForeground` does not exempt it. Quota exhaustion delays later slices instead of converting them into ordinary workers or retry storms.
+- First release does not use user-initiated data-transfer jobs. AI analysis combines local preprocessing, external inference, and durable indexing rather than being a simple file transfer, and WorkManager remains the single cross-version scheduler. User-started batches therefore use the same recoverable slices, with foreground presentation when eligible. A later UIDT adapter requires a separately tested platform capability and cannot change queue semantics.
+
+Foreground-service timeout, JobScheduler quota exhaustion, background restriction, and WorkManager `onStopped` map to `SCHEDULER_PAUSED` with a persisted reason such as `FGS_TIME_LIMIT`, `JOB_QUOTA`, `BACKGROUND_RESTRICTED`, or `SYSTEM_STOP`; they are not model-call failures. Correctness does not depend on performing asynchronous database work inside `onStopped`, which the platform does not guarantee time to finish. Dispatch markers and heartbeats are persisted during normal execution; a bounded callback only signals cancellation and stops the foreground host within its deadline, while the recovery coordinator completes classification from durable state and lease expiry. These paths are idempotent and apply the same transition:
+
+1. Stop new claims and redirect dispatches immediately.
+2. Checkpoint during normal cooperative shutdown and release acquired request/model/provider/global leases plus any safely relinquishable job claim. If the callback cannot persist or the process dies first, normal lease expiry and the recovery coordinator perform the same transition.
+3. Return a claimed job whose HTTP body was not sent to ready/deferred state without incrementing attempt failure, retry, provider-health, or circuit-breaker counters.
+4. Preserve a committed response normally. If a body was sent but no validated response was committed, use `UNKNOWN_OUTCOME` and the duplicate-billing policy; this remains a transport-outcome state, not evidence that the model failed.
+5. Enqueue unique continuation work with persisted backoff and constraints. WorkManager resumes only when the platform again grants quota and background execution conditions permit it.
+
+The Tasks screen distinguishes user pause, quota pause, foreground-time-limit pause, and unknown network outcome. Phase 5 device acceptance includes API 35 cumulative `dataSync` timeout behavior and API 36 JobScheduler-quota exhaustion, stop-reason mapping, lease release, and successful later continuation.
 
 ### 9.2 Claim and Lease Protocol
 
@@ -458,12 +487,22 @@ The first release uses Room `@Fts4` backed by the platform SQLite FTS4 implement
 
 Fuzzy retrieval uses explicit Room tables rather than repeated full-image `%LIKE%` scans:
 
-- `SearchTerm` stores deduplicated normalized terms and bounded whole-field terms for caption and file name.
+- `SearchTerm` stores deduplicated normalized lexical terms and bounded source chunks for searchable fields.
 - `ImageSearchTerm` maps an image to terms with field mask, ownership, and weight.
-- `SearchTermAlias` stores bounded full-pinyin and pinyin-initial aliases.
-- `SearchGram` maps Unicode bigrams or Latin/digit trigrams to terms and aliases.
+- `SearchTermAlias` stores bounded lexical full-pinyin and pinyin-initial aliases for tags, categories, search tokens, and segmented phrases.
+- `SearchTextAliasChunk` stores image- and field-owned full-pinyin or initials chunks for complete searchable free-text fields.
+- `SearchGram` maps Unicode bigrams or Latin/digit trigrams to terms, lexical aliases, and long-text alias chunks.
 
-Normalized local text queries are limited to 128 Unicode code points. Captions and other searchable free-text fields are split into 512-code-point chunks with 127-code-point overlap, so every allowed substring remains inside at least one chunk rather than disappearing at a truncation boundary. Each image may contribute at most 768 weighted term relationships, enough for the effective-value hard maxima plus MediaStore fields and free-text chunks. If a future schema adds more searchable values, it must raise and re-benchmark the cap or define an explicit product-visible exclusion; it cannot silently drop fields. Duplicate grams within one term are stored once. Extension JSON is never added automatically to search.
+Normalized local text queries are limited to 128 Unicode code points. Captions and other searchable free-text fields are split into 512-code-point source chunks with 127-code-point overlap, so every allowed substring remains inside at least one chunk rather than disappearing at a source boundary.
+
+Long-text pinyin uses an independent pipeline and is never derived by truncating a 512-code-point source chunk:
+
+1. Normalize the complete effective field and resolve its primary pronunciation with the phrase dictionary.
+2. Generate the complete lowercase, tone-free full-pinyin stream and the complete initials stream before chunking. Query normalization applies the same separator rules.
+3. Split each generated stream into 512-character alias chunks with 127-character overlap. Because an accepted query is at most 128 code points, every allowed full-pinyin or initials query, including one crossing a chunk boundary, is wholly present in at least one chunk.
+4. Index every chunk through `SearchTextAliasChunk` and `SearchGram`. No suffix is discarded merely because the generated alias is longer than the 128-character lexical-alias limit.
+
+The per-image ceiling is 768 relationships across `ImageSearchTerm`, source chunks, and `SearchTextAliasChunk` mappings. It includes the effective canonical maxima, MediaStore terms, and worst-case full-pinyin/initials chunks produced by a caption at the 4 KB UTF-8 hard limit. Index preflight computes the exact count before an active-analysis switch. Exceeding the ceiling stores the successful canonical result as an inactive `INDEX_BLOCKED` analysis with a visible `SEARCH_INDEX_LIMIT` diagnostic, leaves the previous active analysis and index intact, and never publishes a partially indexed field. The user may inspect or export the blocked result. Raising a field limit, adding a searchable field, or changing transliteration expansion requires a new storage calculation and the 100,000-record gate. Duplicate grams within one term or chunk are stored once. Extension JSON is never added automatically to search.
 
 Retrieval proceeds as follows:
 
@@ -472,7 +511,7 @@ Retrieval proceeds as follows:
 3. Run FTS4 token and prefix retrieval over the effective `SearchDocument`.
 4. Generate bigram/trigram candidates from `SearchGram`, verify actual substring containment on matching terms, then join through `ImageSearchTerm`.
 5. Generate typo candidates from shared grams and verify them with bounded Damerau-Levenshtein distance.
-6. Repeat substring and typo candidate lookup against pinyin aliases.
+6. Repeat substring and typo candidate lookup against lexical pinyin aliases and long-text full-pinyin/initials chunks.
 7. Merge, deduplicate, rank, and annotate results with hit reasons.
 
 ### 11.2 Short Queries, Typo Bounds, and Pinyin
@@ -487,7 +526,7 @@ Short queries intentionally use stricter rules to prevent unbounded recall:
 
 Damerau-Levenshtein distance is capped by normalized query length: distance 1 for length 3-5 and distance 2 for length 6 or greater. Each query token evaluates at most 512 gram-ranked term candidates, accepts at most 64 corrected terms, and contributes at most 5,000 image candidates before normal ranking. Reaching a cap produces a partial-stage diagnostic rather than expanding work silently.
 
-Pinyin is generated locally from normalized Chinese terms. A phrase dictionary selects the primary pronunciation. A polyphonic term may store at most two alternate full-pinyin forms and one initials form; aliases are limited to 128 characters and three aliases per term. Non-Chinese text is NFKC-normalized and lowercased but receives no pinyin alias. These limits are included in the per-image storage budget and benchmark fixtures.
+Pinyin is generated locally from normalized Chinese text. A phrase dictionary selects the primary pronunciation used by complete free-text streams. A lexical polyphonic term may additionally store at most two alternate full-pinyin forms and one initials form; those lexical aliases are limited to 128 characters and three aliases per term. Alternative pronunciations are intentionally lexical and do not expand into combinatorial whole-caption streams. Non-Chinese text is NFKC-normalized and lowercased but receives no pinyin alias. Source chunks, lexical aliases, complete-field pinyin chunks, and their grams are all included in the per-image relationship ceiling, storage budget, and benchmark fixtures.
 
 ### 11.3 Progressive Results, Timeouts, and Degradation
 
@@ -581,10 +620,10 @@ The 10 KB-per-image target applies only to the live searchable dataset and is sp
 | MediaStore identity, availability, and core metadata | 1.5 KB |
 | Active canonical analysis and effective user projection | 2.5 KB |
 | FTS4 document and index | 1.5 KB |
-| Search terms, image-term mappings, ngrams, and pinyin aliases | 4.5 KB |
+| Search terms, image-term mappings, source chunks, ngrams, lexical aliases, and long-text pinyin/initials chunks | 4.5 KB |
 | **Total live searchable data** | **10.0 KB** |
 
-These are fixture-wide averages after SQLite page and index overhead, not permission for an individual provider response to bypass the hard limits in section 8. Prompts, protocol definitions, and configuration versions are content-addressed and referenced rather than copied into every analysis or attempt. Raw requests, raw responses, and image bytes are never part of live analysis storage.
+These are fixture-wide averages after SQLite page and index overhead, not permission for an individual provider response to bypass the hard limits in section 8. The fuzzy-index allocation explicitly includes every `SearchTextAliasChunk` mapping and gram; long-text pinyin cannot use an unreported side table outside the 4.5 KB average or 10 KB total gate. Prompts, protocol definitions, and configuration versions are content-addressed and referenced rather than copied into every analysis or attempt. Raw requests, raw responses, and image bytes are never part of live analysis storage.
 
 Historical and diagnostic data has separate default retention:
 
@@ -602,9 +641,9 @@ For 100,000 images without OCR, live persistent metadata therefore ranges from r
 
 The primary reference device is a physical Pixel 4a-class device (Snapdragon 730G, 6 GB RAM) running its documented Android 13 build. API 29 behavior is validated separately on an Android 10 emulator and at least one API 29 physical device before release; emulator timings are not used as performance claims.
 
-The canonical 100,000-image fixture has deterministic seed and distributions: every record has file name, album, time, size, and dimensions; 80% have a caption of 20-160 normalized characters; analyzed records have 4-24 tags and 1-4 categories; 20% of searchable terms contain CJK text, 10% of CJK terms exercise polyphonic aliases, 10% of images have user corrections, and two historical analyses exist for 25% of images. The same generator produces 10,000 and 50,000 subsets.
+The canonical 100,000-image fixture has deterministic seed and distributions: every record has file name, album, time, size, and dimensions; 80% are analyzed and have a caption, with 5% of those captions ranging from 1 KB through the 4 KB UTF-8 hard limit and the remainder containing 20-160 normalized characters; analyzed records have 4-24 tags, 1-4 categories, and 4-32 search tokens; 20% of searchable terms contain CJK text, 10% of CJK terms exercise polyphonic aliases, 10% of images have user corrections or tombstones, and two historical analyses exist for 25% of images. The same generator produces 10,000 and 50,000 subsets.
 
-The versioned query corpus contains at least 200 queries covering exact fields, prefix, common and rare CJK substring, Latin substring, typos at each allowed edit distance, full pinyin, initials, short-query rules, empty-result cases, high-frequency grams, filters, and mixed-field queries. Results are checked for correctness as well as latency.
+The versioned query corpus contains at least 200 queries covering exact fields, active and historical search-token cases, tombstone-suppressed tokens, prefix, common and rare CJK substring, Latin substring, typos at each allowed edit distance, full pinyin, initials, long-caption pinyin queries crossing every alias-chunk boundary, short-query rules, empty-result cases, high-frequency grams, filters, and mixed-field queries. Results are checked for correctness as well as latency.
 
 Benchmarks report cold-app and warm-database runs separately. A cold run force-stops the app and opens the database without a search warm-up; a warm run follows one unmeasured corpus pass. Each query class has at least 30 measured samples and reports P50 and P95. The first page is 40 items.
 
@@ -645,13 +684,13 @@ Release logging records state transitions and redacted diagnostics, not image by
 ### 15.1 Unit Tests
 
 - Protocol request rendering and response mapping.
-- Protocol URL validation, cleartext profile approval, redirect limits, HTTPS downgrade rejection, and cross-origin credential stripping.
+- Protocol URL validation before initial and redirected dispatch, cleartext profile approval, redirect-hop limits, HTTPS downgrade rejection, cross-origin sensitive-body rejection, credential stripping, `307`/`308` replay, `301`/`302`/`303` sensitive-POST rejection, and one-shot-body failure.
 - Protocol body, image, JSON depth/node, mapped-field, and extension-JSON limits.
 - Canonical result validation and extension-field retention.
-- Caption `INHERIT`/`SET`/`CLEARED`, tag/category tombstones, explicit restoration, and rerun projection precedence.
-- Query normalization, safe query parsing, short-query rules, substring candidates, typo bounds, pinyin alternatives, and pinyin initials.
+- Caption `INHERIT`/`SET`/`CLEARED`, tag/category tombstones, token suppression by normalized tombstone key, explicit restoration, active-only search tokens, and rerun projection precedence.
+- Query normalization, safe query parsing, short-query rules, substring candidates, typo bounds, lexical pinyin alternatives, complete-field full-pinyin/initials streams, and every 512/127 boundary case.
 - Candidate caps, stage timeouts, stable progressive tiers, partial-result reasons, deduplication, ranking, and hit explanations.
-- Rate-limit acquisition/release, same-boot monotonic lease expiry, boot-change expiry, stale-generation rejection, and heartbeat recovery.
+- Hierarchical quota acquisition and reverse release on every lower-level failure, redirect-hop accounting, same-boot monotonic lease expiry, boot-change expiry, stale-generation rejection, and heartbeat recovery.
 - Retry, backoff, circuit-breaker, and fallback decisions.
 - Pause, stop-now, and `UNKNOWN_OUTCOME` retry/billing decisions.
 - Theme query and Home module configuration behavior.
@@ -659,10 +698,11 @@ Release logging records state transitions and redacted diagnostics, not image by
 ### 15.2 Integration Tests
 
 - Room schema, foreign keys, migrations, and transactional analysis activation with effective projection and every search index.
-- FTS4 and fuzzy-index synchronization after active-analysis changes, tombstones, restoration, and user corrections.
+- FTS4 and fuzzy-index synchronization after active-analysis changes, active search-token replacement, historical-token exclusion, tombstone suppression/restoration, and user corrections.
+- Long-caption source, full-pinyin, and initials chunk generation stays complete under relationship and storage caps; forced overflow retains an inactive `INDEX_BLOCKED` analysis without publishing a partial index.
 - Search timeout/degradation behavior when an index is missing, corrupt, rebuilding, or over its candidate cap.
 - MediaStore generation/version checkpointing, partial-photo selection changes, permission loss, remount, confirmed deletion, and periodic full reconciliation.
-- WorkManager stop, process death, reboot, stale lease, foreground transition, notification denial, duplicate execution, and constraint changes.
+- WorkManager stop, process death, reboot, stale lease, foreground transition, notification denial, duplicate execution, constraint changes, API 35 `dataSync` cumulative timeout, and API 36 JobScheduler quota exhaustion.
 - Late provider response after lease loss and idempotent commit rejection.
 - Backup password authentication, manifest/checksum validation, traversal/symlink/duplicate-entry rejection, size and decompression-ratio limits, and unavailable-original export.
 - Strong-hash reassociation, weak-match confirmation, duplicate-content review, replace rollback, and merge conflicts for analyses, corrections/tombstones, themes, profiles, settings, and paused jobs.
@@ -670,35 +710,42 @@ Release logging records state transitions and redacted diagnostics, not image by
 
 ### 15.3 UI and Device Tests
 
-- Permission onboarding on API 29, 33, 34, and 36, including denied and selected-photos-only states.
+- Permission onboarding on API 29, 33, 34, 35, and 36, including denied and selected-photos-only states.
 - Four-destination navigation and process recreation.
 - Home module editing and single-module waterfall adaptation.
-- Task pause, stop-now, unknown-outcome warning, resume, retry, cooldown, notification denial, and model fallback presentation.
+- Task user-pause, scheduler/quota pause, foreground-time-limit pause, stop-now, unknown-outcome warning, resume, retry, cooldown, notification denial, and model fallback presentation.
 - Protocol debugger success and failure states.
 - Search cancellation, stable progressive-result updates, timeout reason, and index-rebuild degradation.
 - Restore maintenance mode, weak-match review, conflict summary, failure recovery, and credential re-entry.
 - Compose screenshot regression for core screens and light/dark themes.
 
-### 15.4 Milestone Gate
+### 15.4 Phase Gate
 
-Every milestone must produce an installable APK and a documented emulator or physical-device smoke test. Completion is based on observed behavior and passing tests, never only on source-file presence.
+Every phase must produce an installable APK and a documented emulator or physical-device smoke test. Completion is based on observed behavior and passing tests, never only on source-file presence.
 
-Immediately after the persistent schema and search-index prototype exist, a mandatory 100,000-record synthetic gate runs before provider batching work proceeds. It must build the full FTS4/ngram/pinyin fixture within 30 minutes on the reference device, keep index storage within the section 13 live-data ceiling, satisfy the section 13.1 search latency and memory budgets, and pass result-correctness checks. Failure reopens the schema/search design at that milestone; it is not deferred to release hardening.
+Immediately after the persistent schema and search-index prototype exist, a mandatory 100,000-record synthetic gate runs before provider batching work proceeds. It must build the full FTS4/ngram/pinyin fixture within 30 minutes on the reference device, keep index storage within the section 13 live-data ceiling, satisfy the section 13.1 search latency and memory budgets, and pass result-correctness checks. Failure reopens the schema/search design in Phase 3; it is not deferred to release hardening.
 
 ## 16. Delivery Decomposition
 
-The rebuild is too large for one implementation plan. It will be delivered as independently testable subprojects in this order:
+The frozen baseline has eight independently testable implementation phases in this order:
 
 1. **Security and build baseline** - remove shared secret injection, raise minSdk to 29, establish release and network configuration, test infrastructure, exported Room schemas, and a minimal Compose shell.
 2. **Media and canonical storage foundation** - permission matrix, MediaStore synchronization, Room image identity, immutable canonical analyses, active-analysis pointer, correction/tombstone records, transactional effective projection, paging, and a real Library screen.
-3. **Search schema and 100k feasibility gate** - FTS4 document, term/ngram/pinyin tables, deterministic fixture generator, index builder, repository benchmark, correctness corpus, cancellation, and the mandatory 100,000-record storage/latency/memory gate. This milestone proves the architecture before model batch work.
+3. **Search schema and 100k feasibility gate** - FTS4 document, term/ngram/pinyin tables, deterministic fixture generator, index builder, repository benchmark, correctness corpus, cancellation, and the mandatory 100,000-record storage/latency/memory gate. This phase proves the architecture before model batch work.
 4. **Model protocol and one-image vertical path** - Keystore envelope credentials, protocol presets, custom mapping and limits, transport policy, debugger, a minimal durable job, and one-image end-to-end analysis committed through the canonical storage and effective-projection transaction.
-5. **Batch processing and task control** - coordinator slicing, foreground execution, claim/lease protocol, full quota policy, fallback chains, account protection, unknown-outcome handling, task UI, and restart/reboot recovery.
-6. **Search and correction product loop** - production search UI, progressive stages, filters, safe natural-language query parsing, result explanations, correction editing, tombstone restoration, and saved searches. The underlying storage and indexes already exist from milestones 2 and 3.
+5. **Batch processing and task control** - coordinator slicing, API 35/36 foreground and JobScheduler quota handling, claim/lease protocol, hierarchical quota release, full quota policy, fallback chains, account protection, scheduler-paused and unknown-outcome handling, task UI, and restart/reboot recovery.
+6. **Search and correction product loop** - production search UI, progressive stages, filters, safe natural-language query parsing, result explanations, correction editing, tombstone restoration, and saved searches. The underlying storage and indexes already exist from Phases 2 and 3.
 7. **Themes and customizable Home** - AI/user themes, modules, sorting, reordering, and single-module waterfall behavior.
-8. **Backup, scale regression, and release hardening** - encrypted export/restore, reassociation/conflict UI, repeat 10k/50k/100k benchmarks, storage reporting and retention, security audit, API 29/33/34/36 coverage, and physical-device release gates.
+8. **Backup, scale regression, and release hardening** - encrypted export/restore, reassociation/conflict UI, repeat 10k/50k/100k benchmarks, storage reporting and retention, security audit, API 29/33/34/35/36 coverage, and physical-device release gates.
 
-Each subproject receives its own detailed implementation plan with file-level tasks, tests, and review checkpoints. The first releasable vertical slice is complete only when a user can authorize the gallery, index real images, configure a model, analyze an image, search the persisted result, and reopen the app without losing state.
+Phase gates are part of the baseline:
+
+- Phase 1 may begin from this frozen document.
+- Before Phase 2 implementation starts, its detailed plan must carry the active-only `searchTokens` projection, normalized tombstone suppression, and atomic projection/index replacement as non-deferrable acceptance criteria. Phase 2 cannot complete until those tests pass.
+- Phase 3 cannot start until the Phase 2 `searchTokens` projection gate passes. Before Phase 3 implementation, its schema and benchmark plan must also carry independent complete-field full-pinyin/initials chunks, relationship accounting, long-caption boundary fixtures, and the 100,000-record gate. Phase 3 cannot pass by truncating aliases or reducing the product's full-field pinyin scope.
+- Before Phase 5 sends provider traffic, API 35/36 scheduler-paused states, cumulative foreground-time accounting, JobScheduler quota behavior, stop-reason recovery, and device tests must exist. These cannot be postponed to Phase 8 hardening.
+
+Each phase receives its own detailed implementation plan with file-level tasks, tests, and review checkpoints. The first releasable vertical slice is complete only when a user can authorize the gallery, index real images, configure a model, analyze an image, search the persisted result, and reopen the app without losing state.
 
 ## 17. Success Criteria
 
