@@ -1,5 +1,6 @@
 package cn.soul2.imageai.ui.onboarding
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -45,12 +46,19 @@ class GalleryOnboardingTest {
 
     @Test
     fun retryableDenialOffersRetryAndDismissal() {
+        val showOnboarding = mutableStateOf(true)
+        var dismissCount = 0
+
         composeRule.setContent {
             SoImageManagerTheme {
                 SoImageManagerApp(
                     galleryAccessState = GalleryAccessState.Denied(canRequestAgain = true),
-                    showGalleryOnboarding = true,
+                    showGalleryOnboarding = showOnboarding.value,
                     isGalleryPermissionRecovery = true,
+                    onDismissGalleryOnboarding = {
+                        dismissCount += 1
+                        showOnboarding.value = false
+                    },
                 )
             }
         }
@@ -58,6 +66,11 @@ class GalleryOnboardingTest {
         composeRule.onNodeWithText("重新授权").assertIsDisplayed()
         composeRule.onNodeWithText("稍后再说").assertIsDisplayed()
         composeRule.onNodeWithTag("bottom_navigation").assertDoesNotExist()
+
+        composeRule.onNodeWithText("稍后再说").performClick()
+
+        composeRule.onNodeWithTag("bottom_navigation").assertIsDisplayed()
+        composeRule.runOnIdle { assertEquals(1, dismissCount) }
     }
 
     @Test

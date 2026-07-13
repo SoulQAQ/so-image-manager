@@ -9,22 +9,34 @@ import kotlinx.coroutines.flow.map
 class GalleryOnboardingRepository(
     private val appSettingDao: AppSettingDao,
 ) {
-    val isHandled: Flow<Boolean> = appSettingDao.observeByKey(SETTING_KEY)
-        .map { setting -> setting?.valueJson == HANDLED_VALUE }
-        .distinctUntilChanged()
+    val isHandled: Flow<Boolean> = observeFlag(HANDLED_SETTING_KEY)
+    val isPermissionRequested: Flow<Boolean> = observeFlag(PERMISSION_REQUESTED_SETTING_KEY)
 
     suspend fun markHandled() {
+        markFlag(HANDLED_SETTING_KEY)
+    }
+
+    suspend fun markPermissionRequested() {
+        markFlag(PERMISSION_REQUESTED_SETTING_KEY)
+    }
+
+    private fun observeFlag(key: String): Flow<Boolean> = appSettingDao.observeByKey(key)
+        .map { setting -> setting?.valueJson == ENABLED_VALUE }
+        .distinctUntilChanged()
+
+    private suspend fun markFlag(key: String) {
         appSettingDao.upsert(
             AppSettingEntity(
-                key = SETTING_KEY,
-                valueJson = HANDLED_VALUE,
+                key = key,
+                valueJson = ENABLED_VALUE,
                 updatedAtEpochMillis = System.currentTimeMillis(),
             ),
         )
     }
 
     private companion object {
-        const val SETTING_KEY = "onboarding.gallery_permission_handled"
-        const val HANDLED_VALUE = "true"
+        const val HANDLED_SETTING_KEY = "onboarding.gallery_permission_handled"
+        const val PERMISSION_REQUESTED_SETTING_KEY = "onboarding.gallery_permission_requested"
+        const val ENABLED_VALUE = "true"
     }
 }

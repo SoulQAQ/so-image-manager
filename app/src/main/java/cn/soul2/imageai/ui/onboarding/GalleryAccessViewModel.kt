@@ -17,6 +17,8 @@ import kotlinx.coroutines.launch
 data class GalleryAccessUiState(
     val galleryAccessState: GalleryAccessState,
     val onboardingHandled: Boolean?,
+    val permissionRequested: Boolean?,
+    val permissionHistoryApplied: Boolean,
     val isPermissionRecovery: Boolean,
 ) {
     val showOnboarding: Boolean
@@ -24,28 +26,58 @@ data class GalleryAccessUiState(
             (onboardingHandled == false || isPermissionRecovery)
 
     val isLoading: Boolean
-        get() = galleryAccessState is GalleryAccessState.Denied &&
-            onboardingHandled == null &&
-            !isPermissionRecovery
+        get() = onboardingHandled == null ||
+            permissionRequested == null ||
+            !permissionHistoryApplied
 }
+
+private data class PersistedGalleryPermissionHistory(
+    val onboardingHandled: Boolean,
+    val permissionRequested: Boolean,
+)
+
+private data class GalleryPermissionSessionState(
+    val onboardingHandled: Boolean,
+    val permissionRequested: Boolean,
+    val isPermissionRecovery: Boolean,
+)
 
 class GalleryAccessViewModel(
     private val permissionMonitor: GalleryPermissionMonitor,
     private val onboardingRepository: GalleryOnboardingRepository,
 ) : ViewModel() {
     private val handledInSession = MutableStateFlow(false)
+    private val requestedInSession = MutableStateFlow(false)
     private val permissionRecovery = MutableStateFlow(false)
+    private val permissionHistoryApplied = MutableStateFlow(false)
+
+    private val persistedHistory = combine(
+        onboardingRepository.isHandled,
+        onboardingRepository.isPermissionRequested,
+    ) { handled, requested ->
+        PersistedGalleryPermissionHistory(handled, requested)
+    }
+
+    private val sessionState = combine(
+        handledInSession,
+        requestedInSession,
+        permissionRecovery,
+    ) { handled, requested, recovery ->
+        GalleryPermissionSessionState(handled, requested, recovery)
+    }
 
     val uiState: StateFlow<GalleryAccessUiState> = combine(
         permissionMonitor.state,
-        onboardingRepository.isHandled,
-        handledInSession,
-        permissionRecovery,
-    ) { accessState, persistedHandled, sessionHandled, recovery ->
+        persistedHistory,
+        sessionState,
+        permissionHistoryApplied,
+    ) { accessState, persisted, session, historyApplied ->
         GalleryAccessUiState(
             galleryAccessState = accessState,
-            onboardingHandled = persistedHandled || sessionHandled,
-            isPermissionRecovery = recovery,
+            onboardingHandled = persisted.onboardingHandled || session.onboardingHandled,
+            permissionRequested = persisted.permissionRequested || session.permissionRequested,
+            permissionHistoryApplied = historyApplied,
+            isPermissionRecovery = session.isPermissionRecovery,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -53,19 +85,27 @@ class GalleryAccessViewModel(
         initialValue = GalleryAccessUiState(
             galleryAccessState = permissionMonitor.state.value,
             onboardingHandled = null,
+            permissionRequested = null,
+            permissionHistoryApplied = false,
             isPermissionRecovery = false,
         ),
     )
 
     fun refresh(canRequestAgain: Boolean) {
         permissionMonitor.refresh(canRequestAgain)
+        permissionHistoryApplied.value = true
+    }
+
+    suspend fun markPermissionRequested() {
+        onboardingRepository.markPermissionRequested()
+        requestedInSession.value = true
     }
 
     fun onPermissionResult(
         canRequestAgain: Boolean,
         onAccessAvailable: (GalleryAccessState) -> Unit = {},
     ) {
-        permissionMonitor.refresh(canRequestAgain)
+        refresh(canRequestAgain)
         val accessState = permissionMonitor.state.value
         permissionRecovery.value = accessState is GalleryAccessState.Denied
         handledInSession.value = true

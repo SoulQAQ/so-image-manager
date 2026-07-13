@@ -18,24 +18,26 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.media.permission.GalleryPermissionPolicy
+import cn.soul2.imageai.media.permission.GalleryPermissionRequestHistoryPolicy
 import cn.soul2.imageai.ui.app.SoImageManagerApp
 import cn.soul2.imageai.ui.onboarding.GalleryAccessViewModel
+import cn.soul2.imageai.ui.onboarding.GalleryPermissionRequestCoordinator
 import cn.soul2.imageai.ui.theme.SoImageManagerTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    private var requestedGalleryPermission = false
-
     private val container: AppContainer
         get() = (application as SoImApplication).container
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestedGalleryPermission = savedInstanceState?.getBoolean(REQUESTED_PERMISSION_KEY) ?: false
         enableEdgeToEdge()
         setContent {
             SoImageManagerTheme {
@@ -44,16 +46,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        container.galleryPermissionMonitor.refresh(canRequestGalleryPermissionAgain())
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        outState.putBoolean(REQUESTED_PERMISSION_KEY, requestedGalleryPermission)
-        super.onSaveInstanceState(outState)
     }
 
     @Composable
@@ -67,20 +59,36 @@ class MainActivity : ComponentActivity() {
             ),
         )
         val uiState by accessViewModel.uiState.collectAsState()
+        val coroutineScope = rememberCoroutineScope()
+        LifecycleResumeEffect(uiState.permissionRequested) {
+            uiState.permissionRequested?.let { permissionRequested ->
+                accessViewModel.refresh(
+                    canRequestAgain = canRequestGalleryPermissionAgain(permissionRequested),
+                )
+            }
+            onPauseOrDispose { }
+        }
         val permissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions(),
         ) {
             accessViewModel.onPermissionResult(
-                canRequestAgain = canRequestGalleryPermissionAgain(),
+                canRequestAgain = canRequestGalleryPermissionAgain(permissionRequested = true),
                 onAccessAvailable = onAccessAvailable,
             )
         }
-        val launchPermissionRequest = {
-            requestedGalleryPermission = true
-            permissionLauncher.launch(
-                GalleryPermissionPolicy.requiredPermissions(android.os.Build.VERSION.SDK_INT)
-                    .toTypedArray(),
-            )
+        val launchPermissionRequest: () -> Unit = {
+            coroutineScope.launch {
+                GalleryPermissionRequestCoordinator.persistThenLaunch(
+                    persistRequestHistory = accessViewModel::markPermissionRequested,
+                    launchRequest = {
+                        permissionLauncher.launch(
+                            GalleryPermissionPolicy
+                                .requiredPermissions(android.os.Build.VERSION.SDK_INT)
+                                .toTypedArray(),
+                        )
+                    },
+                )
+            }
         }
 
         if (uiState.isLoading) {
@@ -100,13 +108,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun canRequestGalleryPermissionAgain(): Boolean {
-        if (!requestedGalleryPermission) return true
-        return GalleryPermissionPolicy.requiredPermissions(android.os.Build.VERSION.SDK_INT)
-            .any { permission ->
-                ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
-            }
-    }
+    private fun canRequestGalleryPermissionAgain(permissionRequested: Boolean): Boolean =
+        GalleryPermissionRequestHistoryPolicy.canRequestAgain(
+            permissionRequested = permissionRequested,
+            rationaleResults = GalleryPermissionPolicy
+                .requiredPermissions(android.os.Build.VERSION.SDK_INT)
+                .map { permission ->
+                    ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+                },
+        )
 
     private fun openAppSettings() {
         startActivity(
@@ -115,9 +125,5 @@ class MainActivity : ComponentActivity() {
                 Uri.fromParts("package", packageName, null),
             ),
         )
-    }
-
-    private companion object {
-        const val REQUESTED_PERMISSION_KEY = "gallery_permission_requested"
     }
 }
