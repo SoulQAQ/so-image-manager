@@ -3,6 +3,7 @@ package cn.soul2.imageai.ui.onboarding
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -111,5 +112,32 @@ class GalleryOnboardingTest {
         composeRule.onNodeWithText("重新选择").assertIsDisplayed().performClick()
         composeRule.onNodeWithTag("bottom_navigation").assertIsDisplayed()
         composeRule.runOnIdle { assertEquals(1, reselectionCount) }
+    }
+
+    @Test
+    fun permissionRequestActionsAreDisabledWhileRequestIsInFlight() {
+        val mode = mutableStateOf(0)
+
+        composeRule.setContent {
+            SoImageManagerTheme {
+                SoImageManagerApp(
+                    galleryAccessState = when (mode.value) {
+                        2 -> GalleryAccessState.Partial
+                        else -> GalleryAccessState.Denied(canRequestAgain = true)
+                    },
+                    showGalleryOnboarding = mode.value != 2,
+                    isGalleryPermissionRecovery = mode.value == 1,
+                    isGalleryPermissionRequestInFlight = true,
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("授权并扫描").assertIsNotEnabled()
+
+        composeRule.runOnIdle { mode.value = 1 }
+        composeRule.onNodeWithText("重新授权").assertIsNotEnabled()
+
+        composeRule.runOnIdle { mode.value = 2 }
+        composeRule.onNodeWithText("重新选择").assertIsNotEnabled()
     }
 }

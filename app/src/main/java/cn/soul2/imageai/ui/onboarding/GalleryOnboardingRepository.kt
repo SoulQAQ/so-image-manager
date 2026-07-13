@@ -6,17 +6,27 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
+interface GalleryOnboardingStore {
+    val isHandled: Flow<Boolean>
+    val isPermissionRequested: Flow<Boolean>
+
+    suspend fun markHandled()
+
+    suspend fun markPermissionRequested()
+}
+
 class GalleryOnboardingRepository(
     private val appSettingDao: AppSettingDao,
-) {
-    val isHandled: Flow<Boolean> = observeFlag(HANDLED_SETTING_KEY)
-    val isPermissionRequested: Flow<Boolean> = observeFlag(PERMISSION_REQUESTED_SETTING_KEY)
+) : GalleryOnboardingStore {
+    override val isHandled: Flow<Boolean> = observeFlag(HANDLED_SETTING_KEY)
+    override val isPermissionRequested: Flow<Boolean> =
+        observeFlag(PERMISSION_REQUESTED_SETTING_KEY)
 
-    suspend fun markHandled() {
+    override suspend fun markHandled() {
         markFlag(HANDLED_SETTING_KEY)
     }
 
-    suspend fun markPermissionRequested() {
+    override suspend fun markPermissionRequested() {
         markFlag(PERMISSION_REQUESTED_SETTING_KEY)
     }
 

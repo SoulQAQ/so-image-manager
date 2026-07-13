@@ -18,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,8 @@ class MainActivity : ComponentActivity() {
         )
         val uiState by accessViewModel.uiState.collectAsState()
         val coroutineScope = rememberCoroutineScope()
+        val permissionRequestCoordinator = remember { GalleryPermissionRequestCoordinator() }
+        val permissionRequestInFlight by permissionRequestCoordinator.inFlight.collectAsState()
         LifecycleResumeEffect(uiState.permissionRequested) {
             uiState.permissionRequested?.let { permissionRequested ->
                 accessViewModel.refresh(
@@ -71,6 +74,7 @@ class MainActivity : ComponentActivity() {
         val permissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions(),
         ) {
+            permissionRequestCoordinator.complete()
             accessViewModel.onPermissionResult(
                 canRequestAgain = canRequestGalleryPermissionAgain(permissionRequested = true),
                 onAccessAvailable = onAccessAvailable,
@@ -78,7 +82,7 @@ class MainActivity : ComponentActivity() {
         }
         val launchPermissionRequest: () -> Unit = {
             coroutineScope.launch {
-                GalleryPermissionRequestCoordinator.persistThenLaunch(
+                permissionRequestCoordinator.persistThenLaunch(
                     persistRequestHistory = accessViewModel::markPermissionRequested,
                     launchRequest = {
                         permissionLauncher.launch(
@@ -100,6 +104,7 @@ class MainActivity : ComponentActivity() {
                 galleryAccessState = uiState.galleryAccessState,
                 showGalleryOnboarding = uiState.showOnboarding,
                 isGalleryPermissionRecovery = uiState.isPermissionRecovery,
+                isGalleryPermissionRequestInFlight = permissionRequestInFlight,
                 onRequestGalleryPermission = launchPermissionRequest,
                 onOpenAppSettings = ::openAppSettings,
                 onDismissGalleryOnboarding = accessViewModel::dismissOnboarding,

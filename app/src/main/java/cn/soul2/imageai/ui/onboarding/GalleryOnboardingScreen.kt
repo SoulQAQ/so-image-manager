@@ -35,6 +35,7 @@ import cn.soul2.imageai.media.permission.GalleryAccessState
 fun GalleryOnboardingScreen(
     deniedState: GalleryAccessState.Denied,
     isPermissionRecovery: Boolean,
+    isPermissionRequestInFlight: Boolean,
     onRequestPermission: () -> Unit,
     onOpenAppSettings: () -> Unit,
     onDismiss: () -> Unit,
@@ -90,6 +91,7 @@ fun GalleryOnboardingScreen(
             )
             Button(
                 onClick = primaryAction,
+                enabled = requiresSettings || !isPermissionRequestInFlight,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
@@ -111,7 +113,10 @@ fun GalleryOnboardingScreen(
 }
 
 @Composable
-fun GalleryPartialAccessBanner(onRequestReselection: () -> Unit) {
+fun GalleryPartialAccessBanner(
+    isPermissionRequestInFlight: Boolean,
+    onRequestReselection: () -> Unit,
+) {
     Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
         Row(
             modifier = Modifier
@@ -133,7 +138,10 @@ fun GalleryPartialAccessBanner(onRequestReselection: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onRequestReselection) {
+            TextButton(
+                onClick = onRequestReselection,
+                enabled = !isPermissionRequestInFlight,
+            ) {
                 Text(stringResource(R.string.gallery_permission_reselect))
             }
         }

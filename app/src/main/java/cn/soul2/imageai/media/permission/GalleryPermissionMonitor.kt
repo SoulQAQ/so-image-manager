@@ -8,16 +8,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+interface GalleryPermissionStateMonitor {
+    val state: StateFlow<GalleryAccessState>
+
+    fun refresh(canRequestAgain: Boolean)
+}
+
 class GalleryPermissionMonitor(
     context: Context,
     private val sdkInt: Int = Build.VERSION.SDK_INT,
-) {
+) : GalleryPermissionStateMonitor {
     private val applicationContext = context.applicationContext
     private val mutableState = MutableStateFlow(resolve(canRequestAgain = true))
 
-    val state: StateFlow<GalleryAccessState> = mutableState.asStateFlow()
+    override val state: StateFlow<GalleryAccessState> = mutableState.asStateFlow()
 
-    fun refresh(canRequestAgain: Boolean) {
+    override fun refresh(canRequestAgain: Boolean) {
         mutableState.value = resolve(canRequestAgain)
     }
 

@@ -31,6 +31,7 @@ fun SoImageManagerApp(
     galleryAccessState: GalleryAccessState = GalleryAccessState.Full,
     showGalleryOnboarding: Boolean = false,
     isGalleryPermissionRecovery: Boolean = false,
+    isGalleryPermissionRequestInFlight: Boolean = false,
     onRequestGalleryPermission: () -> Unit = {},
     onOpenAppSettings: () -> Unit = {},
     onDismissGalleryOnboarding: () -> Unit = {},
@@ -41,6 +42,7 @@ fun SoImageManagerApp(
         GalleryOnboardingScreen(
             deniedState = deniedState,
             isPermissionRecovery = isGalleryPermissionRecovery,
+            isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
             onRequestPermission = onRequestGalleryPermission,
             onOpenAppSettings = onOpenAppSettings,
             onDismiss = onDismissGalleryOnboarding,
@@ -74,7 +76,10 @@ fun SoImageManagerApp(
     ) { contentPadding ->
         Column(Modifier.padding(contentPadding)) {
             if (galleryAccessState is GalleryAccessState.Partial) {
-                GalleryPartialAccessBanner(onRequestGalleryReselection)
+                GalleryPartialAccessBanner(
+                    isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
+                    onRequestReselection = onRequestGalleryReselection,
+                )
             }
             NavHost(
                 navController = navController,

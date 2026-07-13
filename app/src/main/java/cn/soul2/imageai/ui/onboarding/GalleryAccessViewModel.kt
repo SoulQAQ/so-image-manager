@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import cn.soul2.imageai.media.permission.GalleryAccessState
-import cn.soul2.imageai.media.permission.GalleryPermissionMonitor
+import cn.soul2.imageai.media.permission.GalleryPermissionStateMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -43,8 +43,8 @@ private data class GalleryPermissionSessionState(
 )
 
 class GalleryAccessViewModel(
-    private val permissionMonitor: GalleryPermissionMonitor,
-    private val onboardingRepository: GalleryOnboardingRepository,
+    private val permissionMonitor: GalleryPermissionStateMonitor,
+    private val onboardingRepository: GalleryOnboardingStore,
 ) : ViewModel() {
     private val handledInSession = MutableStateFlow(false)
     private val requestedInSession = MutableStateFlow(false)
@@ -129,8 +129,8 @@ class GalleryAccessViewModel(
 
     companion object {
         fun factory(
-            permissionMonitor: GalleryPermissionMonitor,
-            onboardingRepository: GalleryOnboardingRepository,
+            permissionMonitor: GalleryPermissionStateMonitor,
+            onboardingRepository: GalleryOnboardingStore,
         ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 GalleryAccessViewModel(permissionMonitor, onboardingRepository)
