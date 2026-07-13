@@ -1,9 +1,29 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+val versionPropertiesFile = rootProject.file("version.properties")
+val versionProperties = Properties().apply {
+    require(versionPropertiesFile.isFile) { "Missing version source: ${versionPropertiesFile.path}" }
+    versionPropertiesFile.inputStream().use(::load)
+}
+
+val soimVersionName = providers.gradleProperty("soimVersionName")
+    .getOrElse(versionProperties.getProperty("SOIM_VERSION_NAME").orEmpty())
+    .trim()
+require(soimVersionName.isNotBlank()) { "SoIM version name must not be blank" }
+
+val rawSoimVersionCode = providers.gradleProperty("soimVersionCode")
+    .getOrElse(versionProperties.getProperty("SOIM_VERSION_CODE").orEmpty())
+    .trim()
+val soimVersionCode = rawSoimVersionCode.toIntOrNull()
+    ?: error("SoIM version code must be a positive integer")
+require(soimVersionCode > 0) { "SoIM version code must be a positive integer" }
 
 ksp {
     arg("room.schemaLocation", file("$projectDir/schemas").path)
@@ -18,8 +38,8 @@ android {
         applicationId = "cn.soul2.imageai"
         minSdk = 29
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.3.2"
+        versionCode = soimVersionCode
+        versionName = soimVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
