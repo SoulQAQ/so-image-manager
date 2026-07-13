@@ -9,4 +9,15 @@
     <string name="library_empty">图库暂无图片</string>
     <string name="tasks_empty">暂无进行中的任务</string>
     <string name="settings_empty">暂无设置项</string>
+    <string name="gallery_permission_title">访问您的照片</string>
+    <string name="gallery_permission_description">授权后即可在设备上整理和搜索照片。照片索引保留在本机。</string>
+    <string name="gallery_permission_denied_title">尚未获得照片权限</string>
+    <string name="gallery_permission_retry_description">需要照片权限才能扫描图库。您可以重新授权，或稍后进入应用。</string>
+    <string name="gallery_permission_settings_description">照片权限已关闭。请在系统设置中开启权限，或稍后进入应用。</string>
+    <string name="gallery_permission_authorize">授权并扫描</string>
+    <string name="gallery_permission_retry">重新授权</string>
+    <string name="gallery_permission_open_settings">前往系统设置</string>
+    <string name="gallery_permission_later">稍后再说</string>
+    <string name="gallery_permission_partial">仅可访问已选择的照片</string>
+    <string name="gallery_permission_reselect">重新选择</string>
 </resources>
