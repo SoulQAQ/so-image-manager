@@ -31,6 +31,10 @@ class ProductContractTest {
         assertEquals("图库", strings["nav_library"])
         assertEquals("任务", strings["nav_tasks"])
         assertEquals("设置", strings["nav_settings"])
+        assertEquals("暂无已索引图片", strings["home_empty"])
+        assertEquals("图库暂无图片", strings["library_empty"])
+        assertEquals("暂无进行中的任务", strings["tasks_empty"])
+        assertEquals("暂无设置项", strings["settings_empty"])
 
         listOf(
             "No indexed images",
@@ -55,8 +59,10 @@ class ProductContractTest {
 
         val buildFile = File(root, "app/build.gradle.kts").readText()
         assertTrue(buildFile.contains("version.properties"))
-        assertTrue(buildFile.contains("gradleProperty(\"soimVersionName\")"))
-        assertTrue(buildFile.contains("gradleProperty(\"soimVersionCode\")"))
+        assertTrue(buildFile.contains("gradle.startParameter.projectProperties"))
+        assertTrue(buildFile.contains("[\"soimVersionName\"]"))
+        assertTrue(buildFile.contains("[\"soimVersionCode\"]"))
+        assertFalse(buildFile.contains("providers.gradleProperty"))
         assertTrue(buildFile.contains("SOIM_VERSION_NAME"))
         assertTrue(buildFile.contains("SOIM_VERSION_CODE"))
         assertFalse(Regex("""\bversionName\s*=\s*\"[^\"]*\"""").containsMatchIn(buildFile))

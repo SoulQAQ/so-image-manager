@@ -13,14 +13,17 @@ val versionProperties = Properties().apply {
     versionPropertiesFile.inputStream().use(::load)
 }
 
-val soimVersionName = providers.gradleProperty("soimVersionName")
-    .getOrElse(versionProperties.getProperty("SOIM_VERSION_NAME").orEmpty())
-    .trim()
+val publishVersionProperties = gradle.startParameter.projectProperties
+val soimVersionName = (
+    publishVersionProperties["soimVersionName"]
+        ?: versionProperties.getProperty("SOIM_VERSION_NAME").orEmpty()
+    ).trim()
 require(soimVersionName.isNotBlank()) { "SoIM version name must not be blank" }
 
-val rawSoimVersionCode = providers.gradleProperty("soimVersionCode")
-    .getOrElse(versionProperties.getProperty("SOIM_VERSION_CODE").orEmpty())
-    .trim()
+val rawSoimVersionCode = (
+    publishVersionProperties["soimVersionCode"]
+        ?: versionProperties.getProperty("SOIM_VERSION_CODE").orEmpty()
+    ).trim()
 val soimVersionCode = rawSoimVersionCode.toIntOrNull()
     ?: error("SoIM version code must be a positive integer")
 require(soimVersionCode > 0) { "SoIM version code must be a positive integer" }
