@@ -7,15 +7,10 @@ composeBom = "2024.10.01"
 navigationCompose = "2.8.3"
 material3 = "1.3.1"
 lifecycleRuntimeKtx = "2.8.7"
-webkit = "1.12.1"
 materialIconsExtended = "1.7.5"
 room = "2.6.1"
 ksp = "2.0.21-1.0.27"
 coroutines = "1.8.1"
-okhttp = "4.12.0"
-datastore = "1.1.1"
-coil = "2.7.0"
-documentfile = "1.0.1"
 junit = "4.13.2"
 androidxTestExtJunit = "1.2.1"
 espressoCore = "3.6.1"
@@ -32,7 +27,6 @@ androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-toolin
 androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
-androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
 androidx-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIconsExtended" }
 
 # Room
@@ -42,19 +36,6 @@ room-compiler = { group = "androidx.room", name = "room-compiler", version.ref =
 
 # Coroutines
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
-
-# OkHttp
-okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
-okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
-
-# DataStore
-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
-
-# Coil
-coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
-
-# DocumentFile
-androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }

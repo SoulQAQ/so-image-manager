@@ -30,6 +30,7 @@ Thumbs.db
 *.log
 
 # Secrets (never commit)
+/env/
 *.jks
 *.keystore
 secrets.properties

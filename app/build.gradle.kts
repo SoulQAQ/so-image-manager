@@ -1,5 +1,3 @@
-import java.io.File
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -25,15 +23,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // AI API配置 - 从local.properties或env/apikey.txt读取
-        val apiKeyFromFile = try {
-            File(projectDir.parent, "env/apikey.txt").readText().trim()
-        } catch (e: Exception) {
-            (project.findProperty("aiApiKey") ?: "").toString()
-        }
-        buildConfigField("String", "AI_API_URL", "\"${project.findProperty("aiApiUrl") ?: "https://api.sunskii.com/v1"}\"")
-        buildConfigField("String", "AI_API_KEY", "\"$apiKeyFromFile\"")
-        buildConfigField("String", "AI_MODEL", "\"${project.findProperty("aiModel") ?: "gpt-5.4-mini"}\"")
     }
 
     signingConfigs {
@@ -76,7 +65,6 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = true
     }
 
     packaging {
@@ -99,7 +87,6 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.navigation.compose)
-    implementation(libs.androidx.webkit)
     implementation(libs.androidx.material.icons.extended)
 
     // Room
@@ -109,19 +96,6 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
-
-    // OkHttp
-    implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
-
-    // DataStore
-    implementation(libs.datastore.preferences)
-
-    // Coil
-    implementation(libs.coil.compose)
-
-    // Document tree / album picker
-    implementation(libs.androidx.documentfile)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
