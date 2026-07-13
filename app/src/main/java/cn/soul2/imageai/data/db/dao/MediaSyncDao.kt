@@ -57,10 +57,23 @@ abstract class MediaSyncDao {
         checkpoint: MediaSyncCheckpointEntity,
         run: MediaSyncRunEntity,
     ) {
-        upsertImages(images)
+        val resolved = resolveImagesForUpsert(images, ::findExistingIdentities)
+        if (resolved.isNotEmpty()) upsertImages(resolved)
         upsertCheckpoint(checkpoint)
         upsertRun(run)
     }
+
+    @Query(
+        """
+        SELECT volume_name, media_store_id, local_id
+        FROM image
+        WHERE volume_name = :volumeName AND media_store_id IN (:mediaStoreIds)
+        """,
+    )
+    protected abstract suspend fun findExistingIdentities(
+        volumeName: String,
+        mediaStoreIds: List<Long>,
+    ): List<ExistingImageIdentity>
 
     @Upsert
     protected abstract suspend fun upsertImages(images: List<ImageEntity>)

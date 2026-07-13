@@ -1,6 +1,7 @@
 package cn.soul2.imageai.data.db
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.database.sqlite.SQLiteConstraintException
 import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
@@ -9,11 +10,14 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_1_2
+import cn.soul2.imageai.data.db.entity.AppSettingEntity
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -91,6 +95,103 @@ class AppDatabaseMigrationTest {
         }
     }
 
+    @Test
+    fun legacyCleanupMarkerSkipsDeletion() = runBlocking {
+        val legacyFile = temporaryLegacyFile().apply { createNewFile() }
+        val cleanupContext = LegacyCleanupContext(context, legacyFile, deleteResult = false)
+        val database = openInMemoryDatabase()
+        database.appSettingDao().upsert(
+            AppSettingEntity(LEGACY_MARKER, "true", 1L),
+        )
+
+        try {
+            AppDatabaseFactory.cleanupLegacyDatabaseIfNeeded(cleanupContext, database)
+
+            assertTrue(legacyFile.exists())
+            assertEquals(0, cleanupContext.deleteCalls)
+        } finally {
+            database.close()
+            legacyFile.delete()
+        }
+    }
+
+    @Test
+    fun legacyCleanupWritesMarkerWhenDatabaseIsAlreadyAbsent() = runBlocking {
+        val legacyFile = temporaryLegacyFile()
+        val cleanupContext = LegacyCleanupContext(context, legacyFile, deleteResult = false)
+        val database = openInMemoryDatabase()
+
+        try {
+            AppDatabaseFactory.cleanupLegacyDatabaseIfNeeded(cleanupContext, database)
+
+            assertEquals(0, cleanupContext.deleteCalls)
+            assertNotNull(database.appSettingDao().getByKey(LEGACY_MARKER))
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun legacyCleanupFailedDeleteThrowsWithoutWritingMarker() = runBlocking {
+        val legacyFile = temporaryLegacyFile().apply { createNewFile() }
+        val cleanupContext = LegacyCleanupContext(context, legacyFile, deleteResult = false)
+        val database = openInMemoryDatabase()
+
+        try {
+            assertCleanupFails(cleanupContext, database)
+
+            assertTrue(legacyFile.exists())
+            assertNull(database.appSettingDao().getByKey(LEGACY_MARKER))
+        } finally {
+            database.close()
+            legacyFile.delete()
+        }
+    }
+
+    @Test
+    fun legacyCleanupDeleteExceptionLeavesMarkerAbsent() = runBlocking {
+        val legacyFile = temporaryLegacyFile().apply { createNewFile() }
+        val cleanupContext = LegacyCleanupContext(
+            context,
+            legacyFile,
+            deleteFailure = IllegalStateException("delete failed"),
+        )
+        val database = openInMemoryDatabase()
+
+        try {
+            assertCleanupFails(cleanupContext, database)
+
+            assertTrue(legacyFile.exists())
+            assertNull(database.appSettingDao().getByKey(LEGACY_MARKER))
+        } finally {
+            database.close()
+            legacyFile.delete()
+        }
+    }
+
+    private fun openInMemoryDatabase(): AppDatabase = Room.inMemoryDatabaseBuilder(
+        context,
+        AppDatabase::class.java,
+    ).allowMainThreadQueries().build()
+
+    private fun temporaryLegacyFile(): File = File(
+        context.cacheDir,
+        "legacy-cleanup-${System.nanoTime()}.db",
+    )
+
+    private suspend fun assertCleanupFails(
+        cleanupContext: Context,
+        database: AppDatabase,
+    ) {
+        var failure: Exception? = null
+        try {
+            AppDatabaseFactory.cleanupLegacyDatabaseIfNeeded(cleanupContext, database)
+        } catch (error: Exception) {
+            failure = error
+        }
+        assertNotNull("Expected cleanup failure", failure)
+    }
+
     private fun insertImage(
         database: SupportSQLiteDatabase,
         mediaStoreId: Long,
@@ -135,5 +236,29 @@ class AppDatabaseMigrationTest {
     private companion object {
         const val TEST_DATABASE = "task-2-migration-test.db"
         const val LEGACY_DATABASE = "image_ai.db"
+        const val LEGACY_MARKER = "maintenance.legacy_database_cleaned"
+    }
+
+    private class LegacyCleanupContext(
+        base: Context,
+        private val legacyFile: File,
+        private val deleteResult: Boolean = true,
+        private val deleteFailure: RuntimeException? = null,
+    ) : ContextWrapper(base) {
+        var deleteCalls: Int = 0
+            private set
+
+        override fun getApplicationContext(): Context = this
+
+        override fun getDatabasePath(name: String): File =
+            if (name == LEGACY_DATABASE) legacyFile else super.getDatabasePath(name)
+
+        override fun deleteDatabase(name: String): Boolean {
+            check(name == LEGACY_DATABASE) { "Unexpected database deletion: $name" }
+            deleteCalls++
+            deleteFailure?.let { throw it }
+            if (deleteResult) legacyFile.delete()
+            return deleteResult
+        }
     }
 }

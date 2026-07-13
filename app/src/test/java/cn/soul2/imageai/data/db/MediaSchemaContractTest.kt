@@ -8,6 +8,23 @@ import org.junit.Test
 
 class MediaSchemaContractTest {
     @Test
+    fun pagingQueriesUseATotalOrderAcrossVolumes() {
+        val source = projectFile(
+            "app/src/main/java/cn/soul2/imageai/data/db/dao/ImageDao.kt",
+        ).readText()
+        val totalOrder = Regex(
+            "ORDER BY\\s+sort_time_epoch_millis\\s+DESC,\\s*" +
+                "media_store_id\\s+DESC,\\s*volume_name\\s+DESC,\\s*local_id\\s+DESC",
+        )
+
+        assertEquals(
+            "pagingAll and pagingRecent must share the same total order",
+            2,
+            totalOrder.findAll(source).count(),
+        )
+    }
+
+    @Test
     fun versionTwoExportsTheMediaIndexContract() {
         val schema = schemaFile(version = 2)
         assertTrue("Room schema v2 must be exported", schema.isFile)
@@ -101,13 +118,16 @@ class MediaSchemaContractTest {
     }
 
     private fun schemaFile(version: Int): File {
+        return projectFile(
+            "app/schemas/cn.soul2.imageai.data.db.AppDatabase/$version.json",
+        )
+    }
+
+    private fun projectFile(path: String): File {
         val workingDirectory = requireNotNull(System.getProperty("user.dir"))
         val root = generateSequence(File(workingDirectory).canonicalFile) { it.parentFile }
             .first { File(it, "settings.gradle.kts").isFile }
-        return File(
-            root,
-            "app/schemas/cn.soul2.imageai.data.db.AppDatabase/$version.json",
-        )
+        return File(root, path)
     }
 
     private fun columnNames(entityObject: String): Set<String> =
