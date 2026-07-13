@@ -15,7 +15,9 @@ class SoImApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        container = AppContainer(this, processIoScope)
+        container.mediaStoreObserver.register()
+        container.mediaSyncScheduler.ensurePeriodicReconciliation()
         processIoScope.launch {
             AppDatabaseFactory.cleanupLegacyDatabaseIfNeeded(this@SoImApplication, container.database)
         }

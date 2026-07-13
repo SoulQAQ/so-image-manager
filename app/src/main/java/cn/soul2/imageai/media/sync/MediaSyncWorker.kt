@@ -1,0 +1,67 @@
+package cn.soul2.imageai.media.sync
+
+import android.content.Context
+import androidx.work.CoroutineWorker
+import androidx.work.WorkerParameters
+import cn.soul2.imageai.SoImApplication
+
+enum class WorkerDirective {
+    SUCCESS,
+    RETRY,
+    CONTINUE,
+    PAUSE_ERROR,
+}
+
+object MediaSyncWorkerPolicy {
+    fun directive(result: SliceResult, runAttemptCount: Int): WorkerDirective = when (result) {
+        is SliceResult.More -> WorkerDirective.CONTINUE
+        is SliceResult.Retry -> if (SyncPolicy.shouldRetry(result.error, runAttemptCount)) {
+            WorkerDirective.RETRY
+        } else {
+            WorkerDirective.PAUSE_ERROR
+        }
+        is SliceResult.Completed,
+        is SliceResult.PausedError,
+        is SliceResult.PausedPermission,
+        -> WorkerDirective.SUCCESS
+    }
+}
+
+class MediaSyncWorker(
+    appContext: Context,
+    workerParameters: WorkerParameters,
+) : CoroutineWorker(appContext, workerParameters) {
+    override suspend fun doWork(): Result {
+        val container = (applicationContext.applicationContext as SoImApplication).container
+        if (inputData.getBoolean(INPUT_PERIODIC_TRIGGER, false)) {
+            container.mediaSyncScheduler.requestReconciliation()
+            return Result.success()
+        }
+        val modeValue = inputData.getString(INPUT_MODE) ?: return Result.failure()
+        val result = if (modeValue == MODE_RETRY) {
+            container.mediaSyncEngine.retryPausedSlice()
+        } else {
+            val mode = runCatching { SyncMode.valueOf(modeValue) }.getOrNull()
+                ?: return Result.failure()
+            container.mediaSyncEngine.runNextSlice(mode)
+        }
+        return when (MediaSyncWorkerPolicy.directive(result, runAttemptCount)) {
+            WorkerDirective.SUCCESS -> Result.success()
+            WorkerDirective.RETRY -> Result.retry()
+            WorkerDirective.CONTINUE -> {
+                container.mediaSyncScheduler.continueScan(result.run.mode)
+                Result.success()
+            }
+            WorkerDirective.PAUSE_ERROR -> {
+                container.mediaSyncEngine.pauseAfterRetries((result as SliceResult.Retry).error)
+                Result.success()
+            }
+        }
+    }
+
+    companion object {
+        const val INPUT_MODE = "media_sync_mode"
+        const val INPUT_PERIODIC_TRIGGER = "media_sync_periodic_trigger"
+        const val MODE_RETRY = "RETRY_PAUSED"
+    }
+}

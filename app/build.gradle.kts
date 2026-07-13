@@ -91,7 +91,10 @@ android {
     }
 
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
-    testOptions { animationsDisabled = true }
+    testOptions {
+        animationsDisabled = true
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -119,11 +122,17 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
+    // WorkManager
+    implementation(libs.androidx.work.runtime.ktx)
+
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

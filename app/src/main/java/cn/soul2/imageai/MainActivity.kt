@@ -16,6 +16,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,7 +44,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             SoImageManagerTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    GalleryPermissionHost()
+                    GalleryPermissionHost {
+                        container.mediaSyncScheduler.requestInitial()
+                    }
                 }
             }
         }
@@ -63,6 +66,16 @@ class MainActivity : ComponentActivity() {
         val coroutineScope = rememberCoroutineScope()
         val permissionRequestCoordinator = remember { GalleryPermissionRequestCoordinator() }
         val permissionRequestInFlight by permissionRequestCoordinator.inFlight.collectAsState()
+        LaunchedEffect(uiState.isLoading, uiState.galleryAccessState) {
+            if (!uiState.isLoading) {
+                when (val access = uiState.galleryAccessState) {
+                    GalleryAccessState.Full,
+                    GalleryAccessState.Partial,
+                    -> onAccessAvailable(access)
+                    is GalleryAccessState.Denied -> Unit
+                }
+            }
+        }
         LifecycleResumeEffect(uiState.permissionRequested) {
             uiState.permissionRequested?.let { permissionRequested ->
                 accessViewModel.refresh(

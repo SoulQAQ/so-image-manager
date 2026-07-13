@@ -1,6 +1,7 @@
 package cn.soul2.imageai.data.db.dao
 
 import androidx.room.Dao
+import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
@@ -17,11 +18,35 @@ abstract class MediaSyncDao {
     @Query("SELECT * FROM media_sync_checkpoint WHERE volume_name = :volumeName LIMIT 1")
     abstract suspend fun getCheckpoint(volumeName: String): MediaSyncCheckpointEntity?
 
+    @Query("SELECT * FROM media_sync_checkpoint WHERE volume_name IN (:volumeNames)")
+    abstract suspend fun getCheckpoints(volumeNames: Set<String>): List<MediaSyncCheckpointEntity>
+
+    @Query(
+        """
+        SELECT * FROM media_sync_run
+        WHERE mode = :mode AND state IN ('QUEUED', 'RUNNING')
+        ORDER BY run_id DESC LIMIT 1
+        """,
+    )
+    abstract suspend fun getActiveRun(mode: String): MediaSyncRunEntity?
+
+    @Query(
+        """
+        SELECT * FROM media_sync_run
+        WHERE state IN ('PAUSED_PERMISSION', 'PAUSED_ERROR')
+        ORDER BY run_id DESC LIMIT 1
+        """,
+    )
+    abstract suspend fun getRecoverableRun(): MediaSyncRunEntity?
+
     @Upsert
     abstract suspend fun upsertCheckpoint(checkpoint: MediaSyncCheckpointEntity)
 
     @Upsert
     abstract suspend fun upsertRun(run: MediaSyncRunEntity)
+
+    @Insert
+    abstract suspend fun insertRun(run: MediaSyncRunEntity): Long
 
     @Query(
         """
@@ -62,6 +87,100 @@ abstract class MediaSyncDao {
         upsertCheckpoint(checkpoint)
         upsertRun(run)
     }
+
+    @Transaction
+    open suspend fun pauseForPermission(run: MediaSyncRunEntity) {
+        markAllPermissionRevoked()
+        upsertRun(run.copy(unavailableCount = countUnavailable()))
+    }
+
+    @Transaction
+    open suspend fun finishReconciliation(
+        run: MediaSyncRunEntity,
+        mountedVolumes: Set<String>,
+        partialAccess: Boolean,
+        nowEpochMillis: Long,
+        missingThresholdEpochMillis: Long,
+    ) {
+        if (mountedVolumes.isEmpty()) {
+            markAllVolumesUnmounted()
+        } else {
+            markUnmountedVolumes(mountedVolumes)
+            if (partialAccess) {
+                markSelectionRemoved(run.runId, mountedVolumes)
+            } else {
+                observeMissingCandidates(
+                    runId = run.runId,
+                    mountedVolumes = mountedVolumes,
+                    nowEpochMillis = nowEpochMillis,
+                    missingThresholdEpochMillis = missingThresholdEpochMillis,
+                )
+            }
+        }
+        upsertRun(run.copy(unavailableCount = countUnavailable()))
+    }
+
+    @Query("UPDATE image SET availability = 'PERMISSION_REVOKED'")
+    protected abstract suspend fun markAllPermissionRevoked(): Int
+
+    @Query("UPDATE image SET availability = 'VOLUME_UNMOUNTED'")
+    protected abstract suspend fun markAllVolumesUnmounted(): Int
+
+    @Query(
+        """
+        UPDATE image
+        SET availability = 'VOLUME_UNMOUNTED'
+        WHERE volume_name NOT IN (:mountedVolumes)
+        """,
+    )
+    protected abstract suspend fun markUnmountedVolumes(mountedVolumes: Set<String>): Int
+
+    @Query(
+        """
+        UPDATE image
+        SET availability = 'SELECTION_REMOVED',
+            missing_candidate_since_epoch_millis = NULL,
+            missing_observation_count = 0
+        WHERE volume_name IN (:mountedVolumes)
+          AND (last_seen_sync_run_id IS NULL OR last_seen_sync_run_id != :runId)
+        """,
+    )
+    protected abstract suspend fun markSelectionRemoved(
+        runId: Long,
+        mountedVolumes: Set<String>,
+    ): Int
+
+    @Query(
+        """
+        UPDATE image
+        SET availability = CASE
+                WHEN missing_candidate_since_epoch_millis IS NOT NULL
+                  AND missing_candidate_since_epoch_millis <= :missingThresholdEpochMillis
+                  AND missing_observation_count >= 1
+                THEN 'MEDIA_MISSING'
+                ELSE availability
+            END,
+            missing_candidate_since_epoch_millis =
+                COALESCE(missing_candidate_since_epoch_millis, :nowEpochMillis),
+            missing_observation_count = CASE
+                WHEN missing_candidate_since_epoch_millis IS NULL THEN 1
+                WHEN missing_candidate_since_epoch_millis <= :missingThresholdEpochMillis
+                THEN missing_observation_count + 1
+                ELSE missing_observation_count
+            END
+        WHERE volume_name IN (:mountedVolumes)
+          AND (last_seen_sync_run_id IS NULL OR last_seen_sync_run_id != :runId)
+        """,
+    )
+    protected abstract suspend fun observeMissingCandidates(
+        runId: Long,
+        mountedVolumes: Set<String>,
+        nowEpochMillis: Long,
+        missingThresholdEpochMillis: Long,
+    ): Int
+
+    @Query("SELECT COUNT(*) FROM image WHERE availability != 'AVAILABLE'")
+    protected abstract suspend fun countUnavailable(): Int
 
     @Query(
         """
