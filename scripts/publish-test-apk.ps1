@@ -23,15 +23,11 @@ $ApkDirectory = [IO.DirectoryInfo] (Join-Path $Root "apk")
 $ChangelogFile = Join-Path $ApkDirectory.FullName "ver_change_log.md"
 $ReleaseDate = "2026-07-14"
 
-function Read-VersionProperties {
-    param([Parameter(Mandatory = $true)][string] $Path)
-
-    if (-not [IO.File]::Exists($Path)) {
-        throw "Missing version source: $Path"
-    }
+function ConvertFrom-VersionPropertiesLines {
+    param([Parameter(Mandatory = $true)][string[]] $Lines)
 
     $properties = @{}
-    foreach ($line in [IO.File]::ReadAllLines($Path, [Text.Encoding]::UTF8)) {
+    foreach ($line in $Lines) {
         $trimmed = $line.Trim()
         if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#")) {
             continue
@@ -52,6 +48,34 @@ function Read-VersionProperties {
         }
     }
     return $properties
+}
+
+function Read-VersionProperties {
+    param([Parameter(Mandatory = $true)][string] $Path)
+
+    if (-not [IO.File]::Exists($Path)) {
+        throw "Missing version source: $Path"
+    }
+    return ConvertFrom-VersionPropertiesLines -Lines @(
+        [IO.File]::ReadAllLines($Path, [Text.Encoding]::UTF8)
+    )
+}
+
+function Get-CommittedVersionProperties {
+    Push-Location $Root
+    try {
+        $result = Invoke-CapturedNative -FilePath "git" -ArgumentList @(
+            "show",
+            "HEAD:version.properties"
+        )
+    }
+    finally {
+        Pop-Location
+    }
+    if ($result.ExitCode -ne 0) {
+        throw "Unable to read committed version source: $($result.Output)"
+    }
+    return ConvertFrom-VersionPropertiesLines -Lines @($result.Output -split "`r?`n")
 }
 
 function Get-CandidateVersion {
@@ -116,11 +140,11 @@ function Assert-PublicationTargetsClean {
 
     Push-Location $Root
     try {
-        & git -c core.excludesFile=NUL diff --quiet HEAD -- @RelativePaths
+        & git diff --quiet HEAD -- @RelativePaths
         if ($LASTEXITCODE -ne 0) {
             throw "Tracked publication files contain unstaged changes"
         }
-        & git -c core.excludesFile=NUL diff --cached --quiet -- @RelativePaths
+        & git diff --cached --quiet -- @RelativePaths
         if ($LASTEXITCODE -ne 0) {
             throw "Tracked publication files contain staged changes"
         }
@@ -271,13 +295,31 @@ function Test-DebugSignature {
 
 function Test-ReleaseUnsigned {
     param(
+        [Parameter(Mandatory = $true)][string] $Aapt,
         [Parameter(Mandatory = $true)][string] $ApkSigner,
-        [Parameter(Mandatory = $true)][string] $ApkPath
+        [Parameter(Mandatory = $true)][string] $ApkPath,
+        [Parameter(Mandatory = $true)][string] $ExpectedVersion,
+        [Parameter(Mandatory = $true)][int] $ExpectedCode
     )
 
+    [void] (Test-ApkMetadata `
+        -Aapt $Aapt `
+        -ApkPath $ApkPath `
+        -ExpectedVersion $ExpectedVersion `
+        -ExpectedCode $ExpectedCode)
     $result = Invoke-CapturedNative -FilePath $ApkSigner -ArgumentList @("verify", $ApkPath)
     if ($result.ExitCode -eq 0) {
         throw "Release APK unexpectedly contains a valid signature"
+    }
+    $unsignedDiagnosticPattern = (
+        [regex]::Escape("Missing META-INF/MANIFEST.MF") +
+            "|No signatures|not signed"
+    )
+    $isUnsigned =
+        $result.Output -match "DOES NOT VERIFY" -and
+        $result.Output -match "(?i)($unsignedDiagnosticPattern)"
+    if (-not $isUnsigned) {
+        throw "Unsigned release diagnostic was not recognized: $($result.Output)"
     }
 }
 
@@ -311,11 +353,14 @@ function Test-LatestRoomSchema {
         throw "No exported Room schema found"
     }
     $latest = $schemaFiles | Sort-Object { [int] $_.BaseName } -Descending | Select-Object -First 1
+    if ($latest.BaseName -cne "2") {
+        throw "Latest Room schema filename must be 2.json"
+    }
     $schemaBytes = [IO.File]::ReadAllBytes($latest.FullName)
     $schemaText = [Text.Encoding]::UTF8.GetString($schemaBytes)
     $schema = $schemaText | ConvertFrom-Json
-    if ([int] $schema.database.version -ne [int] $latest.BaseName) {
-        throw "Room schema file name and database version disagree"
+    if ([int] $schema.database.version -ne 2) {
+        throw "Latest Room schema database version must be 2"
     }
     $tables = @($schema.database.entities | ForEach-Object { $_.tableName } | Sort-Object)
     $expected = @("app_setting", "image", "media_sync_checkpoint", "media_sync_run" | Sort-Object)
@@ -333,27 +378,114 @@ function Get-ApkSha256 {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
 }
 
+function Parse-AdbDeviceRows {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string] $Output
+    )
+
+    $rows = @()
+    $statePattern = (
+        "^(?<serial>[^\s*]\S*)\s+" +
+            "(?<state>device|offline|unauthorized|recovery|sideload|bootloader|" +
+            "host|unknown|connecting|authorizing|no permissions)(?:\s|$)"
+    )
+    foreach ($line in @($Output -split "`r?`n")) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match $statePattern) {
+            $rows += [pscustomobject] @{
+                Serial = $Matches["serial"]
+                State = $Matches["state"].ToLowerInvariant()
+            }
+        }
+    }
+    return $rows
+}
+
 function Get-ConnectedDeviceState {
     param([Parameter(Mandatory = $true)][string] $Adb)
 
     if (-not [IO.File]::Exists($Adb)) {
-        return [pscustomobject] @{ HasDevice = $false; Status = "SKIPPED_NO_ADB" }
+        throw "Android SDK adb.exe is missing"
     }
-    $result = Invoke-CapturedNative -FilePath $Adb -ArgumentList @("devices")
+    $result = Invoke-CapturedNative -FilePath $Adb -ArgumentList @("devices", "-l")
     if ($result.ExitCode -ne 0) {
         throw "adb devices failed"
     }
-    $deviceLines = @($result.Output -split "`r?`n" | Where-Object { $_ -match "\sdevice$" })
-    if ($deviceLines.Count -eq 0) {
-        return [pscustomobject] @{ HasDevice = $false; Status = "SKIPPED_NO_DEVICE" }
+    $deviceRows = @(Parse-AdbDeviceRows -Output $result.Output)
+    if ($deviceRows.Count -eq 0) {
+        return [pscustomobject] @{
+            HasDevice = $false
+            Status = "SKIPPED_NO_DEVICE"
+            Serial = $null
+            ApiLevel = $null
+        }
     }
-    return [pscustomobject] @{ HasDevice = $true; Status = "PENDING" }
+
+    $onlineSerials = @(
+        $deviceRows |
+            Where-Object { $_.State -ceq "device" } |
+            ForEach-Object { $_.Serial }
+    )
+    if ($onlineSerials.Count -eq 0) {
+        return [pscustomobject] @{
+            HasDevice = $false
+            Status = "SKIPPED_NO_USABLE_DEVICE"
+            Serial = $null
+            ApiLevel = $null
+        }
+    }
+
+    $resolvedDevices = @()
+    foreach ($serial in $onlineSerials) {
+        $sdk = Invoke-CapturedNative -FilePath $Adb -ArgumentList @(
+            "-s",
+            $serial,
+            "shell",
+            "getprop",
+            "ro.build.version.sdk"
+        )
+        [int] $apiLevel = 0
+        if ($sdk.ExitCode -eq 0 -and [int]::TryParse($sdk.Output.Trim(), [ref] $apiLevel)) {
+            $resolvedDevices += [pscustomobject] @{
+                Serial = $serial
+                ApiLevel = $apiLevel
+            }
+        }
+    }
+    if ($resolvedDevices.Count -eq 0) {
+        return [pscustomobject] @{
+            HasDevice = $false
+            Status = "SKIPPED_NO_USABLE_DEVICE"
+            Serial = $null
+            ApiLevel = $null
+        }
+    }
+    $api29Device = $resolvedDevices |
+        Where-Object { $_.ApiLevel -ge 29 } |
+        Select-Object -First 1
+    if ($null -eq $api29Device) {
+        return [pscustomobject] @{
+            HasDevice = $false
+            Status = "SKIPPED_NO_API29_DEVICE"
+            Serial = $null
+            ApiLevel = $null
+        }
+    }
+    return [pscustomobject] @{
+        HasDevice = $true
+        Status = "PENDING"
+        Serial = $api29Device.Serial
+        ApiLevel = $api29Device.ApiLevel
+    }
 }
 
 function Invoke-ConnectedTests {
     param(
         [Parameter(Mandatory = $true)][string] $CandidateVersion,
-        [Parameter(Mandatory = $true)][int] $CandidateCode
+        [Parameter(Mandatory = $true)][int] $CandidateCode,
+        [Parameter(Mandatory = $true)][string] $Serial
     )
 
     $arguments = @(
@@ -362,6 +494,9 @@ function Invoke-ConnectedTests {
         ":app:connectedDebugAndroidTest",
         "--stacktrace"
     )
+    $hadAndroidSerial = Test-Path Env:ANDROID_SERIAL
+    $previousAndroidSerial = $env:ANDROID_SERIAL
+    $env:ANDROID_SERIAL = $Serial
     Push-Location $Root
     try {
         & (Join-Path $Root "gradlew.bat") @arguments
@@ -371,6 +506,12 @@ function Invoke-ConnectedTests {
     }
     finally {
         Pop-Location
+        if ($hadAndroidSerial) {
+            $env:ANDROID_SERIAL = $previousAndroidSerial
+        }
+        else {
+            Remove-Item Env:ANDROID_SERIAL -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -383,6 +524,7 @@ function Write-AtomicBytes {
     $directory = [IO.Path]::GetDirectoryName($Path)
     $temporary = Join-Path $directory (".soim-publish-" + [IO.Path]::GetRandomFileName())
     $backup = Join-Path $directory (".soim-publish-backup-" + [IO.Path]::GetRandomFileName())
+    $cleanupFailures = New-Object System.Collections.Generic.List[string]
     try {
         [IO.File]::WriteAllBytes($temporary, $Bytes)
         if ([IO.File]::Exists($Path)) {
@@ -393,11 +535,24 @@ function Write-AtomicBytes {
         }
     }
     finally {
-        if ([IO.File]::Exists($temporary)) {
-            Remove-Item -LiteralPath $temporary -Force
+        try {
+            if ([IO.File]::Exists($temporary)) {
+                Remove-Item -LiteralPath $temporary -Force -ErrorAction Stop
+            }
         }
-        if ([IO.File]::Exists($backup)) {
-            Remove-Item -LiteralPath $backup -Force
+        catch {
+            $cleanupFailures.Add("${temporary}: $($_.Exception.Message)")
+        }
+        try {
+            if ([IO.File]::Exists($backup)) {
+                Remove-Item -LiteralPath $backup -Force -ErrorAction Stop
+            }
+        }
+        catch {
+            $cleanupFailures.Add("${backup}: $($_.Exception.Message)")
+        }
+        if ($cleanupFailures.Count -gt 0) {
+            Write-Warning ("Atomic file cleanup failed: " + ($cleanupFailures -join "; "))
         }
     }
 }
@@ -422,27 +577,96 @@ function Get-PublicationSnapshot {
 function Restore-PublicationMetadata {
     param([Parameter(Mandatory = $true)][hashtable] $Snapshot)
 
+    $rollbackFailures = New-Object System.Collections.Generic.List[string]
     foreach ($path in $Snapshot.Keys) {
-        $state = $Snapshot[$path]
-        $currentExists = [IO.File]::Exists($path)
-        $currentBase64 = if ($currentExists) {
-            [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+        try {
+            $state = $Snapshot[$path]
+            $currentExists = [IO.File]::Exists($path)
+            $currentBase64 = if ($currentExists) {
+                [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+            }
+            else { "" }
+            if (
+                $currentExists -eq $state.Exists -and
+                (-not $currentExists -or $currentBase64 -ceq $state.BytesBase64)
+            ) {
+                continue
+            }
+            if ($state.Exists) {
+                Write-AtomicBytes `
+                    -Path $path `
+                    -Bytes ([Convert]::FromBase64String($state.BytesBase64))
+            }
+            elseif ([IO.File]::Exists($path)) {
+                Remove-Item -LiteralPath $path -Force -ErrorAction Stop
+            }
         }
-        else { "" }
-        if (
-            $currentExists -eq $state.Exists -and
-            (-not $currentExists -or $currentBase64 -ceq $state.BytesBase64)
-        ) {
-            continue
+        catch {
+            $rollbackFailures.Add("${path}: $($_.Exception.Message)")
         }
-        if ($state.Exists) {
-            Write-AtomicBytes `
-                -Path $path `
-                -Bytes ([Convert]::FromBase64String($state.BytesBase64))
+    }
+    if ($rollbackFailures.Count -gt 0) {
+        throw (
+            "Publication rollback failed for $($rollbackFailures.Count) target(s): " +
+                ($rollbackFailures -join "; ")
+        )
+    }
+}
+
+function Report-AtomicArtifacts {
+    try {
+        $leftovers = @(
+            Get-ChildItem `
+                -LiteralPath @($Root, $ApkDirectory.FullName) `
+                -Filter ".soim-publish-*" `
+                -File `
+                -ErrorAction Stop
+        )
+    }
+    catch {
+        Write-Warning "Atomic artifact inspection failed: $($_.Exception.Message)"
+        return
+    }
+    if ($leftovers.Count -gt 0) {
+        Write-Warning (
+            "Atomic publication artifacts remain: " +
+                (($leftovers | ForEach-Object { $_.FullName }) -join "; ")
+        )
+    }
+}
+
+function Enter-PublisherLock {
+    $lockPath = Join-Path $ApkDirectory.FullName ".soim-publisher.lock"
+    try {
+        return [IO.File]::Open(
+            $lockPath,
+            [IO.FileMode]::OpenOrCreate,
+            [IO.FileAccess]::ReadWrite,
+            [IO.FileShare]::None
+        )
+    }
+    catch {
+        throw "Another APK publisher holds the exclusive lock: $($_.Exception.Message)"
+    }
+}
+
+function Exit-PublisherLock {
+    param([Parameter(Mandatory = $true)][IO.FileStream] $Lock)
+
+    $lockPath = $Lock.Name
+    try {
+        $Lock.Dispose()
+    }
+    catch {
+        Write-Warning "Publisher lock dispose failed: $($_.Exception.Message)"
+    }
+    try {
+        if ([IO.File]::Exists($lockPath)) {
+            Remove-Item -LiteralPath $lockPath -Force -ErrorAction Stop
         }
-        elseif ([IO.File]::Exists($path)) {
-            Remove-Item -LiteralPath $path -Force
-        }
+    }
+    catch {
+        Write-Warning "Publisher lock cleanup failed: $($_.Exception.Message)"
     }
 }
 
@@ -499,17 +723,16 @@ function Commit-PublicationMetadata {
         [Parameter(Mandatory = $true)][string] $NotesText,
         [Parameter(Mandatory = $true)][string] $ConnectedTestStatus,
         [Parameter(Mandatory = $true)][string] $Sha256,
-        [Parameter(Mandatory = $true)][byte[]] $LegacyChangelogBytes
+        [Parameter(Mandatory = $true)][byte[]] $LegacyChangelogBytes,
+        [Parameter(Mandatory = $true)][hashtable] $OriginalSnapshot
     )
 
-    $paths = @(
-        $VersionFile,
-        $ChangelogFile,
-        $CurrentMarkerPath,
-        $CandidateMarkerPath,
-        $PublishedApkPath
-    )
-    $snapshot = Get-PublicationSnapshot -Paths $paths
+    if (
+        [Convert]::ToBase64String($LegacyChangelogBytes) -cne
+            $OriginalSnapshot[$ChangelogFile].BytesBase64
+    ) {
+        throw "Legacy changelog bytes do not match the original snapshot"
+    }
     try {
         Write-AtomicBytes -Path $PublishedApkPath -Bytes ([IO.File]::ReadAllBytes($SourceApkPath))
 
@@ -555,22 +778,28 @@ function Commit-PublicationMetadata {
         if ([Convert]::ToBase64String($legacySuffix) -cne [Convert]::ToBase64String($LegacyChangelogBytes)) {
             throw "Legacy changelog bytes were not preserved"
         }
+        Report-AtomicArtifacts
     }
     catch {
-        $failure = $_
+        $primaryFailure = $_
         try {
-            Restore-PublicationMetadata -Snapshot $snapshot
+            Restore-PublicationMetadata -Snapshot $OriginalSnapshot
+            Report-AtomicArtifacts
         }
         catch {
-            Write-Error "Publication rollback failed: $($_.Exception.Message)"
+            $rollbackFailure = $_
+            throw (
+                "Primary failure: $($primaryFailure.Exception.Message)`n" +
+                    "Rollback failure: $($rollbackFailure.Exception.Message)"
+            )
         }
-        throw $failure
+        throw $primaryFailure
     }
 }
 
-$properties = Read-VersionProperties -Path $VersionFile
-$CurrentVersion = [string] $properties["SOIM_VERSION_NAME"]
-$rawCode = [string] $properties["SOIM_VERSION_CODE"]
+$CommittedProperties = Get-CommittedVersionProperties
+$CurrentVersion = [string] $CommittedProperties["SOIM_VERSION_NAME"]
+$rawCode = [string] $CommittedProperties["SOIM_VERSION_CODE"]
 [int] $CurrentCode = 0
 if (-not [int]::TryParse($rawCode, [ref] $CurrentCode) -or $CurrentCode -le 0) {
     throw "SOIM_VERSION_CODE must be a positive integer"
@@ -581,9 +810,6 @@ if ($CurrentCode -eq [int]::MaxValue) {
 
 $CandidateVersion = Get-CandidateVersion -CurrentVersion $CurrentVersion -BumpKind $Bump
 $CandidateCode = $CurrentCode + 1
-$CurrentMarker = Get-CurrentMarker -Directory $ApkDirectory -ExpectedVersion $CurrentVersion
-$CandidateMarker = Join-Path $ApkDirectory.FullName "current_version_is_$CandidateVersion"
-$PublishedApk = Join-Path $ApkDirectory.FullName "soim-v$CandidateVersion-debug.apk"
 
 Write-Output "SOIM_VERSION_NAME=$CandidateVersion"
 Write-Output "SOIM_VERSION_CODE=$CandidateCode"
@@ -596,13 +822,24 @@ if ($WhatIfPreference) {
 if ([string]::IsNullOrWhiteSpace($Notes)) {
     throw "-Notes is required for an actual publication"
 }
-$NotesText = Resolve-NotesFile -Path $Notes
+
+$CurrentMarkerPath = Join-Path $ApkDirectory.FullName "current_version_is_$CurrentVersion"
+$CandidateMarker = Join-Path $ApkDirectory.FullName "current_version_is_$CandidateVersion"
+$PublishedApk = Join-Path $ApkDirectory.FullName "soim-v$CandidateVersion-debug.apk"
+$preBuildSnapshot = Get-PublicationSnapshot -Paths @(
+    $VersionFile,
+    $ChangelogFile,
+    $CurrentMarkerPath,
+    $CandidateMarker,
+    $PublishedApk
+)
 
 Assert-PublicationTargetsClean -RelativePaths @(
     "version.properties",
     "apk/ver_change_log.md",
-    "apk/$($CurrentMarker.Name)"
+    "apk/current_version_is_$CurrentVersion"
 )
+$CurrentMarker = Get-CurrentMarker -Directory $ApkDirectory -ExpectedVersion $CurrentVersion
 if ([IO.File]::Exists($CandidateMarker)) {
     throw "Candidate marker already exists: $CandidateMarker"
 }
@@ -610,13 +847,9 @@ if ([IO.File]::Exists($PublishedApk)) {
     throw "Candidate APK already exists: $PublishedApk"
 }
 
-$LegacyChangelogBytes = [IO.File]::ReadAllBytes($ChangelogFile)
-$preBuildSnapshot = Get-PublicationSnapshot -Paths @(
-    $VersionFile,
-    $ChangelogFile,
-    $CurrentMarker.FullName,
-    $CandidateMarker,
-    $PublishedApk
+$NotesText = Resolve-NotesFile -Path $Notes
+$LegacyChangelogBytes = [Convert]::FromBase64String(
+    $preBuildSnapshot[$ChangelogFile].BytesBase64
 )
 
 $SdkDirectory = Get-SdkDirectory
@@ -633,19 +866,12 @@ foreach ($apk in @($DebugApk, $ReleaseApk)) {
     }
 }
 
-[void] (Test-ApkMetadata `
-    -Aapt $AndroidTools.Aapt `
-    -ApkPath $DebugApk `
-    -ExpectedVersion $CandidateVersion `
-    -ExpectedCode $CandidateCode)
-[void] (Test-DebugSignature -ApkSigner $AndroidTools.ApkSigner -ApkPath $DebugApk)
-Test-ReleaseUnsigned -ApkSigner $AndroidTools.ApkSigner -ApkPath $ReleaseApk
-Test-ApkSecurity -Aapt $AndroidTools.Aapt -ApkPath $DebugApk
-Test-LatestRoomSchema
-
 $deviceState = Get-ConnectedDeviceState -Adb $AndroidTools.Adb
 if ($deviceState.HasDevice) {
-    Invoke-ConnectedTests -CandidateVersion $CandidateVersion -CandidateCode $CandidateCode
+    Invoke-ConnectedTests `
+        -CandidateVersion $CandidateVersion `
+        -CandidateCode $CandidateCode `
+        -Serial $deviceState.Serial
     $ConnectedTestStatus = "PASSED"
 }
 else {
@@ -653,26 +879,48 @@ else {
 }
 Write-Output "CONNECTED_TESTS=$ConnectedTestStatus"
 
+[void] (Test-ApkMetadata `
+    -Aapt $AndroidTools.Aapt `
+    -ApkPath $DebugApk `
+    -ExpectedVersion $CandidateVersion `
+    -ExpectedCode $CandidateCode)
+[void] (Test-DebugSignature -ApkSigner $AndroidTools.ApkSigner -ApkPath $DebugApk)
+Test-ReleaseUnsigned `
+    -Aapt $AndroidTools.Aapt `
+    -ApkSigner $AndroidTools.ApkSigner `
+    -ApkPath $ReleaseApk `
+    -ExpectedVersion $CandidateVersion `
+    -ExpectedCode $CandidateCode
+Test-ApkSecurity -Aapt $AndroidTools.Aapt -ApkPath $DebugApk
+Test-LatestRoomSchema
+
 $Sha256 = Get-ApkSha256 -Path $DebugApk
 Write-Output "SHA256=$Sha256"
-
-Test-SnapshotUnchanged -Snapshot $preBuildSnapshot
 
 if (-not $PSCmdlet.ShouldProcess($Root, "Publish SoIM $CandidateVersion Debug test APK")) {
     return
 }
 
-Commit-PublicationMetadata `
-    -CandidateVersion $CandidateVersion `
-    -CandidateCode $CandidateCode `
-    -CurrentMarkerPath $CurrentMarker.FullName `
-    -CandidateMarkerPath $CandidateMarker `
-    -SourceApkPath $DebugApk `
-    -PublishedApkPath $PublishedApk `
-    -NotesText $NotesText `
-    -ConnectedTestStatus $ConnectedTestStatus `
-    -Sha256 $Sha256 `
-    -LegacyChangelogBytes $LegacyChangelogBytes
+$publisherLock = Enter-PublisherLock
+try {
+    Test-SnapshotUnchanged -Snapshot $preBuildSnapshot
+    Report-AtomicArtifacts
+    Commit-PublicationMetadata `
+        -CandidateVersion $CandidateVersion `
+        -CandidateCode $CandidateCode `
+        -CurrentMarkerPath $CurrentMarker.FullName `
+        -CandidateMarkerPath $CandidateMarker `
+        -SourceApkPath $DebugApk `
+        -PublishedApkPath $PublishedApk `
+        -NotesText $NotesText `
+        -ConnectedTestStatus $ConnectedTestStatus `
+        -Sha256 $Sha256 `
+        -LegacyChangelogBytes $LegacyChangelogBytes `
+        -OriginalSnapshot $preBuildSnapshot
+}
+finally {
+    Exit-PublisherLock -Lock $publisherLock
+}
 
 Write-Output "PUBLISHED_APK=$PublishedApk"
 Write-Output "PUBLISHED_VERSION=$CandidateVersion"
