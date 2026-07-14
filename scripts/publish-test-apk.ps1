@@ -382,10 +382,11 @@ function Write-AtomicBytes {
 
     $directory = [IO.Path]::GetDirectoryName($Path)
     $temporary = Join-Path $directory (".soim-publish-" + [IO.Path]::GetRandomFileName())
+    $backup = Join-Path $directory (".soim-publish-backup-" + [IO.Path]::GetRandomFileName())
     try {
         [IO.File]::WriteAllBytes($temporary, $Bytes)
         if ([IO.File]::Exists($Path)) {
-            [IO.File]::Replace($temporary, $Path, $null)
+            [IO.File]::Replace($temporary, $Path, $backup)
         }
         else {
             Move-Item -LiteralPath $temporary -Destination $Path
@@ -394,6 +395,9 @@ function Write-AtomicBytes {
     finally {
         if ([IO.File]::Exists($temporary)) {
             Remove-Item -LiteralPath $temporary -Force
+        }
+        if ([IO.File]::Exists($backup)) {
+            Remove-Item -LiteralPath $backup -Force
         }
     }
 }
