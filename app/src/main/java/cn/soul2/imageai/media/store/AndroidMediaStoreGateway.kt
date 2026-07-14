@@ -7,6 +7,7 @@ import android.database.Cursor
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import androidx.annotation.ChecksSdkIntAtLeast
 import cn.soul2.imageai.media.sync.SyncMode
 
 class AndroidMediaStoreGateway(
@@ -26,7 +27,7 @@ class AndroidMediaStoreGateway(
         limit: Int,
     ): MediaStorePage {
         val plan = MediaStoreQueryPlan.create(mode, cursor, sdkInt, limit)
-        val observedGeneration = if (sdkInt >= Build.VERSION_CODES.R) {
+        val observedGeneration = if (supportsGenerationApi()) {
             MediaStore.getGeneration(applicationContext, volume)
         } else {
             null
@@ -67,6 +68,10 @@ class AndroidMediaStoreGateway(
             observedVersion = observedVersion,
         )
     }
+
+    @ChecksSdkIntAtLeast(api = Build.VERSION_CODES.R)
+    private fun supportsGenerationApi(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && sdkInt >= Build.VERSION_CODES.R
 
     private fun Cursor.toMediaStoreImage(fallbackVolume: String): MediaStoreImage {
         val volumeName = nullableString(COLUMN_VOLUME_NAME) ?: fallbackVolume
