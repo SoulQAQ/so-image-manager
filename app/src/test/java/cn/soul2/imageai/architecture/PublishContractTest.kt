@@ -111,7 +111,7 @@ class PublishContractTest {
         listOf(
             "UTF8Encoding(\$false)",
             "WriteAllBytes",
-            "GetTempFileName",
+            "GetRandomFileName",
             "Move-Item",
             "Restore-PublicationMetadata",
             "current_version_is_",
@@ -146,6 +146,23 @@ class PublishContractTest {
         assertTrue(restore.contains("[Convert]::FromBase64String(\$state.BytesBase64)"))
         assertTrue(compare.contains("[Convert]::ToBase64String(\$current)"))
         assertTrue(compare.contains("-cne \$state.BytesBase64"))
+    }
+
+    @Test
+    fun atomicWritesUseSiblingTempsAndRollbackSkipsUnchangedFiles() {
+        val text = scriptText()
+        val atomicWrite = text.substringAfter("function Write-AtomicBytes")
+            .substringBefore("function Get-PublicationSnapshot")
+        val restore = text.substringAfter("function Restore-PublicationMetadata")
+            .substringBefore("function Test-SnapshotUnchanged")
+
+        assertTrue(atomicWrite.contains("[IO.Path]::GetRandomFileName()"))
+        assertTrue(atomicWrite.contains("Join-Path \$directory"))
+        assertFalse(atomicWrite.contains("GetTempFileName"))
+        assertTrue(restore.contains("\$currentExists = [IO.File]::Exists(\$path)"))
+        assertTrue(restore.contains("\$currentBase64"))
+        assertTrue(restore.contains("\$state.BytesBase64"))
+        assertTrue(restore.contains("continue"))
     }
 
     private fun scriptText(): String {

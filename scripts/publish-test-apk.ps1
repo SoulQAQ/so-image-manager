@@ -374,12 +374,6 @@ function Invoke-ConnectedTests {
     }
 }
 
-function GetTempFileName {
-    param([Parameter(Mandatory = $true)][string] $Directory)
-
-    return Join-Path $Directory (".soim-publish-{0}.tmp" -f [Guid]::NewGuid().ToString("N"))
-}
-
 function Write-AtomicBytes {
     param(
         [Parameter(Mandatory = $true)][string] $Path,
@@ -387,7 +381,7 @@ function Write-AtomicBytes {
     )
 
     $directory = [IO.Path]::GetDirectoryName($Path)
-    $temporary = GetTempFileName -Directory $directory
+    $temporary = Join-Path $directory (".soim-publish-" + [IO.Path]::GetRandomFileName())
     try {
         [IO.File]::WriteAllBytes($temporary, $Bytes)
         if ([IO.File]::Exists($Path)) {
@@ -426,6 +420,17 @@ function Restore-PublicationMetadata {
 
     foreach ($path in $Snapshot.Keys) {
         $state = $Snapshot[$path]
+        $currentExists = [IO.File]::Exists($path)
+        $currentBase64 = if ($currentExists) {
+            [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+        }
+        else { "" }
+        if (
+            $currentExists -eq $state.Exists -and
+            (-not $currentExists -or $currentBase64 -ceq $state.BytesBase64)
+        ) {
+            continue
+        }
         if ($state.Exists) {
             Write-AtomicBytes `
                 -Path $path `
