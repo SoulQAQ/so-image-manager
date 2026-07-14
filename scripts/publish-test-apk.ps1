@@ -412,7 +412,10 @@ function Get-PublicationSnapshot {
         $exists = [IO.File]::Exists($path)
         $snapshot[$path] = [pscustomobject] @{
             Exists = $exists
-            Bytes = if ($exists) { [IO.File]::ReadAllBytes($path) } else { [byte[]] @() }
+            BytesBase64 = if ($exists) {
+                [Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+            }
+            else { "" }
         }
     }
     return $snapshot
@@ -424,7 +427,9 @@ function Restore-PublicationMetadata {
     foreach ($path in $Snapshot.Keys) {
         $state = $Snapshot[$path]
         if ($state.Exists) {
-            Write-AtomicBytes -Path $path -Bytes $state.Bytes
+            Write-AtomicBytes `
+                -Path $path `
+                -Bytes ([Convert]::FromBase64String($state.BytesBase64))
         }
         elseif ([IO.File]::Exists($path)) {
             Remove-Item -LiteralPath $path -Force
@@ -442,7 +447,7 @@ function Test-SnapshotUnchanged {
         }
         if ($state.Exists) {
             $current = [IO.File]::ReadAllBytes($path)
-            if ([Convert]::ToBase64String($current) -cne [Convert]::ToBase64String($state.Bytes)) {
+            if ([Convert]::ToBase64String($current) -cne $state.BytesBase64) {
                 throw "Publication target changed before metadata commit: $path"
             }
         }

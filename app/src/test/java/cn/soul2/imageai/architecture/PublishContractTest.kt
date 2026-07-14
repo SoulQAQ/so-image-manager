@@ -129,6 +129,25 @@ class PublishContractTest {
         assertTrue(text.contains("Restore-PublicationMetadata"))
     }
 
+    @Test
+    fun publicationSnapshotKeepsZeroByteMarkersAsStableBase64() {
+        val text = scriptText()
+        val snapshot = text.substringAfter("function Get-PublicationSnapshot")
+            .substringBefore("function Restore-PublicationMetadata")
+        val restore = text.substringAfter("function Restore-PublicationMetadata")
+            .substringBefore("function Test-SnapshotUnchanged")
+        val compare = text.substringAfter("function Test-SnapshotUnchanged")
+            .substringBefore("function New-ChangelogEntry")
+
+        assertTrue(snapshot.contains("BytesBase64"))
+        assertTrue(snapshot.contains("[Convert]::ToBase64String"))
+        assertTrue(snapshot.contains("else { \"\" }"))
+        assertFalse(snapshot.contains("Bytes = if"))
+        assertTrue(restore.contains("[Convert]::FromBase64String(\$state.BytesBase64)"))
+        assertTrue(compare.contains("[Convert]::ToBase64String(\$current)"))
+        assertTrue(compare.contains("-cne \$state.BytesBase64"))
+    }
+
     private fun scriptText(): String {
         assertTrue("Missing publisher: ${script.path}", script.isFile)
         return script.readText(Charsets.UTF_8)
