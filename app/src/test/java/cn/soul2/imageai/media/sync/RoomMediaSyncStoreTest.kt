@@ -48,6 +48,7 @@ class RoomMediaSyncStoreTest {
 
         assertTrue(transactionalMethod(source, "commitBatch"))
         assertTrue(transactionalMethod(source, "enqueueAndClaimRun"))
+        assertTrue(transactionalMethod(source, "claimRetryRun"))
         assertTrue(transactionalMethod(source, "pauseForPermission"))
         assertTrue(transactionalMethod(source, "finishReconciliation"))
     }

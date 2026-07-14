@@ -89,12 +89,10 @@ class MediaSyncEngine(
         return runSlice(startingRun = run, volume = nextVolume)
     }
 
-    suspend fun retryPausedSlice(): SliceResult {
-        val paused = store.recoverableRun() ?: return runNextSlice(SyncMode.INCREMENTAL)
-        val resumed = paused.resumed(clock.nowEpochMillis())
-        store.updateRun(resumed)
-        lastRun = resumed
-        return runNextSlice(resumed)
+    suspend fun retryPausedSlice(): SliceResult? {
+        val run = store.claimRetryRun(clock.nowEpochMillis()) ?: return null
+        lastRun = run
+        return runNextSlice(run)
     }
 
     suspend fun runSlice(

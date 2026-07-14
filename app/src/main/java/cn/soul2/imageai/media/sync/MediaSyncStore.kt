@@ -9,6 +9,8 @@ interface MediaSyncStore {
         nowEpochMillis: Long,
     ): SyncRun?
 
+    suspend fun claimRetryRun(nowEpochMillis: Long): SyncRun?
+
     suspend fun activeRun(mode: SyncMode): SyncRun?
     suspend fun recoverableRun(): SyncRun? = null
     suspend fun startRun(mode: SyncMode, nowEpochMillis: Long): SyncRun

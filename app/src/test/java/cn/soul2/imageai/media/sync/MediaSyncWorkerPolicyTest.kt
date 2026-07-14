@@ -33,5 +33,52 @@ class MediaSyncWorkerPolicyTest {
         )
     }
 
+    @Test
+    fun onlySuccessfulRetryCompletionEnqueuesCoordinator() {
+        val run = run()
+        val error = IOException("temporary")
+
+        assertEquals(
+            WorkerDirective.CONTINUE,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.Completed(run),
+                runAttemptCount = 0,
+                drainAfterTerminal = true,
+            ),
+        )
+        assertEquals(
+            WorkerDirective.SUCCESS,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.PausedPermission(run),
+                runAttemptCount = 0,
+                drainAfterTerminal = true,
+            ),
+        )
+        assertEquals(
+            WorkerDirective.SUCCESS,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.PausedError(run, error),
+                runAttemptCount = 0,
+                drainAfterTerminal = true,
+            ),
+        )
+        assertEquals(
+            WorkerDirective.RETRY,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.Retry(run, error),
+                runAttemptCount = 0,
+                drainAfterTerminal = true,
+            ),
+        )
+        assertEquals(
+            WorkerDirective.PAUSE_ERROR,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.Retry(run, error),
+                runAttemptCount = 4,
+                drainAfterTerminal = true,
+            ),
+        )
+    }
+
     private fun run() = SyncRun.running(1L, SyncMode.INCREMENTAL, 1_000L)
 }

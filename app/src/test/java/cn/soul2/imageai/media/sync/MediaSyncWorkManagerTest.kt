@@ -15,7 +15,7 @@ import androidx.work.testing.TestDriver
 import androidx.work.testing.WorkManagerTestInitHelper
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -52,7 +52,7 @@ class MediaSyncWorkManagerTest {
     }
 
     @Test
-    fun appendRetainsInitialRequestsAndRetryReplacesTheChain() {
+    fun explicitRetryAppendsWithoutCancellingRetainedRequests() {
         scheduler.requestInitial()
         scheduler.requestInitial()
         val retained = immediateInfos()
@@ -61,8 +61,29 @@ class MediaSyncWorkManagerTest {
         assertEquals(1, retained.count { it.state == WorkInfo.State.BLOCKED })
 
         scheduler.retry()
-        val replacement = immediateInfos().first { it.state == WorkInfo.State.ENQUEUED }
-        retained.forEach { previous -> assertNotEquals(previous.id, replacement.id) }
+        val withRetry = immediateInfos()
+        assertEquals(3, withRetry.size)
+        assertTrue(
+            withRetry.map(WorkInfo::id).toSet().containsAll(retained.map(WorkInfo::id)),
+        )
+        assertEquals(1, withRetry.count { it.state == WorkInfo.State.ENQUEUED })
+        assertEquals(2, withRetry.count { it.state == WorkInfo.State.BLOCKED })
+
+        repeat(3) {
+            val active = immediateInfos().single { it.state == WorkInfo.State.ENQUEUED }
+            testDriver.setInitialDelayMet(active.id)
+        }
+        assertEquals(
+            listOf(
+                SyncMode.INITIAL.name,
+                SyncMode.INITIAL.name,
+                SyncMode.INITIAL.name,
+                SyncMode.INITIAL.name,
+                MediaSyncWorker.MODE_RETRY,
+                MediaSyncWorker.MODE_RETRY,
+            ),
+            RetryingWorkerFactory.executions,
+        )
     }
 
     @Test

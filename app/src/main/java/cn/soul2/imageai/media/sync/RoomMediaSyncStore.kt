@@ -21,6 +21,9 @@ class RoomMediaSyncStore(
         nowEpochMillis = nowEpochMillis,
     )?.let(RoomMediaSyncMapper::run)
 
+    override suspend fun claimRetryRun(nowEpochMillis: Long): SyncRun? =
+        syncDao.claimRetryRun(nowEpochMillis)?.let(RoomMediaSyncMapper::run)
+
     override suspend fun activeRun(mode: SyncMode): SyncRun? =
         syncDao.getActiveRun(mode.name)?.let(RoomMediaSyncMapper::run)
 

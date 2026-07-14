@@ -558,6 +558,18 @@ class MediaSyncEngineTest {
             return queued.activated(nowEpochMillis).also(::replaceRun)
         }
 
+        override suspend fun claimRetryRun(nowEpochMillis: Long): SyncRun? {
+            runs.firstOrNull { it.state == SyncRunState.RUNNING }?.let { return it }
+            val latest = runs.lastOrNull()
+            if (latest?.state == SyncRunState.PAUSED_PERMISSION ||
+                latest?.state == SyncRunState.PAUSED_ERROR
+            ) {
+                return latest.resumed(nowEpochMillis).also(::replaceRun)
+            }
+            val queued = runs.firstOrNull { it.state == SyncRunState.QUEUED } ?: return null
+            return queued.activated(nowEpochMillis).also(::replaceRun)
+        }
+
         override suspend fun activeRun(mode: SyncMode): SyncRun? =
             runs.firstOrNull { it.mode == mode && it.state == SyncRunState.RUNNING }
 

@@ -6,7 +6,7 @@ import org.junit.Test
 
 class MediaSyncSchedulerTest {
     @Test
-    fun externalRequestsAppendToTheSingleChainAndRetryReplacesIt() {
+    fun externalRequestsAndExplicitRetryAppendToTheSingleChain() {
         val backend = RecordingSyncWorkBackend()
         val scheduler = MediaSyncScheduler(backend)
 
@@ -17,10 +17,19 @@ class MediaSyncSchedulerTest {
 
         assertEquals(
             listOf(
-                RecordedImmediate(SyncMode.INITIAL, ExistingWorkPolicy.APPEND_OR_REPLACE),
-                RecordedImmediate(SyncMode.INCREMENTAL, ExistingWorkPolicy.APPEND_OR_REPLACE),
-                RecordedImmediate(SyncMode.RECONCILE, ExistingWorkPolicy.APPEND_OR_REPLACE),
-                RecordedImmediate(mode = null, ExistingWorkPolicy.REPLACE),
+                RecordedImmediate(
+                    ImmediateSyncWork.RequestedMode(SyncMode.INITIAL),
+                    ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ),
+                RecordedImmediate(
+                    ImmediateSyncWork.RequestedMode(SyncMode.INCREMENTAL),
+                    ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ),
+                RecordedImmediate(
+                    ImmediateSyncWork.RequestedMode(SyncMode.RECONCILE),
+                    ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ),
+                RecordedImmediate(ImmediateSyncWork.Retry, ExistingWorkPolicy.APPEND_OR_REPLACE),
             ),
             backend.immediate,
         )
@@ -35,14 +44,17 @@ class MediaSyncSchedulerTest {
         scheduler.ensurePeriodicReconciliation()
 
         assertEquals(
-            RecordedImmediate(mode = null, ExistingWorkPolicy.APPEND_OR_REPLACE),
+            RecordedImmediate(
+                ImmediateSyncWork.Coordinator,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+            ),
             backend.immediate.single(),
         )
         assertEquals(listOf(SyncPolicy.RECONCILIATION_INTERVAL_HOURS), backend.periodicHours)
     }
 
     private data class RecordedImmediate(
-        val mode: SyncMode?,
+        val work: ImmediateSyncWork,
         val policy: ExistingWorkPolicy,
     )
 
@@ -50,8 +62,8 @@ class MediaSyncSchedulerTest {
         val immediate = mutableListOf<RecordedImmediate>()
         val periodicHours = mutableListOf<Long>()
 
-        override fun enqueueImmediate(mode: SyncMode?, policy: ExistingWorkPolicy) {
-            immediate += RecordedImmediate(mode, policy)
+        override fun enqueueImmediate(work: ImmediateSyncWork, policy: ExistingWorkPolicy) {
+            immediate += RecordedImmediate(work, policy)
         }
 
         override fun enqueuePeriodic(intervalHours: Long) {

@@ -13,14 +13,19 @@ enum class WorkerDirective {
 }
 
 object MediaSyncWorkerPolicy {
-    fun directive(result: SliceResult, runAttemptCount: Int): WorkerDirective = when (result) {
+    fun directive(
+        result: SliceResult,
+        runAttemptCount: Int,
+        drainAfterTerminal: Boolean = false,
+    ): WorkerDirective = when (result) {
         is SliceResult.More -> WorkerDirective.CONTINUE
         is SliceResult.Retry -> if (SyncPolicy.shouldRetry(result.error, runAttemptCount)) {
             WorkerDirective.RETRY
         } else {
             WorkerDirective.PAUSE_ERROR
         }
-        is SliceResult.Completed,
+        is SliceResult.Completed ->
+            if (drainAfterTerminal) WorkerDirective.CONTINUE else WorkerDirective.SUCCESS
         is SliceResult.PausedError,
         is SliceResult.PausedPermission,
         -> WorkerDirective.SUCCESS
@@ -48,7 +53,13 @@ class MediaSyncWorker(
             }
         }
         result ?: return Result.success()
-        return when (MediaSyncWorkerPolicy.directive(result, runAttemptCount)) {
+        return when (
+            MediaSyncWorkerPolicy.directive(
+                result,
+                runAttemptCount,
+                drainAfterTerminal = modeValue == MODE_RETRY,
+            )
+        ) {
             WorkerDirective.SUCCESS -> Result.success()
             WorkerDirective.RETRY -> Result.retry()
             WorkerDirective.CONTINUE -> {

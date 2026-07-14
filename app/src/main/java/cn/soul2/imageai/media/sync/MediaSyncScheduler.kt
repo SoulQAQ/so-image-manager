@@ -10,8 +10,14 @@ import androidx.work.WorkRequest
 import androidx.work.workDataOf
 import java.util.concurrent.TimeUnit
 
+sealed interface ImmediateSyncWork {
+    data class RequestedMode(val mode: SyncMode) : ImmediateSyncWork
+    data object Coordinator : ImmediateSyncWork
+    data object Retry : ImmediateSyncWork
+}
+
 interface SyncWorkBackend {
-    fun enqueueImmediate(mode: SyncMode?, policy: ExistingWorkPolicy)
+    fun enqueueImmediate(work: ImmediateSyncWork, policy: ExistingWorkPolicy)
     fun enqueuePeriodic(intervalHours: Long)
 }
 
@@ -19,19 +25,31 @@ class MediaSyncScheduler(
     private val backend: SyncWorkBackend,
 ) {
     fun requestInitial() {
-        backend.enqueueImmediate(SyncMode.INITIAL, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        backend.enqueueImmediate(
+            ImmediateSyncWork.RequestedMode(SyncMode.INITIAL),
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+        )
     }
 
     fun requestIncremental() {
-        backend.enqueueImmediate(SyncMode.INCREMENTAL, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        backend.enqueueImmediate(
+            ImmediateSyncWork.RequestedMode(SyncMode.INCREMENTAL),
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+        )
     }
 
     fun requestReconciliation() {
-        backend.enqueueImmediate(SyncMode.RECONCILE, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        backend.enqueueImmediate(
+            ImmediateSyncWork.RequestedMode(SyncMode.RECONCILE),
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+        )
     }
 
     fun retry() {
-        backend.enqueueImmediate(mode = null, policy = ExistingWorkPolicy.REPLACE)
+        backend.enqueueImmediate(
+            ImmediateSyncWork.Retry,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+        )
     }
 
     fun ensurePeriodicReconciliation() {
@@ -39,18 +57,21 @@ class MediaSyncScheduler(
     }
 
     internal fun continueScan() {
-        backend.enqueueImmediate(mode = null, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        backend.enqueueImmediate(
+            ImmediateSyncWork.Coordinator,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+        )
     }
 }
 
 class WorkManagerSyncWorkBackend(
     private val workManager: WorkManager,
 ) : SyncWorkBackend {
-    override fun enqueueImmediate(mode: SyncMode?, policy: ExistingWorkPolicy) {
-        val modeValue = when {
-            mode != null -> mode.name
-            policy == ExistingWorkPolicy.REPLACE -> MediaSyncWorker.MODE_RETRY
-            else -> null
+    override fun enqueueImmediate(work: ImmediateSyncWork, policy: ExistingWorkPolicy) {
+        val modeValue = when (work) {
+            is ImmediateSyncWork.RequestedMode -> work.mode.name
+            ImmediateSyncWork.Retry -> MediaSyncWorker.MODE_RETRY
+            ImmediateSyncWork.Coordinator -> null
         }
         val request = OneTimeWorkRequestBuilder<MediaSyncWorker>()
             .setInputData(

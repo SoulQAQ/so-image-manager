@@ -57,6 +57,9 @@ abstract class MediaSyncDao {
     )
     protected abstract suspend fun getOldestQueuedRun(): MediaSyncRunEntity?
 
+    @Query("SELECT * FROM media_sync_run ORDER BY run_id DESC LIMIT 1")
+    protected abstract suspend fun getLatestRun(): MediaSyncRunEntity?
+
     @Query(
         """
         SELECT * FROM media_sync_run
@@ -84,6 +87,19 @@ abstract class MediaSyncDao {
     )
     protected abstract suspend fun activateRun(runId: Long, nowEpochMillis: Long): Int
 
+    @Query(
+        """
+        UPDATE media_sync_run
+        SET state = 'RUNNING',
+            error_code = NULL,
+            error_message = NULL,
+            updated_at_epoch_millis = :nowEpochMillis,
+            completed_at_epoch_millis = NULL
+        WHERE run_id = :runId AND state IN ('PAUSED_PERMISSION', 'PAUSED_ERROR')
+        """,
+    )
+    protected abstract suspend fun resumePausedRun(runId: Long, nowEpochMillis: Long): Int
+
     @Transaction
     open suspend fun enqueueAndClaimRun(
         requestedRun: MediaSyncRunEntity?,
@@ -93,6 +109,32 @@ abstract class MediaSyncDao {
             insertRun(requestedRun)
         }
         getOldestRunningRun()?.let { return it }
+        val queued = getOldestQueuedRun() ?: return null
+        check(activateRun(queued.runId, nowEpochMillis) == 1) {
+            "Unable to activate queued media sync run ${queued.runId}"
+        }
+        return queued.copy(
+            state = "RUNNING",
+            updatedAtEpochMillis = nowEpochMillis,
+        )
+    }
+
+    @Transaction
+    open suspend fun claimRetryRun(nowEpochMillis: Long): MediaSyncRunEntity? {
+        getOldestRunningRun()?.let { return it }
+        val latest = getLatestRun()
+        if (latest?.state == "PAUSED_PERMISSION" || latest?.state == "PAUSED_ERROR") {
+            check(resumePausedRun(latest.runId, nowEpochMillis) == 1) {
+                "Unable to resume paused media sync run ${latest.runId}"
+            }
+            return latest.copy(
+                state = "RUNNING",
+                errorCode = null,
+                errorMessage = null,
+                updatedAtEpochMillis = nowEpochMillis,
+                completedAtEpochMillis = null,
+            )
+        }
         val queued = getOldestQueuedRun() ?: return null
         check(activateRun(queued.runId, nowEpochMillis) == 1) {
             "Unable to activate queued media sync run ${queued.runId}"
