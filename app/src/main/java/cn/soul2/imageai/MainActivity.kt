@@ -114,6 +114,8 @@ class MainActivity : ComponentActivity() {
             }
         } else {
             SoImageManagerApp(
+                galleryRepository = container.galleryRepository,
+                syncRuns = container.gallerySyncRuns,
                 galleryAccessState = uiState.galleryAccessState,
                 showGalleryOnboarding = uiState.showOnboarding,
                 isGalleryPermissionRecovery = uiState.isPermissionRecovery,

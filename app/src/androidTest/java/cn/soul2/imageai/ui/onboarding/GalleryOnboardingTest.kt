@@ -9,9 +9,15 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.paging.PagingData
+import cn.soul2.imageai.gallery.GalleryImage
+import cn.soul2.imageai.gallery.GalleryQuery
+import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.ui.app.SoImageManagerApp
 import cn.soul2.imageai.ui.theme.SoImageManagerTheme
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -26,6 +32,8 @@ class GalleryOnboardingTest {
         composeRule.setContent {
             SoImageManagerTheme {
                 SoImageManagerApp(
+                    galleryRepository = EmptyGalleryRepository,
+                    syncRuns = flowOf(null),
                     galleryAccessState = GalleryAccessState.Denied(canRequestAgain = true),
                     showGalleryOnboarding = true,
                     isGalleryPermissionRecovery = false,
@@ -53,6 +61,8 @@ class GalleryOnboardingTest {
         composeRule.setContent {
             SoImageManagerTheme {
                 SoImageManagerApp(
+                    galleryRepository = EmptyGalleryRepository,
+                    syncRuns = flowOf(null),
                     galleryAccessState = GalleryAccessState.Denied(canRequestAgain = true),
                     showGalleryOnboarding = showOnboarding.value,
                     isGalleryPermissionRecovery = true,
@@ -81,6 +91,8 @@ class GalleryOnboardingTest {
         composeRule.setContent {
             SoImageManagerTheme {
                 SoImageManagerApp(
+                    galleryRepository = EmptyGalleryRepository,
+                    syncRuns = flowOf(null),
                     galleryAccessState = GalleryAccessState.Denied(canRequestAgain = false),
                     showGalleryOnboarding = true,
                     isGalleryPermissionRecovery = true,
@@ -102,6 +114,8 @@ class GalleryOnboardingTest {
         composeRule.setContent {
             SoImageManagerTheme {
                 SoImageManagerApp(
+                    galleryRepository = EmptyGalleryRepository,
+                    syncRuns = flowOf(null),
                     galleryAccessState = GalleryAccessState.Partial,
                     onRequestGalleryReselection = { reselectionCount += 1 },
                 )
@@ -121,6 +135,8 @@ class GalleryOnboardingTest {
         composeRule.setContent {
             SoImageManagerTheme {
                 SoImageManagerApp(
+                    galleryRepository = EmptyGalleryRepository,
+                    syncRuns = flowOf(null),
                     galleryAccessState = when (mode.value) {
                         2 -> GalleryAccessState.Partial
                         else -> GalleryAccessState.Denied(canRequestAgain = true)
@@ -140,4 +156,13 @@ class GalleryOnboardingTest {
         composeRule.runOnIdle { mode.value = 2 }
         composeRule.onNodeWithText("重新选择").assertIsNotEnabled()
     }
+}
+
+private object EmptyGalleryRepository : GalleryRepository {
+    override fun observe(query: GalleryQuery): Flow<PagingData<GalleryImage>> =
+        flowOf(PagingData.empty())
+
+    override fun observeCount(): Flow<Int> = flowOf(0)
+
+    override fun observeImage(localId: Long): Flow<GalleryImage?> = flowOf(null)
 }

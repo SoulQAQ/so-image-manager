@@ -20,4 +20,14 @@
     <string name="gallery_permission_later">稍后再说</string>
     <string name="gallery_permission_partial">仅可访问已选择的照片</string>
     <string name="gallery_permission_reselect">重新选择</string>
+    <string name="gallery_empty_no_permission">尚未获得照片权限</string>
+    <string name="gallery_empty_index">未发现可索引的图片</string>
+    <string name="gallery_syncing">正在建立图片索引</string>
+    <string name="gallery_sync_count">已索引 %1$d 张</string>
+    <string name="gallery_load_failed">图片加载失败</string>
+    <string name="gallery_retry">重试</string>
+    <string name="image_detail_back">返回</string>
+    <string name="image_detail_missing">图片不可用</string>
+    <string name="image_detail_dimensions">%1$d × %2$d</string>
+    <string name="image_detail_unknown_album">未知相册</string>
 </resources>

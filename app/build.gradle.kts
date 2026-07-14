@@ -118,6 +118,10 @@ dependencies {
 
     // Paging
     implementation(libs.androidx.paging.runtime)
+    implementation(libs.androidx.paging.compose)
+
+    // Images
+    implementation(libs.coil.compose)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
@@ -131,6 +135,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.androidx.paging.testing)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.test.ext.junit)

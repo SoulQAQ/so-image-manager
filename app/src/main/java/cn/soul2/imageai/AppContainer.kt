@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.work.WorkManager
 import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.data.db.AppDatabaseFactory
+import cn.soul2.imageai.gallery.GalleryRepository
+import cn.soul2.imageai.gallery.RoomGalleryRepository
 import cn.soul2.imageai.media.permission.GalleryPermissionMonitor
 import cn.soul2.imageai.media.store.AndroidMediaStoreGateway
 import cn.soul2.imageai.media.store.MediaStoreGateway
@@ -24,6 +26,8 @@ class AppContainer(
     private val applicationContext = context.applicationContext
 
     val database: AppDatabase = AppDatabaseFactory.create(applicationContext)
+    val galleryRepository: GalleryRepository = RoomGalleryRepository(database.imageDao())
+    val gallerySyncRuns = database.mediaSyncDao().observeCurrentRun()
     val galleryPermissionMonitor = GalleryPermissionMonitor(applicationContext)
     val galleryOnboardingRepository = GalleryOnboardingRepository(database.appSettingDao())
     val mediaStoreGateway: MediaStoreGateway = AndroidMediaStoreGateway(applicationContext)

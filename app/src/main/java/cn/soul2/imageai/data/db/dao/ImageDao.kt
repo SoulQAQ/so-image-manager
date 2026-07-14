@@ -33,6 +33,15 @@ abstract class ImageDao {
     )
     abstract fun pagingRecent(): PagingSource<Int, ImageEntity>
 
+    @Query(
+        """
+        SELECT * FROM image
+        WHERE local_id = :localId AND availability = 'AVAILABLE'
+        LIMIT 1
+        """,
+    )
+    abstract fun observeAvailableById(localId: Long): Flow<ImageEntity?>
+
     @Query("SELECT * FROM image WHERE local_id = :localId LIMIT 1")
     abstract suspend fun getById(localId: Long): ImageEntity?
 
