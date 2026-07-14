@@ -19,7 +19,7 @@ class MediaSyncScheduler(
     private val backend: SyncWorkBackend,
 ) {
     fun requestInitial() {
-        backend.enqueueImmediate(SyncMode.INITIAL, ExistingWorkPolicy.KEEP)
+        backend.enqueueImmediate(SyncMode.INITIAL, ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
     fun requestIncremental() {
@@ -27,7 +27,7 @@ class MediaSyncScheduler(
     }
 
     fun requestReconciliation() {
-        backend.enqueueImmediate(SyncMode.RECONCILE, ExistingWorkPolicy.KEEP)
+        backend.enqueueImmediate(SyncMode.RECONCILE, ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
     fun retry() {
@@ -38,8 +38,8 @@ class MediaSyncScheduler(
         backend.enqueuePeriodic(SyncPolicy.RECONCILIATION_INTERVAL_HOURS)
     }
 
-    internal fun continueScan(mode: SyncMode) {
-        backend.enqueueImmediate(mode, ExistingWorkPolicy.APPEND_OR_REPLACE)
+    internal fun continueScan() {
+        backend.enqueueImmediate(mode = null, ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 }
 
@@ -47,11 +47,15 @@ class WorkManagerSyncWorkBackend(
     private val workManager: WorkManager,
 ) : SyncWorkBackend {
     override fun enqueueImmediate(mode: SyncMode?, policy: ExistingWorkPolicy) {
+        val modeValue = when {
+            mode != null -> mode.name
+            policy == ExistingWorkPolicy.REPLACE -> MediaSyncWorker.MODE_RETRY
+            else -> null
+        }
         val request = OneTimeWorkRequestBuilder<MediaSyncWorker>()
             .setInputData(
-                workDataOf(
-                    MediaSyncWorker.INPUT_MODE to (mode?.name ?: MediaSyncWorker.MODE_RETRY),
-                ),
+                modeValue?.let { workDataOf(MediaSyncWorker.INPUT_MODE to it) }
+                    ?: workDataOf(),
             )
             .setBackoffCriteria(
                 BackoffPolicy.EXPONENTIAL,

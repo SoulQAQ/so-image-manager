@@ -52,42 +52,45 @@ class MediaSyncWorkManagerTest {
     }
 
     @Test
-    fun keepCoalescesInitialRequestsAndRetryReplacesTheChain() {
+    fun appendRetainsInitialRequestsAndRetryReplacesTheChain() {
         scheduler.requestInitial()
         scheduler.requestInitial()
-        val kept = immediateInfos().single()
-        assertEquals(WorkInfo.State.ENQUEUED, kept.state)
+        val retained = immediateInfos()
+        assertEquals(2, retained.size)
+        assertEquals(1, retained.count { it.state == WorkInfo.State.ENQUEUED })
+        assertEquals(1, retained.count { it.state == WorkInfo.State.BLOCKED })
 
         scheduler.retry()
         val replacement = immediateInfos().first { it.state == WorkInfo.State.ENQUEUED }
-        assertNotEquals(kept.id, replacement.id)
+        retained.forEach { previous -> assertNotEquals(previous.id, replacement.id) }
     }
 
     @Test
-    fun incrementalRequestedDuringActiveWorkEventuallyExecutesOnTheSameChain() {
-        scheduler.requestInitial()
-        val initial = immediateInfos().single()
-        assertEquals(WorkInfo.State.ENQUEUED, initial.state)
-
+    fun requestedModesAndGenericContinuationExecuteInChainOrder() {
+        scheduler.requestReconciliation()
         scheduler.requestIncremental()
-        val appended = immediateInfos().single { it.id != initial.id }
-        assertEquals(WorkInfo.State.BLOCKED, appended.state)
+        scheduler.continueScan()
 
-        testDriver.setInitialDelayMet(initial.id)
-        val incremental = immediateInfos().single { it.id != initial.id }
-        assertEquals(WorkInfo.State.ENQUEUED, incremental.state)
+        assertEquals(3, immediateInfos().size)
+        assertEquals(1, immediateInfos().count { it.state == WorkInfo.State.ENQUEUED })
+        assertEquals(2, immediateInfos().count { it.state == WorkInfo.State.BLOCKED })
 
-        testDriver.setInitialDelayMet(incremental.id)
+        repeat(3) {
+            val active = immediateInfos().single { it.state == WorkInfo.State.ENQUEUED }
+            testDriver.setInitialDelayMet(active.id)
+        }
         assertEquals(
             setOf(WorkInfo.State.SUCCEEDED),
             immediateInfos().map(WorkInfo::state).toSet(),
         )
         assertEquals(
             listOf(
-                SyncMode.INITIAL.name,
-                SyncMode.INITIAL.name,
+                SyncMode.RECONCILE.name,
+                SyncMode.RECONCILE.name,
                 SyncMode.INCREMENTAL.name,
                 SyncMode.INCREMENTAL.name,
+                COORDINATOR_EXECUTION,
+                COORDINATOR_EXECUTION,
             ),
             RetryingWorkerFactory.executions,
         )
@@ -128,8 +131,12 @@ class MediaSyncWorkManagerTest {
     ) : Worker(appContext, workerParameters) {
         override fun doWork(): Result {
             RetryingWorkerFactory.executions +=
-                inputData.getString(MediaSyncWorker.INPUT_MODE).orEmpty()
+                inputData.getString(MediaSyncWorker.INPUT_MODE) ?: COORDINATOR_EXECUTION
             return if (runAttemptCount == 0) Result.retry() else Result.success()
         }
+    }
+
+    private companion object {
+        const val COORDINATOR_EXECUTION = "COORDINATOR"
     }
 }

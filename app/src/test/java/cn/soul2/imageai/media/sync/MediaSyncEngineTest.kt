@@ -158,11 +158,68 @@ class MediaSyncEngineTest {
         val engine = engine(gateway, store, MutableClock(12_000L))
 
         assertInstanceOf<SliceResult.More>(engine.runNextSlice(SyncMode.RECONCILE))
-        assertInstanceOf<SliceResult.Completed>(engine.runNextSlice(SyncMode.RECONCILE))
+        assertInstanceOf<SliceResult.Completed>(engine.continueNextSlice())
         assertInstanceOf<SliceResult.More>(engine.runNextSlice(SyncMode.RECONCILE))
-        assertInstanceOf<SliceResult.Completed>(engine.runNextSlice(SyncMode.RECONCILE))
+        assertInstanceOf<SliceResult.Completed>(engine.continueNextSlice())
 
         assertEquals(4, gateway.readCount)
+    }
+
+    @Test
+    fun queuedIncrementalCannotInterruptActiveReconciliation() = runTest {
+        val missing = image(5_000L)
+        val gateway = ModeAwareFakeGateway(
+            mapOf(
+                SyncMode.RECONCILE to (1L..1_001L).map(::image),
+                SyncMode.INCREMENTAL to listOf(image(2_000L)),
+            ),
+        )
+        val store = FakeMediaSyncStore().apply { putExisting(missing) }
+        val clock = MutableClock(12_500L)
+        val engine = engine(gateway, store, clock)
+
+        val first = engine.runNextSlice(SyncMode.RECONCILE)
+        assertInstanceOf<SliceResult.More>(first)
+        assertNull(store.record(5_000L).missingCandidateSinceEpochMillis)
+
+        val queuedIncrementalWork = engine.runNextSlice(SyncMode.INCREMENTAL)
+
+        assertEquals(SyncMode.RECONCILE, queuedIncrementalWork.run.mode)
+        assertInstanceOf<SliceResult.Completed>(queuedIncrementalWork)
+        assertEquals(
+            listOf(SyncMode.RECONCILE, SyncMode.RECONCILE),
+            gateway.requestedModes,
+        )
+        assertEquals(12_500L, store.record(5_000L).missingCandidateSinceEpochMillis)
+        assertEquals(1, store.record(5_000L).missingObservationCount)
+
+        val queuedReconciliationWork = engine.runNextSlice(SyncMode.RECONCILE)
+        assertEquals(SyncMode.INCREMENTAL, queuedReconciliationWork.run.mode)
+        assertInstanceOf<SliceResult.Completed>(queuedReconciliationWork)
+
+        val originalContinuation = engine.continueNextSlice()
+        val queuedReconciliation = assertInstanceOf<SliceResult.More>(originalContinuation)
+        assertEquals(SyncMode.RECONCILE, queuedReconciliation.run.mode)
+
+        val finalContinuation = engine.continueNextSlice()
+        val completedReconciliation = assertInstanceOf<SliceResult.Completed>(finalContinuation)
+        assertEquals(SyncMode.RECONCILE, completedReconciliation.run.mode)
+        assertNull(engine.continueNextSlice())
+
+        assertEquals(
+            listOf(
+                SyncMode.RECONCILE,
+                SyncMode.RECONCILE,
+                SyncMode.INCREMENTAL,
+                SyncMode.RECONCILE,
+                SyncMode.RECONCILE,
+            ),
+            gateway.requestedModes,
+        )
+        assertEquals(completedReconciliation.run.runId, store.record(1L).lastSeenRunId)
+        assertEquals(1, store.maxConcurrentRunning)
+        assertEquals(0, store.runningCount)
+        assertTrue(store.queuedModes.isEmpty())
     }
 
     @Test
@@ -387,6 +444,35 @@ class MediaSyncEngineTest {
         }
     }
 
+    private class ModeAwareFakeGateway(
+        private val imagesByMode: Map<SyncMode, List<MediaStoreImage>>,
+    ) : MediaStoreGateway {
+        val requestedModes = mutableListOf<SyncMode>()
+
+        override fun externalVolumes(): Set<String> = setOf(VOLUME)
+
+        override fun readPage(
+            volume: String,
+            mode: SyncMode,
+            cursor: MediaStoreCursor?,
+            limit: Int,
+        ): MediaStorePage {
+            requestedModes += mode
+            val images = imagesByMode.getValue(mode)
+            val remaining = images.filter { image ->
+                cursor == null || image.mediaStoreId > cursor.mediaStoreId
+            }
+            val page = remaining.take(limit)
+            return MediaStorePage(
+                images = page,
+                nextCursor = page.lastOrNull()?.let(::cursorFor) ?: cursor,
+                hasMore = remaining.size > page.size,
+                observedGeneration = images.mapNotNull(MediaStoreImage::generationModified).maxOrNull(),
+                observedVersion = "v1",
+            )
+        }
+    }
+
     private class ScriptedGateway(
         private val pages: ArrayDeque<MediaStorePage>,
         private val onRead: () -> Unit = {},
@@ -431,7 +517,12 @@ class MediaSyncEngineTest {
         private val checkpoints = mutableMapOf<String, SyncCheckpoint>()
         private val runs = mutableListOf<SyncRun>()
         var commitCount = 0
+        var maxConcurrentRunning = 0
+            private set
         val latestRun: SyncRun? get() = runs.lastOrNull()
+        val runningCount: Int get() = runs.count { it.state == SyncRunState.RUNNING }
+        val queuedModes: List<SyncMode>
+            get() = runs.filter { it.state == SyncRunState.QUEUED }.map(SyncRun::mode)
 
         fun putExisting(image: MediaStoreImage) {
             images[image.volumeName to image.mediaStoreId] = Stored(image)
@@ -453,12 +544,27 @@ class MediaSyncEngineTest {
         fun record(id: Long): Stored = images.values.single { it.image.mediaStoreId == id }
         fun availability(id: Long): ImageAvailability = record(id).availability
 
+        override suspend fun enqueueAndClaimRun(
+            requestedMode: SyncMode?,
+            nowEpochMillis: Long,
+        ): SyncRun? {
+            if (requestedMode != null &&
+                runs.none { it.mode == requestedMode && it.state == SyncRunState.QUEUED }
+            ) {
+                runs += SyncRun.queued(runs.size + 1L, requestedMode, nowEpochMillis)
+            }
+            runs.firstOrNull { it.state == SyncRunState.RUNNING }?.let { return it }
+            val queued = runs.firstOrNull { it.state == SyncRunState.QUEUED } ?: return null
+            return queued.activated(nowEpochMillis).also(::replaceRun)
+        }
+
         override suspend fun activeRun(mode: SyncMode): SyncRun? =
-            runs.lastOrNull { it.mode == mode && it.state.isActive }
+            runs.firstOrNull { it.mode == mode && it.state == SyncRunState.RUNNING }
 
         override suspend fun startRun(mode: SyncMode, nowEpochMillis: Long): SyncRun {
             val run = SyncRun.running(runs.size + 1L, mode, nowEpochMillis)
             runs += run
+            recordRunningCount()
             return run
         }
 
@@ -526,6 +632,11 @@ class MediaSyncEngineTest {
         private fun replaceRun(run: SyncRun) {
             val index = runs.indexOfFirst { it.runId == run.runId }
             if (index < 0) runs += run else runs[index] = run
+            recordRunningCount()
+        }
+
+        private fun recordRunningCount() {
+            maxConcurrentRunning = maxOf(maxConcurrentRunning, runningCount)
         }
     }
 

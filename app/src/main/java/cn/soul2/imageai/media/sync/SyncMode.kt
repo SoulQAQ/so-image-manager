@@ -74,6 +74,11 @@ data class SyncRun(
         completedAtEpochMillis = null,
     )
 
+    fun activated(nowEpochMillis: Long): SyncRun = copy(
+        state = SyncRunState.RUNNING,
+        updatedAtEpochMillis = nowEpochMillis,
+    )
+
     companion object {
         fun running(runId: Long, mode: SyncMode, nowEpochMillis: Long): SyncRun = SyncRun(
             runId = runId,
@@ -89,6 +94,9 @@ data class SyncRun(
             updatedAtEpochMillis = nowEpochMillis,
             completedAtEpochMillis = null,
         )
+
+        fun queued(runId: Long, mode: SyncMode, nowEpochMillis: Long): SyncRun =
+            running(runId, mode, nowEpochMillis).copy(state = SyncRunState.QUEUED)
     }
 }
 

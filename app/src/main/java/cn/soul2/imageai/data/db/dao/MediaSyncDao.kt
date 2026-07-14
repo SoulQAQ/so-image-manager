@@ -24,11 +24,38 @@ abstract class MediaSyncDao {
     @Query(
         """
         SELECT * FROM media_sync_run
-        WHERE mode = :mode AND state IN ('QUEUED', 'RUNNING')
-        ORDER BY run_id DESC LIMIT 1
+        WHERE mode = :mode AND state = 'RUNNING'
+        ORDER BY run_id ASC LIMIT 1
         """,
     )
     abstract suspend fun getActiveRun(mode: String): MediaSyncRunEntity?
+
+    @Query(
+        """
+        SELECT * FROM media_sync_run
+        WHERE mode = :mode AND state = 'QUEUED'
+        ORDER BY run_id ASC LIMIT 1
+        """,
+    )
+    protected abstract suspend fun getQueuedRun(mode: String): MediaSyncRunEntity?
+
+    @Query(
+        """
+        SELECT * FROM media_sync_run
+        WHERE state = 'RUNNING'
+        ORDER BY run_id ASC LIMIT 1
+        """,
+    )
+    protected abstract suspend fun getOldestRunningRun(): MediaSyncRunEntity?
+
+    @Query(
+        """
+        SELECT * FROM media_sync_run
+        WHERE state = 'QUEUED'
+        ORDER BY run_id ASC LIMIT 1
+        """,
+    )
+    protected abstract suspend fun getOldestQueuedRun(): MediaSyncRunEntity?
 
     @Query(
         """
@@ -47,6 +74,34 @@ abstract class MediaSyncDao {
 
     @Insert
     abstract suspend fun insertRun(run: MediaSyncRunEntity): Long
+
+    @Query(
+        """
+        UPDATE media_sync_run
+        SET state = 'RUNNING', updated_at_epoch_millis = :nowEpochMillis
+        WHERE run_id = :runId AND state = 'QUEUED'
+        """,
+    )
+    protected abstract suspend fun activateRun(runId: Long, nowEpochMillis: Long): Int
+
+    @Transaction
+    open suspend fun enqueueAndClaimRun(
+        requestedRun: MediaSyncRunEntity?,
+        nowEpochMillis: Long,
+    ): MediaSyncRunEntity? {
+        if (requestedRun != null && getQueuedRun(requestedRun.mode) == null) {
+            insertRun(requestedRun)
+        }
+        getOldestRunningRun()?.let { return it }
+        val queued = getOldestQueuedRun() ?: return null
+        check(activateRun(queued.runId, nowEpochMillis) == 1) {
+            "Unable to activate queued media sync run ${queued.runId}"
+        }
+        return queued.copy(
+            state = "RUNNING",
+            updatedAtEpochMillis = nowEpochMillis,
+        )
+    }
 
     @Query(
         """

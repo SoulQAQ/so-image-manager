@@ -11,6 +11,16 @@ import cn.soul2.imageai.media.store.MediaStoreImage
 class RoomMediaSyncStore(
     private val syncDao: MediaSyncDao,
 ) : MediaSyncStore {
+    override suspend fun enqueueAndClaimRun(
+        requestedMode: SyncMode?,
+        nowEpochMillis: Long,
+    ): SyncRun? = syncDao.enqueueAndClaimRun(
+        requestedRun = requestedMode?.let { mode ->
+            RoomMediaSyncMapper.run(SyncRun.queued(0L, mode, nowEpochMillis))
+        },
+        nowEpochMillis = nowEpochMillis,
+    )?.let(RoomMediaSyncMapper::run)
+
     override suspend fun activeRun(mode: SyncMode): SyncRun? =
         syncDao.getActiveRun(mode.name)?.let(RoomMediaSyncMapper::run)
 

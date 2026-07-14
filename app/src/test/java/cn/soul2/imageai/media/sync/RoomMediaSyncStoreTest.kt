@@ -47,6 +47,7 @@ class RoomMediaSyncStoreTest {
         ).readText()
 
         assertTrue(transactionalMethod(source, "commitBatch"))
+        assertTrue(transactionalMethod(source, "enqueueAndClaimRun"))
         assertTrue(transactionalMethod(source, "pauseForPermission"))
         assertTrue(transactionalMethod(source, "finishReconciliation"))
     }

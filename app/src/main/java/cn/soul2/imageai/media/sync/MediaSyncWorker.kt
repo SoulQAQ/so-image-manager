@@ -37,19 +37,22 @@ class MediaSyncWorker(
             container.mediaSyncScheduler.requestReconciliation()
             return Result.success()
         }
-        val modeValue = inputData.getString(INPUT_MODE) ?: return Result.failure()
-        val result = if (modeValue == MODE_RETRY) {
-            container.mediaSyncEngine.retryPausedSlice()
-        } else {
-            val mode = runCatching { SyncMode.valueOf(modeValue) }.getOrNull()
-                ?: return Result.failure()
-            container.mediaSyncEngine.runNextSlice(mode)
+        val modeValue = inputData.getString(INPUT_MODE)
+        val result = when {
+            modeValue == MODE_RETRY -> container.mediaSyncEngine.retryPausedSlice()
+            modeValue == null -> container.mediaSyncEngine.continueNextSlice()
+            else -> {
+                val mode = runCatching { SyncMode.valueOf(modeValue) }.getOrNull()
+                    ?: return Result.failure()
+                container.mediaSyncEngine.runNextSlice(mode)
+            }
         }
+        result ?: return Result.success()
         return when (MediaSyncWorkerPolicy.directive(result, runAttemptCount)) {
             WorkerDirective.SUCCESS -> Result.success()
             WorkerDirective.RETRY -> Result.retry()
             WorkerDirective.CONTINUE -> {
-                container.mediaSyncScheduler.continueScan(result.run.mode)
+                container.mediaSyncScheduler.continueScan()
                 Result.success()
             }
             WorkerDirective.PAUSE_ERROR -> {

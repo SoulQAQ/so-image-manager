@@ -6,7 +6,7 @@ import org.junit.Test
 
 class MediaSyncSchedulerTest {
     @Test
-    fun immediateRequestsUseModeSpecificChainPolicies() {
+    fun externalRequestsAppendToTheSingleChainAndRetryReplacesIt() {
         val backend = RecordingSyncWorkBackend()
         val scheduler = MediaSyncScheduler(backend)
 
@@ -17,9 +17,9 @@ class MediaSyncSchedulerTest {
 
         assertEquals(
             listOf(
-                RecordedImmediate(SyncMode.INITIAL, ExistingWorkPolicy.KEEP),
+                RecordedImmediate(SyncMode.INITIAL, ExistingWorkPolicy.APPEND_OR_REPLACE),
                 RecordedImmediate(SyncMode.INCREMENTAL, ExistingWorkPolicy.APPEND_OR_REPLACE),
-                RecordedImmediate(SyncMode.RECONCILE, ExistingWorkPolicy.KEEP),
+                RecordedImmediate(SyncMode.RECONCILE, ExistingWorkPolicy.APPEND_OR_REPLACE),
                 RecordedImmediate(mode = null, ExistingWorkPolicy.REPLACE),
             ),
             backend.immediate,
@@ -31,11 +31,11 @@ class MediaSyncSchedulerTest {
         val backend = RecordingSyncWorkBackend()
         val scheduler = MediaSyncScheduler(backend)
 
-        scheduler.continueScan(SyncMode.INCREMENTAL)
+        scheduler.continueScan()
         scheduler.ensurePeriodicReconciliation()
 
         assertEquals(
-            RecordedImmediate(SyncMode.INCREMENTAL, ExistingWorkPolicy.APPEND_OR_REPLACE),
+            RecordedImmediate(mode = null, ExistingWorkPolicy.APPEND_OR_REPLACE),
             backend.immediate.single(),
         )
         assertEquals(listOf(SyncPolicy.RECONCILIATION_INTERVAL_HOURS), backend.periodicHours)

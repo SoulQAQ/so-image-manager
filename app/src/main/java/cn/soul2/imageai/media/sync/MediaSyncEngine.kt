@@ -39,8 +39,18 @@ class MediaSyncEngine(
 ) {
     private var lastRun: SyncRun? = null
 
-    suspend fun runNextSlice(mode: SyncMode): SliceResult {
-        var run = store.activeRun(mode) ?: store.startRun(mode, clock.nowEpochMillis())
+    suspend fun runNextSlice(mode: SyncMode): SliceResult =
+        requireNotNull(coordinateNextSlice(mode))
+
+    suspend fun continueNextSlice(): SliceResult? = coordinateNextSlice(requestedMode = null)
+
+    private suspend fun coordinateNextSlice(requestedMode: SyncMode?): SliceResult? {
+        val run = store.enqueueAndClaimRun(requestedMode, clock.nowEpochMillis()) ?: return null
+        return runNextSlice(run)
+    }
+
+    private suspend fun runNextSlice(startingRun: SyncRun): SliceResult {
+        var run = startingRun
         lastRun = run
         val access = permissionSource.currentAccess()
         if (access is GalleryAccessState.Denied) {
@@ -76,7 +86,7 @@ class MediaSyncEngine(
             store.finishRun(run, mountedVolumes, access, now)
             return SliceResult.Completed(run.succeeded(now))
         }
-        return runSlice(mode = mode, volume = nextVolume)
+        return runSlice(startingRun = run, volume = nextVolume)
     }
 
     suspend fun retryPausedSlice(): SliceResult {
@@ -84,7 +94,7 @@ class MediaSyncEngine(
         val resumed = paused.resumed(clock.nowEpochMillis())
         store.updateRun(resumed)
         lastRun = resumed
-        return runNextSlice(resumed.mode)
+        return runNextSlice(resumed)
     }
 
     suspend fun runSlice(
@@ -93,10 +103,25 @@ class MediaSyncEngine(
         cursor: MediaStoreCursor? = null,
         maxItems: Int = SyncPolicy.MAX_ITEMS_PER_SLICE,
         maxDurationMillis: Long = SyncPolicy.MAX_DURATION_MILLIS,
+    ): SliceResult = runSlice(
+        startingRun = store.activeRun(mode) ?: store.startRun(mode, clock.nowEpochMillis()),
+        volume = volume,
+        cursor = cursor,
+        maxItems = maxItems,
+        maxDurationMillis = maxDurationMillis,
+    )
+
+    private suspend fun runSlice(
+        startingRun: SyncRun,
+        volume: String,
+        cursor: MediaStoreCursor? = null,
+        maxItems: Int = SyncPolicy.MAX_ITEMS_PER_SLICE,
+        maxDurationMillis: Long = SyncPolicy.MAX_DURATION_MILLIS,
     ): SliceResult {
         require(maxItems in 1..SyncPolicy.MAX_ITEMS_PER_SLICE)
         require(maxDurationMillis in 1..SyncPolicy.MAX_DURATION_MILLIS)
-        var run = store.activeRun(mode) ?: store.startRun(mode, clock.nowEpochMillis())
+        var run = startingRun
+        val mode = run.mode
         lastRun = run
         val access = permissionSource.currentAccess()
         if (access is GalleryAccessState.Denied) {
