@@ -15,6 +15,9 @@ abstract class MediaSyncDao {
     @Query("SELECT * FROM media_sync_run ORDER BY run_id DESC LIMIT 1")
     abstract fun observeCurrentRun(): Flow<MediaSyncRunEntity?>
 
+    @Query("SELECT MAX(completed_at_epoch_millis) FROM media_sync_run")
+    abstract fun observeLastCompletedAt(): Flow<Long?>
+
     @Query("SELECT * FROM media_sync_checkpoint WHERE volume_name = :volumeName LIMIT 1")
     abstract suspend fun getCheckpoint(volumeName: String): MediaSyncCheckpointEntity?
 

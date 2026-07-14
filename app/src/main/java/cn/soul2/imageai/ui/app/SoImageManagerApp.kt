@@ -34,13 +34,17 @@ import cn.soul2.imageai.ui.screens.LibraryScreen
 import cn.soul2.imageai.ui.screens.SettingsScreen
 import cn.soul2.imageai.ui.screens.TasksScreen
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun SoImageManagerApp(
     galleryRepository: GalleryRepository,
     syncRuns: Flow<MediaSyncRunEntity?>,
+    lastSyncCompletedAt: Flow<Long?> = flowOf(null),
+    galleryUnavailableCounts: Flow<Int> = flowOf(0),
     navController: NavHostController = rememberNavController(),
     galleryAccessState: GalleryAccessState = GalleryAccessState.Full,
+    galleryAccessStates: Flow<GalleryAccessState> = flowOf(galleryAccessState),
     showGalleryOnboarding: Boolean = false,
     isGalleryPermissionRecovery: Boolean = false,
     isGalleryPermissionRequestInFlight: Boolean = false,
@@ -48,6 +52,8 @@ fun SoImageManagerApp(
     onOpenAppSettings: () -> Unit = {},
     onDismissGalleryOnboarding: () -> Unit = {},
     onRequestGalleryReselection: () -> Unit = {},
+    onRetryGallerySync: () -> Unit = {},
+    onRequestGalleryReconciliation: () -> Unit = {},
 ) {
     val deniedState = galleryAccessState as? GalleryAccessState.Denied
     if (showGalleryOnboarding && deniedState != null) {
@@ -85,7 +91,12 @@ fun SoImageManagerApp(
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(destination.icon, contentDescription = null) },
+                            icon = {
+                                Icon(
+                                    destination.icon,
+                                    contentDescription = null,
+                                )
+                            },
                             label = { Text(stringResource(destination.labelRes)) },
                             modifier = Modifier.testTag("destination_${destination.route}"),
                         )
@@ -137,8 +148,23 @@ fun SoImageManagerApp(
                         onOpenAppSettings = onOpenAppSettings,
                     )
                 }
-                composable(AppDestination.TASKS.route) { TasksScreen() }
-                composable(AppDestination.SETTINGS.route) { SettingsScreen() }
+                composable(AppDestination.TASKS.route) {
+                    TasksScreen(
+                        syncRuns = syncRuns,
+                        lastCompletedAt = lastSyncCompletedAt,
+                        onRetry = onRetryGallerySync,
+                    )
+                }
+                composable(AppDestination.SETTINGS.route) {
+                    SettingsScreen(
+                        galleryAccessStates = galleryAccessStates,
+                        repository = galleryRepository,
+                        unavailableCounts = galleryUnavailableCounts,
+                        onReselectPhotos = onRequestGalleryReselection,
+                        onRescan = onRequestGalleryReconciliation,
+                        onOpenSystemSettings = onOpenAppSettings,
+                    )
+                }
                 composable(
                     route = ImageDetailDestination.route,
                     arguments = listOf(

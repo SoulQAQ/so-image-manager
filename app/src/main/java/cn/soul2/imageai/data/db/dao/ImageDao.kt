@@ -13,6 +13,9 @@ abstract class ImageDao {
     @Query("SELECT COUNT(*) FROM image WHERE availability = 'AVAILABLE'")
     abstract fun observeAvailableCount(): Flow<Int>
 
+    @Query("SELECT COUNT(*) FROM image WHERE availability != 'AVAILABLE'")
+    abstract fun observeUnavailableCount(): Flow<Int>
+
     @Query(
         """
         SELECT * FROM image

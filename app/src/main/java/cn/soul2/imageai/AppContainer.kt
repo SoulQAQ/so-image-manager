@@ -28,6 +28,8 @@ class AppContainer(
     val database: AppDatabase = AppDatabaseFactory.create(applicationContext)
     val galleryRepository: GalleryRepository = RoomGalleryRepository(database.imageDao())
     val gallerySyncRuns = database.mediaSyncDao().observeCurrentRun()
+    val galleryLastSyncCompletedAt = database.mediaSyncDao().observeLastCompletedAt()
+    val galleryUnavailableCounts = database.imageDao().observeUnavailableCount()
     val galleryPermissionMonitor = GalleryPermissionMonitor(applicationContext)
     val galleryOnboardingRepository = GalleryOnboardingRepository(database.appSettingDao())
     val mediaStoreGateway: MediaStoreGateway = AndroidMediaStoreGateway(applicationContext)

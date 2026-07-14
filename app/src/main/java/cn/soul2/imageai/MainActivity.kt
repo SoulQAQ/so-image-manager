@@ -116,7 +116,10 @@ class MainActivity : ComponentActivity() {
             SoImageManagerApp(
                 galleryRepository = container.galleryRepository,
                 syncRuns = container.gallerySyncRuns,
+                lastSyncCompletedAt = container.galleryLastSyncCompletedAt,
+                galleryUnavailableCounts = container.galleryUnavailableCounts,
                 galleryAccessState = uiState.galleryAccessState,
+                galleryAccessStates = container.galleryPermissionMonitor.state,
                 showGalleryOnboarding = uiState.showOnboarding,
                 isGalleryPermissionRecovery = uiState.isPermissionRecovery,
                 isGalleryPermissionRequestInFlight = permissionRequestInFlight,
@@ -124,6 +127,9 @@ class MainActivity : ComponentActivity() {
                 onOpenAppSettings = ::openAppSettings,
                 onDismissGalleryOnboarding = accessViewModel::dismissOnboarding,
                 onRequestGalleryReselection = launchPermissionRequest,
+                onRetryGallerySync = container.mediaSyncScheduler::retry,
+                onRequestGalleryReconciliation =
+                    container.mediaSyncScheduler::requestReconciliation,
             )
         }
     }
