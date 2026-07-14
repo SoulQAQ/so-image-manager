@@ -9,8 +9,20 @@ import cn.soul2.imageai.media.store.MediaStoreCursor
 import cn.soul2.imageai.media.store.MediaStoreGateway
 import cn.soul2.imageai.media.store.MediaStoreImage
 import cn.soul2.imageai.media.store.MediaStorePage
+import cn.soul2.imageai.ui.screens.TaskSyncStatus
+import cn.soul2.imageai.ui.screens.TasksViewModel
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -22,6 +34,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = Application::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class MediaSyncRunArbitrationTest {
     private lateinit var database: AppDatabase
     private lateinit var store: RoomMediaSyncStore
@@ -81,6 +94,56 @@ class MediaSyncRunArbitrationTest {
         store.updateRun(queuedReconciliation.succeeded(9_000L))
         assertNull(store.enqueueAndClaimRun(null, 10_000L))
         assertEquals(0, runStates().count { it.state == SyncRunState.RUNNING })
+    }
+
+    @Test
+    fun fiveTransientAttemptsPauseOneDurableRunWithoutQueuedOrphan() = runTest {
+        val engine = MediaSyncEngine(
+            gateway = ThrowingGateway(IOException("temporary")),
+            store = store,
+            permissionSource = MediaSyncPermissionSource { GalleryAccessState.Full },
+            clock = SyncClock { 4_000L },
+        )
+
+        repeat(SyncPolicy.MAX_WORKER_ATTEMPTS) { attempt ->
+            val result = if (attempt == 0) {
+                engine.runNextSlice(SyncMode.INITIAL)
+            } else {
+                requireNotNull(engine.continueNextSlice())
+            }
+            val retry = result as SliceResult.Retry
+            if (MediaSyncWorkerPolicy.directive(retry, attempt) == WorkerDirective.PAUSE_ERROR) {
+                engine.pauseAfterRetries(retry.error)
+            }
+        }
+
+        val states = database.openHelper.readableDatabase.query(
+            "SELECT state FROM media_sync_run ORDER BY run_id",
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getString(0))
+            }
+        }
+        assertEquals(listOf(SyncRunState.PAUSED_ERROR.name), states)
+
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        try {
+            val persistedRun = database.mediaSyncDao().observeCurrentRun().first()
+            val viewModel = TasksViewModel(
+                syncRuns = MutableStateFlow(persistedRun),
+                lastCompletedAt = MutableStateFlow(null),
+                onRetry = {},
+            )
+            backgroundScope.launch(dispatcher) { viewModel.uiState.collect { } }
+            runCurrent()
+
+            assertEquals(TaskSyncStatus.PausedError, viewModel.uiState.value.status)
+            assertEquals(true, viewModel.uiState.value.canRetry)
+            assertEquals(SyncRunState.PAUSED_ERROR.name, database.mediaSyncDao().observeCurrentRun().first()?.state)
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     @Test
@@ -250,6 +313,19 @@ class MediaSyncRunArbitrationTest {
         }
     }
 
+    private class ThrowingGateway(
+        private val error: IOException,
+    ) : MediaStoreGateway {
+        override fun externalVolumes(): Set<String> = setOf(VOLUME)
+
+        override fun readPage(
+            volume: String,
+            mode: SyncMode,
+            cursor: MediaStoreCursor?,
+            limit: Int,
+        ): MediaStorePage = throw error
+    }
+
     private data class RunState(
         val mode: SyncMode,
         val state: SyncRunState,
@@ -265,8 +341,10 @@ class MediaSyncRunArbitrationTest {
             volumeName = VOLUME,
             generation = generation,
             mediaStoreVersion = "v1",
-            cursorModifiedAtEpochMillis = null,
-            cursorMediaStoreId = Long.MAX_VALUE,
+            fullScanCursorModifiedAtEpochMillis = null,
+            fullScanCursorMediaStoreId = null,
+            incrementalHighWaterModifiedAtEpochMillis = null,
+            incrementalHighWaterMediaStoreId = Long.MAX_VALUE,
             completedAtEpochMillis = completedAtEpochMillis,
             fullReconciliationAtEpochMillis = null,
         )

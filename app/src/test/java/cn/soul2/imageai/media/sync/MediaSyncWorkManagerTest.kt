@@ -52,31 +52,37 @@ class MediaSyncWorkManagerTest {
     }
 
     @Test
+    fun duplicateInitialAccessRequestsCoalesceIntoOneWorkChain() {
+        scheduler.requestInitial()
+        scheduler.requestInitial()
+
+        assertEquals(1, immediateInfos().size)
+    }
+
+    @Test
     fun explicitRetryAppendsWithoutCancellingRetainedRequests() {
         scheduler.requestInitial()
         scheduler.requestInitial()
         val retained = immediateInfos()
-        assertEquals(2, retained.size)
+        assertEquals(1, retained.size)
         assertEquals(1, retained.count { it.state == WorkInfo.State.ENQUEUED })
-        assertEquals(1, retained.count { it.state == WorkInfo.State.BLOCKED })
+        assertEquals(0, retained.count { it.state == WorkInfo.State.BLOCKED })
 
         scheduler.retry()
         val withRetry = immediateInfos()
-        assertEquals(3, withRetry.size)
+        assertEquals(2, withRetry.size)
         assertTrue(
             withRetry.map(WorkInfo::id).toSet().containsAll(retained.map(WorkInfo::id)),
         )
         assertEquals(1, withRetry.count { it.state == WorkInfo.State.ENQUEUED })
-        assertEquals(2, withRetry.count { it.state == WorkInfo.State.BLOCKED })
+        assertEquals(1, withRetry.count { it.state == WorkInfo.State.BLOCKED })
 
-        repeat(3) {
+        repeat(2) {
             val active = immediateInfos().single { it.state == WorkInfo.State.ENQUEUED }
             testDriver.setInitialDelayMet(active.id)
         }
         assertEquals(
             listOf(
-                SyncMode.INITIAL.name,
-                SyncMode.INITIAL.name,
                 SyncMode.INITIAL.name,
                 SyncMode.INITIAL.name,
                 MediaSyncWorker.MODE_RETRY,

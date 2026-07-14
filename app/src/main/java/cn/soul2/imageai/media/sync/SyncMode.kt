@@ -104,8 +104,10 @@ data class SyncCheckpoint(
     val volumeName: String,
     val generation: Long?,
     val mediaStoreVersion: String?,
-    val cursorModifiedAtEpochMillis: Long?,
-    val cursorMediaStoreId: Long?,
+    val fullScanCursorModifiedAtEpochMillis: Long?,
+    val fullScanCursorMediaStoreId: Long?,
+    val incrementalHighWaterModifiedAtEpochMillis: Long?,
+    val incrementalHighWaterMediaStoreId: Long?,
     val completedAtEpochMillis: Long?,
     val fullReconciliationAtEpochMillis: Long?,
 )

@@ -167,8 +167,10 @@ class MediaSyncEngine(
                     volumeName = volume,
                     generation = null,
                     mediaStoreVersion = page.observedVersion,
-                    cursorModifiedAtEpochMillis = null,
-                    cursorMediaStoreId = null,
+                    fullScanCursorModifiedAtEpochMillis = null,
+                    fullScanCursorMediaStoreId = null,
+                    incrementalHighWaterModifiedAtEpochMillis = null,
+                    incrementalHighWaterMediaStoreId = null,
                     completedAtEpochMillis = null,
                     fullReconciliationAtEpochMillis =
                         checkpointBeforePage.fullReconciliationAtEpochMillis,
@@ -194,6 +196,13 @@ class MediaSyncEngine(
                 firstPage = firstPage,
                 observedGeneration = page.observedGeneration,
                 observedVersion = page.observedVersion,
+                firstPageHighWater = page.images.firstOrNull()?.let { image ->
+                    MediaStoreCursor(
+                        modifiedAtEpochMillis = image.modifiedAtEpochMillis,
+                        mediaStoreId = image.mediaStoreId,
+                        generation = image.generationModified,
+                    )
+                },
                 completed = !page.hasMore,
                 nowEpochMillis = now,
             )
@@ -255,12 +264,21 @@ class MediaSyncEngine(
         if (mode != SyncMode.INCREMENTAL && run.currentVolumeName != volume) {
             return null
         }
-        val mediaStoreId = checkpoint.cursorMediaStoreId ?: return null
-        return MediaStoreCursor(
-            modifiedAtEpochMillis = checkpoint.cursorModifiedAtEpochMillis,
-            mediaStoreId = mediaStoreId,
-            generation = checkpoint.generation,
-        )
+        return if (mode == SyncMode.INCREMENTAL) {
+            val mediaStoreId = checkpoint.incrementalHighWaterMediaStoreId ?: return null
+            MediaStoreCursor(
+                modifiedAtEpochMillis = checkpoint.incrementalHighWaterModifiedAtEpochMillis,
+                mediaStoreId = mediaStoreId,
+                generation = checkpoint.generation,
+            )
+        } else {
+            val mediaStoreId = checkpoint.fullScanCursorMediaStoreId ?: return null
+            MediaStoreCursor(
+                modifiedAtEpochMillis = checkpoint.fullScanCursorModifiedAtEpochMillis,
+                mediaStoreId = mediaStoreId,
+                generation = null,
+            )
+        }
     }
 
     private fun checkpointAfterPage(
@@ -271,6 +289,7 @@ class MediaSyncEngine(
         firstPage: Boolean,
         observedGeneration: Long?,
         observedVersion: String?,
+        firstPageHighWater: MediaStoreCursor?,
         completed: Boolean,
         nowEpochMillis: Long,
     ): SyncCheckpoint {
@@ -299,12 +318,32 @@ class MediaSyncEngine(
             volumeName = volume,
             generation = generation,
             mediaStoreVersion = mediaStoreVersion,
-            cursorModifiedAtEpochMillis = cursor?.modifiedAtEpochMillis,
-            cursorMediaStoreId = when {
+            fullScanCursorModifiedAtEpochMillis = if (mode == SyncMode.INCREMENTAL) {
+                previous?.fullScanCursorModifiedAtEpochMillis
+            } else {
+                cursor?.modifiedAtEpochMillis
+            },
+            fullScanCursorMediaStoreId = if (mode == SyncMode.INCREMENTAL) {
+                previous?.fullScanCursorMediaStoreId
+            } else {
+                cursor?.mediaStoreId
+            },
+            incrementalHighWaterModifiedAtEpochMillis = when {
+                mode == SyncMode.INCREMENTAL ->
+                    cursor?.modifiedAtEpochMillis
+                        ?: previous?.incrementalHighWaterModifiedAtEpochMillis
+                firstPage && observedGeneration == null ->
+                    firstPageHighWater?.modifiedAtEpochMillis
+                firstPage -> null
+                else -> previous?.incrementalHighWaterModifiedAtEpochMillis
+            },
+            incrementalHighWaterMediaStoreId = when {
                 advancesToObservedGeneration -> Long.MAX_VALUE
-                mode != SyncMode.INCREMENTAL && completed &&
-                    cursor == null && generation != null -> Long.MAX_VALUE
-                else -> cursor?.mediaStoreId
+                mode == SyncMode.INCREMENTAL ->
+                    cursor?.mediaStoreId ?: previous?.incrementalHighWaterMediaStoreId
+                firstPage && observedGeneration != null -> Long.MAX_VALUE
+                firstPage -> firstPageHighWater?.mediaStoreId
+                else -> previous?.incrementalHighWaterMediaStoreId
             },
             completedAtEpochMillis = nowEpochMillis.takeIf { completed },
             fullReconciliationAtEpochMillis = when {

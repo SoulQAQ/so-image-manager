@@ -44,6 +44,7 @@ class MediaSyncWorker(
         }
         val modeValue = inputData.getString(INPUT_MODE)
         val result = when {
+            runAttemptCount > 0 -> container.mediaSyncEngine.continueNextSlice()
             modeValue == MODE_RETRY -> container.mediaSyncEngine.retryPausedSlice()
             modeValue == null -> container.mediaSyncEngine.continueNextSlice()
             else -> {

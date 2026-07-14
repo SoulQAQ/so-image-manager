@@ -12,10 +12,14 @@ data class MediaSyncCheckpointEntity(
     val generation: Long?,
     @ColumnInfo(name = "media_store_version")
     val mediaStoreVersion: String?,
-    @ColumnInfo(name = "cursor_modified_at_epoch_millis")
-    val cursorModifiedAtEpochMillis: Long?,
-    @ColumnInfo(name = "cursor_media_store_id")
-    val cursorMediaStoreId: Long?,
+    @ColumnInfo(name = "full_scan_cursor_modified_at_epoch_millis")
+    val fullScanCursorModifiedAtEpochMillis: Long?,
+    @ColumnInfo(name = "full_scan_cursor_media_store_id")
+    val fullScanCursorMediaStoreId: Long?,
+    @ColumnInfo(name = "incremental_high_water_modified_at_epoch_millis")
+    val incrementalHighWaterModifiedAtEpochMillis: Long?,
+    @ColumnInfo(name = "incremental_high_water_media_store_id")
+    val incrementalHighWaterMediaStoreId: Long?,
     @ColumnInfo(name = "completed_at_epoch_millis")
     val completedAtEpochMillis: Long?,
     @ColumnInfo(name = "full_reconciliation_at_epoch_millis")

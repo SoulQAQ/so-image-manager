@@ -10,6 +10,7 @@ import cn.soul2.imageai.media.permission.GalleryPermissionMonitor
 import cn.soul2.imageai.media.store.AndroidMediaStoreGateway
 import cn.soul2.imageai.media.store.MediaStoreGateway
 import cn.soul2.imageai.media.sync.MediaStoreObserver
+import cn.soul2.imageai.media.sync.GallerySyncAccessCoordinator
 import cn.soul2.imageai.media.sync.MediaSyncEngine
 import cn.soul2.imageai.media.sync.MediaSyncPermissionSource
 import cn.soul2.imageai.media.sync.MediaSyncScheduler
@@ -41,6 +42,10 @@ class AppContainer(
     )
     val mediaSyncScheduler = MediaSyncScheduler(
         WorkManagerSyncWorkBackend(WorkManager.getInstance(applicationContext)),
+    )
+    val gallerySyncAccessCoordinator = GallerySyncAccessCoordinator(
+        store = mediaSyncStore,
+        scheduler = mediaSyncScheduler,
     )
     val mediaStoreObserver = MediaStoreObserver(
         context = applicationContext,

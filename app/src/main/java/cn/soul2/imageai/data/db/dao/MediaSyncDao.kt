@@ -18,6 +18,14 @@ abstract class MediaSyncDao {
     @Query("SELECT MAX(completed_at_epoch_millis) FROM media_sync_run")
     abstract fun observeLastCompletedAt(): Flow<Long?>
 
+    @Query(
+        """
+        SELECT EXISTS(SELECT 1 FROM media_sync_checkpoint) OR
+               EXISTS(SELECT 1 FROM media_sync_run WHERE state = 'SUCCEEDED')
+        """,
+    )
+    abstract suspend fun hasPersistedScanBaseline(): Boolean
+
     @Query("SELECT * FROM media_sync_checkpoint WHERE volume_name = :volumeName LIMIT 1")
     abstract suspend fun getCheckpoint(volumeName: String): MediaSyncCheckpointEntity?
 

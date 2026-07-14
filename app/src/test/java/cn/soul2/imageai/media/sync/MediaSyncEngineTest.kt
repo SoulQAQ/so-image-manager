@@ -26,7 +26,7 @@ class MediaSyncEngineTest {
 
         assertInstanceOf<SliceResult.More>(first)
         assertEquals(1_000, store.images.size)
-        assertEquals(1_000L, store.checkpoint(VOLUME)?.cursorMediaStoreId)
+        assertEquals(1_000L, store.checkpoint(VOLUME)?.fullScanCursorMediaStoreId)
         assertNull(store.checkpoint(VOLUME)?.completedAtEpochMillis)
 
         val second = engine(gateway, store, clock).runSlice(SyncMode.INITIAL, VOLUME)
@@ -34,7 +34,7 @@ class MediaSyncEngineTest {
         assertInstanceOf<SliceResult.Completed>(second)
         assertEquals(1_001, store.images.size)
         assertEquals(1_000L, gateway.requestedCursors[1]?.mediaStoreId)
-        assertEquals(1_001L, store.checkpoint(VOLUME)?.cursorMediaStoreId)
+        assertEquals(1_001L, store.checkpoint(VOLUME)?.fullScanCursorMediaStoreId)
         assertEquals(1_000L, store.checkpoint(VOLUME)?.completedAtEpochMillis)
     }
 
@@ -251,7 +251,7 @@ class MediaSyncEngineTest {
         )
 
         assertEquals(9L, store.checkpoint(VOLUME)?.generation)
-        assertEquals(Long.MAX_VALUE, store.checkpoint(VOLUME)?.cursorMediaStoreId)
+        assertEquals(Long.MAX_VALUE, store.checkpoint(VOLUME)?.incrementalHighWaterMediaStoreId)
     }
 
     @Test
@@ -290,6 +290,118 @@ class MediaSyncEngineTest {
     }
 
     @Test
+    fun api29CompletedFullScanStartsUnchangedIncrementalAtCapturedHighWater() = runTest {
+        val newest = image(3L).copy(generationModified = null)
+        val oldest = image(2L).copy(generationModified = null)
+        val highWater = cursorFor(newest)
+        val gateway = ScriptedGateway(
+            ArrayDeque(
+                listOf(
+                    MediaStorePage(
+                        images = listOf(newest, oldest),
+                        nextCursor = cursorFor(oldest),
+                        hasMore = false,
+                        observedGeneration = null,
+                        observedVersion = "v1",
+                    ),
+                    MediaStorePage(
+                        images = emptyList(),
+                        nextCursor = highWater,
+                        hasMore = false,
+                        observedGeneration = null,
+                        observedVersion = "v1",
+                    ),
+                ),
+            ),
+        )
+        val store = FakeMediaSyncStore()
+        val clock = MutableClock(14_500L)
+
+        assertInstanceOf<SliceResult.Completed>(
+            engine(gateway, store, clock).runSlice(SyncMode.INITIAL, VOLUME),
+        )
+        assertInstanceOf<SliceResult.Completed>(
+            engine(gateway, store, clock).runSlice(SyncMode.INCREMENTAL, VOLUME),
+        )
+
+        assertEquals(listOf(null, highWater), gateway.requestedCursors)
+    }
+
+    @Test
+    fun api29ProcessResumeKeepsFullCursorAndFindsMediaAboveCapturedHighWater() = runTest {
+        val boundary = image(4L).copy(generationModified = null)
+        val firstPageTail = image(3L).copy(generationModified = null)
+        val older = image(2L).copy(generationModified = null)
+        val addedAfterStart = image(5L).copy(generationModified = null)
+        val gateway = ScriptedGateway(
+            ArrayDeque(
+                listOf(
+                    MediaStorePage(
+                        images = listOf(boundary, firstPageTail),
+                        nextCursor = cursorFor(firstPageTail),
+                        hasMore = true,
+                        observedGeneration = null,
+                        observedVersion = "v1",
+                    ),
+                    MediaStorePage(
+                        images = listOf(older),
+                        nextCursor = cursorFor(older),
+                        hasMore = false,
+                        observedGeneration = null,
+                        observedVersion = "v1",
+                    ),
+                    MediaStorePage(
+                        images = listOf(addedAfterStart),
+                        nextCursor = cursorFor(addedAfterStart),
+                        hasMore = false,
+                        observedGeneration = null,
+                        observedVersion = "v1",
+                    ),
+                ),
+            ),
+        )
+        val store = FakeMediaSyncStore()
+        val clock = MutableClock(14_750L)
+
+        assertInstanceOf<SliceResult.More>(
+            engine(gateway, store, clock).runSlice(
+                mode = SyncMode.INITIAL,
+                volume = VOLUME,
+                maxItems = 2,
+            ),
+        )
+        val interruptedCheckpoint = requireNotNull(store.checkpoint(VOLUME))
+        assertEquals(
+            firstPageTail.modifiedAtEpochMillis,
+            interruptedCheckpoint.fullScanCursorModifiedAtEpochMillis,
+        )
+        assertEquals(
+            firstPageTail.mediaStoreId,
+            interruptedCheckpoint.fullScanCursorMediaStoreId,
+        )
+        assertEquals(
+            boundary.modifiedAtEpochMillis,
+            interruptedCheckpoint.incrementalHighWaterModifiedAtEpochMillis,
+        )
+        assertEquals(
+            boundary.mediaStoreId,
+            interruptedCheckpoint.incrementalHighWaterMediaStoreId,
+        )
+        assertInstanceOf<SliceResult.Completed>(
+            engine(gateway, store, clock).runSlice(SyncMode.INITIAL, VOLUME),
+        )
+        assertInstanceOf<SliceResult.Completed>(
+            engine(gateway, store, clock).runSlice(SyncMode.INCREMENTAL, VOLUME),
+        )
+
+        assertEquals(
+            listOf(null, cursorFor(firstPageTail), cursorFor(boundary)),
+            gateway.requestedCursors,
+        )
+        assertTrue(store.images.containsKey(VOLUME to addedAfterStart.mediaStoreId))
+    }
+
+    @Test
     fun changedMediaStoreVersionInvalidatesGenerationCursorAndRestartsVolume() = runTest {
         val oldCursor = MediaStoreCursor(
             modifiedAtEpochMillis = null,
@@ -302,8 +414,10 @@ class MediaSyncEngineTest {
                     volumeName = VOLUME,
                     generation = oldCursor.generation,
                     mediaStoreVersion = "old-version",
-                    cursorModifiedAtEpochMillis = null,
-                    cursorMediaStoreId = oldCursor.mediaStoreId,
+                    fullScanCursorModifiedAtEpochMillis = null,
+                    fullScanCursorMediaStoreId = null,
+                    incrementalHighWaterModifiedAtEpochMillis = null,
+                    incrementalHighWaterMediaStoreId = oldCursor.mediaStoreId,
                     completedAtEpochMillis = 1_000L,
                     fullReconciliationAtEpochMillis = null,
                 ),
@@ -345,7 +459,11 @@ class MediaSyncEngineTest {
             volume = VOLUME,
         )
         assertInstanceOf<SliceResult.More>(reset)
-        assertNull(store.checkpoint(VOLUME)?.cursorMediaStoreId)
+        assertNull(store.checkpoint(VOLUME)?.generation)
+        assertNull(store.checkpoint(VOLUME)?.fullScanCursorModifiedAtEpochMillis)
+        assertNull(store.checkpoint(VOLUME)?.fullScanCursorMediaStoreId)
+        assertNull(store.checkpoint(VOLUME)?.incrementalHighWaterModifiedAtEpochMillis)
+        assertNull(store.checkpoint(VOLUME)?.incrementalHighWaterMediaStoreId)
         assertEquals("new-version", store.checkpoint(VOLUME)?.mediaStoreVersion)
 
         val result = engine(gateway, store, clock).runSlice(

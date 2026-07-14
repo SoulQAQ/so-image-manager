@@ -10,6 +10,27 @@ import org.junit.Test
 
 class RoomMediaSyncStoreTest {
     @Test
+    fun checkpointMappingPreservesFullScanAndIncrementalCursorsIndependently() {
+        val checkpoint = SyncCheckpoint(
+            volumeName = "external_primary",
+            generation = 31L,
+            mediaStoreVersion = "v31",
+            fullScanCursorModifiedAtEpochMillis = 11_000L,
+            fullScanCursorMediaStoreId = 11L,
+            incrementalHighWaterModifiedAtEpochMillis = 29_000L,
+            incrementalHighWaterMediaStoreId = 29L,
+            completedAtEpochMillis = null,
+            fullReconciliationAtEpochMillis = 7_000L,
+        )
+
+        val restored = RoomMediaSyncMapper.checkpoint(
+            RoomMediaSyncMapper.checkpoint(checkpoint),
+        )
+
+        assertEquals(checkpoint, restored)
+    }
+
+    @Test
     fun mediaStoreImageMapsToRecoverableRoomRecordWithoutReadingBytes() {
         val run = SyncRun.running(42L, SyncMode.RECONCILE, nowEpochMillis = 1_000L)
         val image = MediaStoreImage(

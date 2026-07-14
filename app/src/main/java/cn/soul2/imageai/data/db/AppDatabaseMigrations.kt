@@ -55,8 +55,10 @@ object AppDatabaseMigrations {
                     `volume_name` TEXT NOT NULL,
                     `generation` INTEGER,
                     `media_store_version` TEXT,
-                    `cursor_modified_at_epoch_millis` INTEGER,
-                    `cursor_media_store_id` INTEGER,
+                    `full_scan_cursor_modified_at_epoch_millis` INTEGER,
+                    `full_scan_cursor_media_store_id` INTEGER,
+                    `incremental_high_water_modified_at_epoch_millis` INTEGER,
+                    `incremental_high_water_media_store_id` INTEGER,
                     `completed_at_epoch_millis` INTEGER,
                     `full_reconciliation_at_epoch_millis` INTEGER,
                     PRIMARY KEY(`volume_name`)

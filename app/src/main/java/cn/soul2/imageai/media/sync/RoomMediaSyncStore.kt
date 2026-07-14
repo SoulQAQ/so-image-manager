@@ -11,6 +11,9 @@ import cn.soul2.imageai.media.store.MediaStoreImage
 class RoomMediaSyncStore(
     private val syncDao: MediaSyncDao,
 ) : MediaSyncStore {
+    override suspend fun hasPersistedScanBaseline(): Boolean =
+        syncDao.hasPersistedScanBaseline()
+
     override suspend fun enqueueAndClaimRun(
         requestedMode: SyncMode?,
         nowEpochMillis: Long,
@@ -128,8 +131,11 @@ internal object RoomMediaSyncMapper {
         volumeName = entity.volumeName,
         generation = entity.generation,
         mediaStoreVersion = entity.mediaStoreVersion,
-        cursorModifiedAtEpochMillis = entity.cursorModifiedAtEpochMillis,
-        cursorMediaStoreId = entity.cursorMediaStoreId,
+        fullScanCursorModifiedAtEpochMillis = entity.fullScanCursorModifiedAtEpochMillis,
+        fullScanCursorMediaStoreId = entity.fullScanCursorMediaStoreId,
+        incrementalHighWaterModifiedAtEpochMillis =
+            entity.incrementalHighWaterModifiedAtEpochMillis,
+        incrementalHighWaterMediaStoreId = entity.incrementalHighWaterMediaStoreId,
         completedAtEpochMillis = entity.completedAtEpochMillis,
         fullReconciliationAtEpochMillis = entity.fullReconciliationAtEpochMillis,
     )
@@ -139,8 +145,12 @@ internal object RoomMediaSyncMapper {
             volumeName = checkpoint.volumeName,
             generation = checkpoint.generation,
             mediaStoreVersion = checkpoint.mediaStoreVersion,
-            cursorModifiedAtEpochMillis = checkpoint.cursorModifiedAtEpochMillis,
-            cursorMediaStoreId = checkpoint.cursorMediaStoreId,
+            fullScanCursorModifiedAtEpochMillis =
+                checkpoint.fullScanCursorModifiedAtEpochMillis,
+            fullScanCursorMediaStoreId = checkpoint.fullScanCursorMediaStoreId,
+            incrementalHighWaterModifiedAtEpochMillis =
+                checkpoint.incrementalHighWaterModifiedAtEpochMillis,
+            incrementalHighWaterMediaStoreId = checkpoint.incrementalHighWaterMediaStoreId,
             completedAtEpochMillis = checkpoint.completedAtEpochMillis,
             fullReconciliationAtEpochMillis = checkpoint.fullReconciliationAtEpochMillis,
         )

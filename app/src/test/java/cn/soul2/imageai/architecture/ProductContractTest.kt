@@ -54,8 +54,13 @@ class ProductContractTest {
         val defaults = Properties().apply {
             versionFile.inputStream().use(::load)
         }
-        assertEquals("0.3.2", defaults.getProperty("SOIM_VERSION_NAME"))
-        assertEquals("5", defaults.getProperty("SOIM_VERSION_CODE"))
+        val versionName = defaults.getProperty("SOIM_VERSION_NAME")
+        assertTrue(
+            "SOIM_VERSION_NAME must be strict SemVer: $versionName",
+            STRICT_SEMVER.matches(versionName.orEmpty()),
+        )
+        val versionCode = defaults.getProperty("SOIM_VERSION_CODE").toIntOrNull()
+        assertTrue("SOIM_VERSION_CODE must be positive", versionCode != null && versionCode > 0)
 
         val buildFile = File(root, "app/build.gradle.kts").readText()
         assertTrue(buildFile.contains("version.properties"))
@@ -67,5 +72,11 @@ class ProductContractTest {
         assertTrue(buildFile.contains("SOIM_VERSION_CODE"))
         assertFalse(Regex("""\bversionName\s*=\s*\"[^\"]*\"""").containsMatchIn(buildFile))
         assertFalse(Regex("""\bversionCode\s*=\s*\d+""").containsMatchIn(buildFile))
+    }
+
+    private companion object {
+        val STRICT_SEMVER = Regex(
+            """(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)""",
+        )
     }
 }

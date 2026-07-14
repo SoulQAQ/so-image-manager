@@ -4,6 +4,8 @@ import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.media.store.MediaStoreImage
 
 interface MediaSyncStore {
+    suspend fun hasPersistedScanBaseline(): Boolean = false
+
     suspend fun enqueueAndClaimRun(
         requestedMode: SyncMode?,
         nowEpochMillis: Long,

@@ -27,7 +27,14 @@ class MediaSyncScheduler(
     fun requestInitial() {
         backend.enqueueImmediate(
             ImmediateSyncWork.RequestedMode(SyncMode.INITIAL),
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            ExistingWorkPolicy.KEEP,
+        )
+    }
+
+    fun requestForAccess(mode: SyncMode) {
+        backend.enqueueImmediate(
+            ImmediateSyncWork.RequestedMode(mode),
+            ExistingWorkPolicy.KEEP,
         )
     }
 

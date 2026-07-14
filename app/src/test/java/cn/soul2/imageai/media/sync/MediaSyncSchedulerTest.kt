@@ -6,6 +6,18 @@ import org.junit.Test
 
 class MediaSyncSchedulerTest {
     @Test
+    fun persistedBaselineSelectsIncrementalWhileFirstAccessSelectsInitial() {
+        val policyClass = Class.forName(
+            "cn.soul2.imageai.media.sync.GallerySyncAccessPolicy",
+        )
+        val instance = policyClass.getField("INSTANCE").get(null)
+        val mode = policyClass.getMethod("mode", Boolean::class.javaPrimitiveType)
+
+        assertEquals(SyncMode.INITIAL, mode.invoke(instance, false))
+        assertEquals(SyncMode.INCREMENTAL, mode.invoke(instance, true))
+    }
+
+    @Test
     fun externalRequestsAndExplicitRetryAppendToTheSingleChain() {
         val backend = RecordingSyncWorkBackend()
         val scheduler = MediaSyncScheduler(backend)
@@ -19,7 +31,7 @@ class MediaSyncSchedulerTest {
             listOf(
                 RecordedImmediate(
                     ImmediateSyncWork.RequestedMode(SyncMode.INITIAL),
-                    ExistingWorkPolicy.APPEND_OR_REPLACE,
+                    ExistingWorkPolicy.KEEP,
                 ),
                 RecordedImmediate(
                     ImmediateSyncWork.RequestedMode(SyncMode.INCREMENTAL),

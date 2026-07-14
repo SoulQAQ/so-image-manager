@@ -1,10 +1,29 @@
 package cn.soul2.imageai.media.sync
 
+import java.io.File
 import java.io.IOException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaSyncWorkerPolicyTest {
+    @Test
+    fun retryAttemptContinuesDurableRunInsteadOfSubmittingRequestedModeAgain() {
+        val root = generateSequence(
+            File(requireNotNull(System.getProperty("user.dir"))).canonicalFile,
+        ) { it.parentFile }.first { File(it, "settings.gradle.kts").isFile }
+        val source = File(
+            root,
+            "app/src/main/java/cn/soul2/imageai/media/sync/MediaSyncWorker.kt",
+        ).readText()
+
+        assertTrue(
+            source.contains(
+                "runAttemptCount > 0 -> container.mediaSyncEngine.continueNextSlice()",
+            ),
+        )
+    }
+
     @Test
     fun transientIoRetriesFourTimesThenPausesOnTheFifthAttempt() {
         val error = IOException("temporary")

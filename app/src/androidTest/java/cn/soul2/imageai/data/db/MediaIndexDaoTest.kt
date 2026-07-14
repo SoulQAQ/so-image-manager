@@ -221,8 +221,10 @@ class MediaIndexDaoTest {
         volumeName = VOLUME,
         generation = generation,
         mediaStoreVersion = "version-$generation",
-        cursorModifiedAtEpochMillis = SORT_TIME,
-        cursorMediaStoreId = MEDIA_STORE_ID,
+        fullScanCursorModifiedAtEpochMillis = SORT_TIME,
+        fullScanCursorMediaStoreId = MEDIA_STORE_ID,
+        incrementalHighWaterModifiedAtEpochMillis = SORT_TIME,
+        incrementalHighWaterMediaStoreId = MEDIA_STORE_ID,
         completedAtEpochMillis = SORT_TIME,
         fullReconciliationAtEpochMillis = null,
     )

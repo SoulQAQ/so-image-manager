@@ -17,13 +17,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.media.permission.GalleryPermissionPolicy
@@ -44,34 +44,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             SoImageManagerTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    GalleryPermissionHost {
-                        container.mediaSyncScheduler.requestInitial()
-                    }
+                    GalleryPermissionHost()
                 }
             }
         }
     }
 
     @Composable
-    private fun GalleryPermissionHost(
-        onAccessAvailable: (GalleryAccessState) -> Unit = {},
-    ) {
+    private fun GalleryPermissionHost() {
         val accessViewModel: GalleryAccessViewModel = viewModel(
             factory = GalleryAccessViewModel.factory(
                 permissionMonitor = container.galleryPermissionMonitor,
                 onboardingRepository = container.galleryOnboardingRepository,
             ),
         )
-        val uiState by accessViewModel.uiState.collectAsState()
+        val uiState by accessViewModel.uiState.collectAsStateWithLifecycle()
         val coroutineScope = rememberCoroutineScope()
         val permissionRequestCoordinator = remember { GalleryPermissionRequestCoordinator() }
-        val permissionRequestInFlight by permissionRequestCoordinator.inFlight.collectAsState()
+        val permissionRequestInFlight by
+            permissionRequestCoordinator.inFlight.collectAsStateWithLifecycle()
+        val coordinateAccess: (GalleryAccessState) -> Unit = { access ->
+            coroutineScope.launch {
+                container.gallerySyncAccessCoordinator.onAccessAvailable(access)
+            }
+        }
         LaunchedEffect(uiState.isLoading, uiState.galleryAccessState) {
             if (!uiState.isLoading) {
                 when (val access = uiState.galleryAccessState) {
                     GalleryAccessState.Full,
                     GalleryAccessState.Partial,
-                    -> onAccessAvailable(access)
+                    -> coordinateAccess(access)
                     is GalleryAccessState.Denied -> Unit
                 }
             }
@@ -90,7 +92,7 @@ class MainActivity : ComponentActivity() {
             permissionRequestCoordinator.complete()
             accessViewModel.onPermissionResult(
                 canRequestAgain = canRequestGalleryPermissionAgain(permissionRequested = true),
-                onAccessAvailable = onAccessAvailable,
+                onAccessAvailable = coordinateAccess,
             )
         }
         val launchPermissionRequest: () -> Unit = {

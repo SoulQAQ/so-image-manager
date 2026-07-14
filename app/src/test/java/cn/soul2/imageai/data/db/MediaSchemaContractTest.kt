@@ -86,8 +86,10 @@ class MediaSchemaContractTest {
                 "volume_name",
                 "generation",
                 "media_store_version",
-                "cursor_modified_at_epoch_millis",
-                "cursor_media_store_id",
+                "full_scan_cursor_modified_at_epoch_millis",
+                "full_scan_cursor_media_store_id",
+                "incremental_high_water_modified_at_epoch_millis",
+                "incremental_high_water_media_store_id",
                 "completed_at_epoch_millis",
                 "full_reconciliation_at_epoch_millis",
             ),
@@ -115,6 +117,24 @@ class MediaSchemaContractTest {
             .forEach { forbidden ->
                 assertFalse("Out-of-scope schema term remains: $forbidden", text.contains(forbidden))
             }
+    }
+
+    @Test
+    fun migrationOneToTwoCreatesSeparatedFullScanAndIncrementalCursors() {
+        val source = projectFile(
+            "app/src/main/java/cn/soul2/imageai/data/db/AppDatabaseMigrations.kt",
+        ).readText()
+
+        listOf(
+            "full_scan_cursor_modified_at_epoch_millis",
+            "full_scan_cursor_media_store_id",
+            "incremental_high_water_modified_at_epoch_millis",
+            "incremental_high_water_media_store_id",
+        ).forEach { column ->
+            assertTrue("MIGRATION_1_2 must create $column", source.contains("`$column` INTEGER"))
+        }
+        assertFalse(source.contains("`cursor_modified_at_epoch_millis` INTEGER"))
+        assertFalse(source.contains("`cursor_media_store_id` INTEGER"))
     }
 
     private fun schemaFile(version: Int): File {

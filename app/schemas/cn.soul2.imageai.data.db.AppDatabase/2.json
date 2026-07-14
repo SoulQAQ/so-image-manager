@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 2,
-    "identityHash": "d7383b0b354384b04ab7a5419fd7d4b3",
+    "identityHash": "a6724e5187843c2bc7a8a25a4595a46d",
     "entities": [
       {
         "tableName": "app_setting",
@@ -212,7 +212,7 @@
       },
       {
         "tableName": "media_sync_checkpoint",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`volume_name` TEXT NOT NULL, `generation` INTEGER, `media_store_version` TEXT, `cursor_modified_at_epoch_millis` INTEGER, `cursor_media_store_id` INTEGER, `completed_at_epoch_millis` INTEGER, `full_reconciliation_at_epoch_millis` INTEGER, PRIMARY KEY(`volume_name`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`volume_name` TEXT NOT NULL, `generation` INTEGER, `media_store_version` TEXT, `full_scan_cursor_modified_at_epoch_millis` INTEGER, `full_scan_cursor_media_store_id` INTEGER, `incremental_high_water_modified_at_epoch_millis` INTEGER, `incremental_high_water_media_store_id` INTEGER, `completed_at_epoch_millis` INTEGER, `full_reconciliation_at_epoch_millis` INTEGER, PRIMARY KEY(`volume_name`))",
         "fields": [
           {
             "fieldPath": "volumeName",
@@ -233,14 +233,26 @@
             "notNull": false
           },
           {
-            "fieldPath": "cursorModifiedAtEpochMillis",
-            "columnName": "cursor_modified_at_epoch_millis",
+            "fieldPath": "fullScanCursorModifiedAtEpochMillis",
+            "columnName": "full_scan_cursor_modified_at_epoch_millis",
             "affinity": "INTEGER",
             "notNull": false
           },
           {
-            "fieldPath": "cursorMediaStoreId",
-            "columnName": "cursor_media_store_id",
+            "fieldPath": "fullScanCursorMediaStoreId",
+            "columnName": "full_scan_cursor_media_store_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "incrementalHighWaterModifiedAtEpochMillis",
+            "columnName": "incremental_high_water_modified_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "incrementalHighWaterMediaStoreId",
+            "columnName": "incremental_high_water_media_store_id",
             "affinity": "INTEGER",
             "notNull": false
           },
@@ -356,7 +368,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd7383b0b354384b04ab7a5419fd7d4b3')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a6724e5187843c2bc7a8a25a4595a46d')"
     ]
   }
 }
