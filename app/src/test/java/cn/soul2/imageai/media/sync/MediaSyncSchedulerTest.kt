@@ -6,7 +6,7 @@ import org.junit.Test
 
 class MediaSyncSchedulerTest {
     @Test
-    fun immediateRequestsCoalesceAndExplicitRetryReplacesPausedWork() {
+    fun immediateRequestsUseModeSpecificChainPolicies() {
         val backend = RecordingSyncWorkBackend()
         val scheduler = MediaSyncScheduler(backend)
 
@@ -18,7 +18,7 @@ class MediaSyncSchedulerTest {
         assertEquals(
             listOf(
                 RecordedImmediate(SyncMode.INITIAL, ExistingWorkPolicy.KEEP),
-                RecordedImmediate(SyncMode.INCREMENTAL, ExistingWorkPolicy.KEEP),
+                RecordedImmediate(SyncMode.INCREMENTAL, ExistingWorkPolicy.APPEND_OR_REPLACE),
                 RecordedImmediate(SyncMode.RECONCILE, ExistingWorkPolicy.KEEP),
                 RecordedImmediate(mode = null, ExistingWorkPolicy.REPLACE),
             ),

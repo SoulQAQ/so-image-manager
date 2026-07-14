@@ -23,7 +23,7 @@ class MediaSyncScheduler(
     }
 
     fun requestIncremental() {
-        backend.enqueueImmediate(SyncMode.INCREMENTAL, ExistingWorkPolicy.KEEP)
+        backend.enqueueImmediate(SyncMode.INCREMENTAL, ExistingWorkPolicy.APPEND_OR_REPLACE)
     }
 
     fun requestReconciliation() {

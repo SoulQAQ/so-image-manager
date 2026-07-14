@@ -216,7 +216,7 @@ class MediaSyncEngineTest {
                         nextCursor = cursorFor(second),
                         hasMore = false,
                         observedGeneration = 20L,
-                        observedVersion = "v20",
+                        observedVersion = "v10",
                     ),
                 ),
             ),
@@ -230,6 +230,116 @@ class MediaSyncEngineTest {
 
         assertEquals(10L, store.checkpoint(VOLUME)?.generation)
         assertEquals("v10", store.checkpoint(VOLUME)?.mediaStoreVersion)
+    }
+
+    @Test
+    fun changedMediaStoreVersionInvalidatesGenerationCursorAndRestartsVolume() = runTest {
+        val oldCursor = MediaStoreCursor(
+            modifiedAtEpochMillis = null,
+            mediaStoreId = 50L,
+            generation = 50L,
+        )
+        val store = FakeMediaSyncStore().apply {
+            putCheckpoint(
+                SyncCheckpoint(
+                    volumeName = VOLUME,
+                    generation = oldCursor.generation,
+                    mediaStoreVersion = "old-version",
+                    cursorModifiedAtEpochMillis = null,
+                    cursorMediaStoreId = oldCursor.mediaStoreId,
+                    completedAtEpochMillis = 1_000L,
+                    fullReconciliationAtEpochMillis = null,
+                ),
+            )
+        }
+        val skipped = image(99L)
+        val recovered = image(1L)
+        val clock = MutableClock(15_000L)
+        var firstRead = true
+        val gateway = ScriptedGateway(
+            pages = ArrayDeque(
+                listOf(
+                    MediaStorePage(
+                        images = listOf(skipped),
+                        nextCursor = cursorFor(skipped),
+                        hasMore = false,
+                        observedGeneration = 99L,
+                        observedVersion = "new-version",
+                    ),
+                    MediaStorePage(
+                        images = listOf(recovered),
+                        nextCursor = cursorFor(recovered),
+                        hasMore = false,
+                        observedGeneration = 1L,
+                        observedVersion = "new-version",
+                    ),
+                ),
+            ),
+            onRead = {
+                if (firstRead) {
+                    firstRead = false
+                    clock.now += SyncPolicy.MAX_DURATION_MILLIS
+                }
+            },
+        )
+
+        val reset = engine(gateway, store, clock).runSlice(
+            mode = SyncMode.INCREMENTAL,
+            volume = VOLUME,
+        )
+        assertInstanceOf<SliceResult.More>(reset)
+        assertNull(store.checkpoint(VOLUME)?.cursorMediaStoreId)
+        assertEquals("new-version", store.checkpoint(VOLUME)?.mediaStoreVersion)
+
+        val result = engine(gateway, store, clock).runSlice(
+            mode = SyncMode.INCREMENTAL,
+            volume = VOLUME,
+        )
+
+        assertInstanceOf<SliceResult.Completed>(result)
+        assertEquals(listOf(oldCursor, null), gateway.requestedCursors)
+        assertEquals(setOf(1L), store.images.keys.map { it.second }.toSet())
+        assertEquals("new-version", store.checkpoint(VOLUME)?.mediaStoreVersion)
+    }
+
+    @Test
+    fun freshReconciliationDoesNotResumeIncompleteCheckpointOwnedByPausedRun() = runTest {
+        val missing = image(5_000L)
+        val store = FakeMediaSyncStore().apply { putExisting(missing) }
+        val partialGateway = OrderedFakeGateway((1L..1_001L).map(::image))
+        val clock = MutableClock(20_000L)
+
+        val partial = engine(partialGateway, store, clock).runSlice(
+            mode = SyncMode.RECONCILE,
+            volume = VOLUME,
+        )
+
+        assertInstanceOf<SliceResult.More>(partial)
+        assertNull(store.record(5_000L).missingCandidateSinceEpochMillis)
+        store.pauseLatest(clock.now)
+
+        val freshGateway = ScriptedGateway(
+            ArrayDeque(
+                listOf(
+                    MediaStorePage(
+                        images = emptyList(),
+                        nextCursor = null,
+                        hasMore = false,
+                        observedGeneration = 1_001L,
+                        observedVersion = "v1",
+                    ),
+                ),
+            ),
+        )
+        val completed = engine(freshGateway, store, clock).runSlice(
+            mode = SyncMode.RECONCILE,
+            volume = VOLUME,
+        )
+
+        assertInstanceOf<SliceResult.Completed>(completed)
+        assertEquals(listOf<MediaStoreCursor?>(null), freshGateway.requestedCursors)
+        assertEquals(20_000L, store.record(5_000L).missingCandidateSinceEpochMillis)
+        assertEquals(1, store.record(5_000L).missingObservationCount)
     }
 
     private fun engine(
@@ -279,7 +389,10 @@ class MediaSyncEngineTest {
 
     private class ScriptedGateway(
         private val pages: ArrayDeque<MediaStorePage>,
+        private val onRead: () -> Unit = {},
     ) : MediaStoreGateway {
+        val requestedCursors = mutableListOf<MediaStoreCursor?>()
+
         override fun externalVolumes(): Set<String> = setOf(VOLUME)
 
         override fun readPage(
@@ -287,7 +400,11 @@ class MediaSyncEngineTest {
             mode: SyncMode,
             cursor: MediaStoreCursor?,
             limit: Int,
-        ): MediaStorePage = pages.removeFirst()
+        ): MediaStorePage {
+            requestedCursors += cursor
+            onRead()
+            return pages.removeFirst()
+        }
     }
 
     private class ThrowingGateway(private val error: Throwable) : MediaStoreGateway {
@@ -318,6 +435,19 @@ class MediaSyncEngineTest {
 
         fun putExisting(image: MediaStoreImage) {
             images[image.volumeName to image.mediaStoreId] = Stored(image)
+        }
+
+        fun putCheckpoint(checkpoint: SyncCheckpoint) {
+            checkpoints[checkpoint.volumeName] = checkpoint
+        }
+
+        fun pauseLatest(nowEpochMillis: Long) {
+            replaceRun(
+                requireNotNull(latestRun).pausedError(
+                    nowEpochMillis,
+                    IOException("paused between runs"),
+                ),
+            )
         }
 
         fun record(id: Long): Stored = images.values.single { it.image.mediaStoreId == id }

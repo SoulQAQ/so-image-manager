@@ -115,13 +115,15 @@ class MediaSyncEngine(
         } catch (error: Throwable) {
             return pauseForError(run, error)
         }
-        var currentCursor = cursor ?: resumeCursor(mode, volume, run, store.checkpoint(volume))
+        var currentCheckpoint = store.checkpoint(volume)
+        var currentCursor = cursor ?: resumeCursor(mode, volume, run, currentCheckpoint)
         var processed = 0
         val sliceStartedAt = clock.nowEpochMillis()
 
         while (processed < maxItems && clock.nowEpochMillis() - sliceStartedAt < maxDurationMillis) {
             val remaining = maxItems - processed
             val firstPage = currentCursor == null
+            val checkpointBeforePage = currentCheckpoint
             val page = try {
                 gateway.readPage(volume, mode, currentCursor, remaining)
             } catch (error: SecurityException) {
@@ -131,6 +133,29 @@ class MediaSyncEngine(
             } catch (error: Throwable) {
                 return pauseForError(run, error)
             }
+            if (currentCursor != null &&
+                checkpointBeforePage?.mediaStoreVersion != null &&
+                page.observedVersion != null &&
+                checkpointBeforePage.mediaStoreVersion != page.observedVersion
+            ) {
+                val now = clock.nowEpochMillis()
+                run = run.withPage(volume, imageCount = 0, nowEpochMillis = now)
+                val resetCheckpoint = SyncCheckpoint(
+                    volumeName = volume,
+                    generation = null,
+                    mediaStoreVersion = page.observedVersion,
+                    cursorModifiedAtEpochMillis = null,
+                    cursorMediaStoreId = null,
+                    completedAtEpochMillis = null,
+                    fullReconciliationAtEpochMillis =
+                        checkpointBeforePage.fullReconciliationAtEpochMillis,
+                )
+                store.commitBatch(emptyList(), resetCheckpoint, run)
+                currentCheckpoint = resetCheckpoint
+                currentCursor = null
+                lastRun = run
+                continue
+            }
             if (page.hasMore && page.images.isEmpty()) {
                 return pauseForError(run, IOException("MediaStore page made no progress"))
             }
@@ -138,11 +163,10 @@ class MediaSyncEngine(
             val now = clock.nowEpochMillis()
             run = run.withPage(volume, page.images.size, now)
             val nextCursor = page.nextCursor ?: currentCursor
-            val previousCheckpoint = store.checkpoint(volume)
             val checkpoint = checkpointAfterPage(
                 mode = mode,
                 volume = volume,
-                previous = previousCheckpoint,
+                previous = checkpointBeforePage,
                 cursor = nextCursor,
                 firstPage = firstPage,
                 observedGeneration = page.observedGeneration,
@@ -151,6 +175,7 @@ class MediaSyncEngine(
                 nowEpochMillis = now,
             )
             store.commitBatch(page.images, checkpoint, run)
+            currentCheckpoint = checkpoint
             currentCursor = nextCursor
             lastRun = run
 
@@ -204,10 +229,7 @@ class MediaSyncEngine(
         checkpoint: SyncCheckpoint?,
     ): MediaStoreCursor? {
         checkpoint ?: return null
-        if (mode != SyncMode.INCREMENTAL &&
-            checkpoint.completedAtEpochMillis != null &&
-            run.currentVolumeName != volume
-        ) {
+        if (mode != SyncMode.INCREMENTAL && run.currentVolumeName != volume) {
             return null
         }
         val mediaStoreId = checkpoint.cursorMediaStoreId ?: return null
