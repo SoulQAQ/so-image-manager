@@ -1,3 +1,22 @@
+## v0.4.0 (2026-07-14)
+
+### 功能
+- 发布 SoIM Phase 2A 的本地优先图片管理核心。
+- 新增 MediaStore 持久索引、增量同步检查点与同步运行状态。
+- 完善媒体权限处理、后台同步以及图库、任务和设置工作区。
+
+### 修复
+- 新增原子 Debug 测试 APK 发布流程，失败时回滚版本元数据与制品。
+
+### 测试
+- clean、全量单元测试、lintDebug、AndroidTest 编译、Debug/Release 构建均通过。
+- 设备测试：无可用设备或 AVD，已跳过（SKIPPED_NO_DEVICE）
+
+### 签名与校验
+- Debug 签名：CN=Android Debug
+- SHA-256：4F1E5F88C6E32F05996E00B9491042DA4D5E8CEE4A335F36510D9640A7AF2742
+
+---
 ﻿## v0.3.2 (2026-05-12)
 
 ### 新增与修复
