@@ -21,7 +21,7 @@ class CanonicalStorageBoundaryContractTest {
     }
 
     @Test
-    fun rawCanonicalDaosAreOnlyUsedByTheCanonicalRepository() {
+    fun rawCanonicalAndSearchDaosStayInsideTheirStorageOwners() {
         val allowed = setOf(
             "cn/soul2/imageai/analysis/CanonicalMetadataRepository.kt",
             "cn/soul2/imageai/data/db/AppDatabase.kt",
@@ -32,7 +32,8 @@ class CanonicalStorageBoundaryContractTest {
             .filter { file ->
                 val source = file.readText()
                 source.contains(".analysisDao()") ||
-                    source.contains(".effectiveMetadataDao()")
+                    source.contains(".effectiveMetadataDao()") ||
+                    source.contains(".searchIndexDao()")
             }
             .map { it.relativeTo(root).invariantSeparatorsPath }
             .toList()

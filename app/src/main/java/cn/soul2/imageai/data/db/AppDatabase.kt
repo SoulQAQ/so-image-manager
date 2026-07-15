@@ -8,6 +8,7 @@ import cn.soul2.imageai.data.db.dao.AnalysisDao
 import cn.soul2.imageai.data.db.dao.EffectiveMetadataDao
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.dao.MediaSyncDao
+import cn.soul2.imageai.data.db.dao.SearchIndexDao
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 import cn.soul2.imageai.data.db.entity.ActiveImageAnalysisEntity
 import cn.soul2.imageai.data.db.entity.AnalysisActivationDiagnosticEntity
@@ -20,6 +21,14 @@ import cn.soul2.imageai.data.db.entity.ImageUserCorrectionEntity
 import cn.soul2.imageai.data.db.entity.MediaSyncCheckpointEntity
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
 import cn.soul2.imageai.data.db.entity.UserTermOverrideEntity
+import cn.soul2.imageai.data.db.entity.ImageSearchTermEntity
+import cn.soul2.imageai.data.db.entity.SearchDocumentEntity
+import cn.soul2.imageai.data.db.entity.SearchDocumentFtsEntity
+import cn.soul2.imageai.data.db.entity.SearchGramEntity
+import cn.soul2.imageai.data.db.entity.SearchSourceChunkEntity
+import cn.soul2.imageai.data.db.entity.SearchTermAliasEntity
+import cn.soul2.imageai.data.db.entity.SearchTermEntity
+import cn.soul2.imageai.data.db.entity.SearchTextAliasChunkEntity
 
 @Database(
     entities = [
@@ -35,8 +44,16 @@ import cn.soul2.imageai.data.db.entity.UserTermOverrideEntity
         EffectiveImageMetadataEntity::class,
         EffectiveImageTermEntity::class,
         AnalysisActivationDiagnosticEntity::class,
+        SearchDocumentEntity::class,
+        SearchDocumentFtsEntity::class,
+        SearchTermEntity::class,
+        ImageSearchTermEntity::class,
+        SearchTermAliasEntity::class,
+        SearchSourceChunkEntity::class,
+        SearchTextAliasChunkEntity::class,
+        SearchGramEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(RoomConverters::class)
@@ -46,4 +63,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaSyncDao(): MediaSyncDao
     internal abstract fun analysisDao(): AnalysisDao
     internal abstract fun effectiveMetadataDao(): EffectiveMetadataDao
+    internal abstract fun searchIndexDao(): SearchIndexDao
 }

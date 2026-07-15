@@ -180,6 +180,106 @@ class MediaSchemaContractTest {
     }
 
     @Test
+    fun versionFourExportsTheFrozenFts4SearchContract() {
+        val schema = schemaFile(version = 4)
+        assertTrue("Room schema v4 must be exported", schema.isFile)
+
+        val text = schema.readText()
+        assertTrue(Regex("\\\"version\\\"\\s*:\\s*4").containsMatchIn(text))
+        assertEquals(
+            setOf(
+                "app_setting",
+                "image",
+                "media_sync_checkpoint",
+                "media_sync_run",
+                "image_analysis",
+                "analysis_term",
+                "active_image_analysis",
+                "image_user_correction",
+                "user_term_override",
+                "effective_image_metadata",
+                "effective_image_term",
+                "analysis_activation_diagnostic",
+                "search_document",
+                "search_document_fts",
+                "search_term",
+                "image_search_term",
+                "search_term_alias",
+                "search_source_chunk",
+                "search_text_alias_chunk",
+                "search_gram",
+            ),
+            Regex("\\\"tableName\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                .findAll(text)
+                .map { it.groupValues[1] }
+                .toSet(),
+        )
+
+        assertEquals(
+            setOf(
+                "rowid",
+                "file_name",
+                "album",
+                "caption",
+                "tags",
+                "categories",
+                "search_tokens",
+                "media_text",
+            ),
+            columnNames(entityObject(text, "search_document")),
+        )
+        assertEquals(
+            setOf("normalized_key", "display_value", "unit_type", "term_id"),
+            columnNames(entityObject(text, "search_term")),
+        )
+        assertEquals(
+            setOf(
+                "index_search_term_normalized_key",
+            ),
+            indexNames(entityObject(text, "search_term")),
+        )
+        assertEquals(
+            setOf(
+                "index_image_search_term_image_local_id_field_mask_weight",
+                "index_image_search_term_term_id",
+            ),
+            indexNames(entityObject(text, "image_search_term")),
+        )
+        assertEquals(
+            setOf(
+                "index_search_term_alias_term_id_alias_type",
+                "index_search_term_alias_term_id_alias_type_alias_text",
+            ),
+            indexNames(entityObject(text, "search_term_alias")),
+        )
+        assertEquals(
+            setOf("index_search_source_chunk_image_local_id_field_ordinal"),
+            indexNames(entityObject(text, "search_source_chunk")),
+        )
+        assertEquals(
+            setOf("index_search_text_alias_chunk_image_local_id_field_alias_type_ordinal"),
+            indexNames(entityObject(text, "search_text_alias_chunk")),
+        )
+        assertEquals(
+            setOf("index_search_gram_gram_owner_type"),
+            indexNames(entityObject(text, "search_gram")),
+        )
+
+        listOf(
+            "room_fts_content_sync_search_document_fts_BEFORE_UPDATE",
+            "room_fts_content_sync_search_document_fts_BEFORE_DELETE",
+            "room_fts_content_sync_search_document_fts_AFTER_UPDATE",
+            "room_fts_content_sync_search_document_fts_AFTER_INSERT",
+        ).forEach { required ->
+            assertTrue("Missing Room FTS4 artifact: $required", text.contains(required))
+        }
+        assertTrue(text.contains("\"ftsVersion\": \"FTS4\""))
+        assertTrue(text.contains("\"contentTable\": \"search_document\""))
+        assertTrue(text.contains("USING FTS4"))
+        assertFalse("FTS5 is outside the frozen contract", text.contains("fts5", ignoreCase = true))
+    }
+
+    @Test
     fun migrationOneToTwoCreatesSeparatedFullScanAndIncrementalCursors() {
         val source = projectFile(
             "app/src/main/java/cn/soul2/imageai/data/db/AppDatabaseMigrations.kt",
@@ -195,6 +295,34 @@ class MediaSchemaContractTest {
         }
         assertFalse(source.contains("`cursor_modified_at_epoch_millis` INTEGER"))
         assertFalse(source.contains("`cursor_media_store_id` INTEGER"))
+    }
+
+    @Test
+    fun migrationThreeToFourMatchesRoomFtsSqlAndEveryFactoryRegistersTheFullChain() {
+        val migration = projectFile(
+            "app/src/main/java/cn/soul2/imageai/data/db/AppDatabaseMigrations.kt",
+        ).readText()
+        val factory = projectFile(
+            "app/src/main/java/cn/soul2/imageai/data/db/AppDatabaseFactory.kt",
+        ).readText()
+
+        listOf(
+            "CREATE TABLE IF NOT EXISTS `search_document`",
+            "CREATE VIRTUAL TABLE IF NOT EXISTS `search_document_fts` USING FTS4",
+            "content=`search_document`",
+            "room_fts_content_sync_search_document_fts_BEFORE_UPDATE",
+            "room_fts_content_sync_search_document_fts_BEFORE_DELETE",
+            "room_fts_content_sync_search_document_fts_AFTER_UPDATE",
+            "room_fts_content_sync_search_document_fts_AFTER_INSERT",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_term_normalized_key`",
+            "CREATE INDEX IF NOT EXISTS `index_image_search_term_term_id`",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_term_alias_term_id_alias_type_alias_text`",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_source_chunk_image_local_id_field_ordinal`",
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_text_alias_chunk_image_local_id_field_alias_type_ordinal`",
+            "CREATE INDEX IF NOT EXISTS `index_search_gram_gram_owner_type`",
+        ).forEach { sql -> assertTrue("MIGRATION_3_4 is missing: $sql", migration.contains(sql)) }
+        assertTrue(factory.contains("addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)"))
+        assertFalse(factory.contains("fallbackToDestructiveMigration"))
     }
 
     private fun schemaFile(version: Int): File {

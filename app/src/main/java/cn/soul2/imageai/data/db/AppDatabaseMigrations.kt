@@ -222,4 +222,31 @@ object AppDatabaseMigrations {
             ).forEach(database::execSQL)
         }
     }
+
+    val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            listOf(
+                "CREATE TABLE IF NOT EXISTS `search_document` (`rowid` INTEGER NOT NULL, `file_name` TEXT NOT NULL, `album` TEXT NOT NULL, `caption` TEXT NOT NULL, `tags` TEXT NOT NULL, `categories` TEXT NOT NULL, `search_tokens` TEXT NOT NULL, `media_text` TEXT NOT NULL, PRIMARY KEY(`rowid`), FOREIGN KEY(`rowid`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                "CREATE VIRTUAL TABLE IF NOT EXISTS `search_document_fts` USING FTS4(`file_name` TEXT NOT NULL, `album` TEXT NOT NULL, `caption` TEXT NOT NULL, `tags` TEXT NOT NULL, `categories` TEXT NOT NULL, `search_tokens` TEXT NOT NULL, `media_text` TEXT NOT NULL, content=`search_document`)",
+                "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_search_document_fts_BEFORE_UPDATE BEFORE UPDATE ON `search_document` BEGIN DELETE FROM `search_document_fts` WHERE `docid`=OLD.`rowid`; END",
+                "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_search_document_fts_BEFORE_DELETE BEFORE DELETE ON `search_document` BEGIN DELETE FROM `search_document_fts` WHERE `docid`=OLD.`rowid`; END",
+                "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_search_document_fts_AFTER_UPDATE AFTER UPDATE ON `search_document` BEGIN INSERT INTO `search_document_fts`(`docid`, `file_name`, `album`, `caption`, `tags`, `categories`, `search_tokens`, `media_text`) VALUES (NEW.`rowid`, NEW.`file_name`, NEW.`album`, NEW.`caption`, NEW.`tags`, NEW.`categories`, NEW.`search_tokens`, NEW.`media_text`); END",
+                "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_search_document_fts_AFTER_INSERT AFTER INSERT ON `search_document` BEGIN INSERT INTO `search_document_fts`(`docid`, `file_name`, `album`, `caption`, `tags`, `categories`, `search_tokens`, `media_text`) VALUES (NEW.`rowid`, NEW.`file_name`, NEW.`album`, NEW.`caption`, NEW.`tags`, NEW.`categories`, NEW.`search_tokens`, NEW.`media_text`); END",
+                "CREATE TABLE IF NOT EXISTS `search_term` (`term_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `normalized_key` TEXT NOT NULL, `display_value` TEXT NOT NULL, `unit_type` TEXT NOT NULL)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_term_normalized_key` ON `search_term` (`normalized_key`)",
+                "CREATE TABLE IF NOT EXISTS `image_search_term` (`image_local_id` INTEGER NOT NULL, `term_id` INTEGER NOT NULL, `field_mask` INTEGER NOT NULL, `ownership` TEXT NOT NULL, `weight` REAL NOT NULL, PRIMARY KEY(`image_local_id`, `term_id`, `field_mask`), FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`term_id`) REFERENCES `search_term`(`term_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                "CREATE INDEX IF NOT EXISTS `index_image_search_term_image_local_id_field_mask_weight` ON `image_search_term` (`image_local_id`, `field_mask`, `weight`)",
+                "CREATE INDEX IF NOT EXISTS `index_image_search_term_term_id` ON `image_search_term` (`term_id`)",
+                "CREATE TABLE IF NOT EXISTS `search_term_alias` (`alias_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `term_id` INTEGER NOT NULL, `alias_type` TEXT NOT NULL, `alias_text` TEXT NOT NULL, FOREIGN KEY(`term_id`) REFERENCES `search_term`(`term_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                "CREATE INDEX IF NOT EXISTS `index_search_term_alias_term_id_alias_type` ON `search_term_alias` (`term_id`, `alias_type`)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_term_alias_term_id_alias_type_alias_text` ON `search_term_alias` (`term_id`, `alias_type`, `alias_text`)",
+                "CREATE TABLE IF NOT EXISTS `search_source_chunk` (`chunk_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `image_local_id` INTEGER NOT NULL, `field` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `normalized_text` TEXT NOT NULL, FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_source_chunk_image_local_id_field_ordinal` ON `search_source_chunk` (`image_local_id`, `field`, `ordinal`)",
+                "CREATE TABLE IF NOT EXISTS `search_text_alias_chunk` (`alias_chunk_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `image_local_id` INTEGER NOT NULL, `field` TEXT NOT NULL, `alias_type` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `alias_text` TEXT NOT NULL, FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_text_alias_chunk_image_local_id_field_alias_type_ordinal` ON `search_text_alias_chunk` (`image_local_id`, `field`, `alias_type`, `ordinal`)",
+                "CREATE TABLE IF NOT EXISTS `search_gram` (`gram` TEXT NOT NULL, `owner_type` TEXT NOT NULL, `owner_id` INTEGER NOT NULL, PRIMARY KEY(`gram`, `owner_type`, `owner_id`))",
+                "CREATE INDEX IF NOT EXISTS `index_search_gram_gram_owner_type` ON `search_gram` (`gram`, `owner_type`)",
+            ).forEach(database::execSQL)
+        }
+    }
 }

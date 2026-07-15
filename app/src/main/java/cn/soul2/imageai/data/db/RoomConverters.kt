@@ -7,6 +7,10 @@ import cn.soul2.imageai.data.db.entity.CaptionCorrectionMode
 import cn.soul2.imageai.data.db.entity.EffectiveCaptionSource
 import cn.soul2.imageai.data.db.entity.EffectiveTermSource
 import cn.soul2.imageai.data.db.entity.UserTermOverrideAction
+import cn.soul2.imageai.data.db.entity.SearchGramOwnerType
+import cn.soul2.imageai.data.db.entity.SearchTermOwnership
+import cn.soul2.imageai.data.db.entity.SearchTermUnitType
+import cn.soul2.imageai.search.PinyinAliasType
 
 class RoomConverters {
     @TypeConverter
@@ -50,4 +54,32 @@ class RoomConverters {
     @TypeConverter
     fun effectiveTermSourceFromStorage(value: String): EffectiveTermSource =
         EffectiveTermSource.valueOf(value)
+
+    @TypeConverter
+    fun searchTermUnitTypeToStorage(value: SearchTermUnitType): String = value.name
+
+    @TypeConverter
+    fun searchTermUnitTypeFromStorage(value: String): SearchTermUnitType =
+        SearchTermUnitType.valueOf(value)
+
+    @TypeConverter
+    fun searchTermOwnershipToStorage(value: SearchTermOwnership): String = value.name
+
+    @TypeConverter
+    fun searchTermOwnershipFromStorage(value: String): SearchTermOwnership =
+        SearchTermOwnership.valueOf(value)
+
+    @TypeConverter
+    fun pinyinAliasTypeToStorage(value: PinyinAliasType): String = value.name
+
+    @TypeConverter
+    fun pinyinAliasTypeFromStorage(value: String): PinyinAliasType =
+        PinyinAliasType.valueOf(value)
+
+    @TypeConverter
+    fun searchGramOwnerTypeToStorage(value: SearchGramOwnerType): String = value.name
+
+    @TypeConverter
+    fun searchGramOwnerTypeFromStorage(value: String): SearchGramOwnerType =
+        SearchGramOwnerType.valueOf(value)
 }
