@@ -99,5 +99,43 @@ class MediaSyncWorkerPolicyTest {
         )
     }
 
+    @Test
+    fun completedResumedRunContinuesOnlyWhenRequestedModeDiffers() {
+        val resumedInitial = SyncRun.running(1L, SyncMode.INITIAL, 1_000L)
+
+        assertEquals(
+            WorkerDirective.CONTINUE,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.Completed(resumedInitial),
+                runAttemptCount = 0,
+                requestedMode = SyncMode.INCREMENTAL,
+            ),
+        )
+        assertEquals(
+            WorkerDirective.CONTINUE,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.Completed(resumedInitial),
+                runAttemptCount = 0,
+                requestedMode = SyncMode.RECONCILE,
+            ),
+        )
+        assertEquals(
+            WorkerDirective.SUCCESS,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.Completed(resumedInitial),
+                runAttemptCount = 0,
+                requestedMode = SyncMode.INITIAL,
+            ),
+        )
+        assertEquals(
+            WorkerDirective.SUCCESS,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.PausedPermission(resumedInitial),
+                runAttemptCount = 0,
+                requestedMode = SyncMode.INCREMENTAL,
+            ),
+        )
+    }
+
     private fun run() = SyncRun.running(1L, SyncMode.INCREMENTAL, 1_000L)
 }

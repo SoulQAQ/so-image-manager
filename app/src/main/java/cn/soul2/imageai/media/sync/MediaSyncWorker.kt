@@ -17,6 +17,7 @@ object MediaSyncWorkerPolicy {
         result: SliceResult,
         runAttemptCount: Int,
         drainAfterTerminal: Boolean = false,
+        requestedMode: SyncMode? = null,
     ): WorkerDirective = when (result) {
         is SliceResult.More -> WorkerDirective.CONTINUE
         is SliceResult.Retry -> if (SyncPolicy.shouldRetry(result.error, runAttemptCount)) {
@@ -24,8 +25,14 @@ object MediaSyncWorkerPolicy {
         } else {
             WorkerDirective.PAUSE_ERROR
         }
-        is SliceResult.Completed ->
-            if (drainAfterTerminal) WorkerDirective.CONTINUE else WorkerDirective.SUCCESS
+        is SliceResult.Completed -> if (
+            drainAfterTerminal ||
+            (requestedMode != null && requestedMode != result.run.mode)
+        ) {
+            WorkerDirective.CONTINUE
+        } else {
+            WorkerDirective.SUCCESS
+        }
         is SliceResult.PausedError,
         is SliceResult.PausedPermission,
         -> WorkerDirective.SUCCESS
@@ -43,15 +50,17 @@ class MediaSyncWorker(
             return Result.success()
         }
         val modeValue = inputData.getString(INPUT_MODE)
+        val requestedMode = modeValue
+            ?.takeUnless { it == MODE_RETRY }
+            ?.let { value ->
+                runCatching { SyncMode.valueOf(value) }.getOrNull()
+                    ?: return Result.failure()
+            }
         val result = when {
             runAttemptCount > 0 -> container.mediaSyncEngine.continueNextSlice()
             modeValue == MODE_RETRY -> container.mediaSyncEngine.retryPausedSlice()
             modeValue == null -> container.mediaSyncEngine.continueNextSlice()
-            else -> {
-                val mode = runCatching { SyncMode.valueOf(modeValue) }.getOrNull()
-                    ?: return Result.failure()
-                container.mediaSyncEngine.runNextSlice(mode)
-            }
+            else -> container.mediaSyncEngine.runNextSlice(requireNotNull(requestedMode))
         }
         result ?: return Result.success()
         return when (
@@ -59,6 +68,7 @@ class MediaSyncWorker(
                 result,
                 runAttemptCount,
                 drainAfterTerminal = modeValue == MODE_RETRY,
+                requestedMode = requestedMode,
             )
         ) {
             WorkerDirective.SUCCESS -> Result.success()

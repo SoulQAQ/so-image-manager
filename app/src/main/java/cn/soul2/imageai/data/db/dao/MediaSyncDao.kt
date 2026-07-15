@@ -119,11 +119,12 @@ abstract class MediaSyncDao {
         requestedRun: MediaSyncRunEntity?,
         nowEpochMillis: Long,
     ): MediaSyncRunEntity? {
+        val recoverableRun = getRecoverableRun()
         if (requestedRun != null && getQueuedRun(requestedRun.mode) == null) {
             insertRun(requestedRun)
         }
         getOldestRunningRun()?.let { return it }
-        getRecoverableRun()?.let { paused ->
+        recoverableRun?.let { paused ->
             check(resumePausedRun(paused.runId, nowEpochMillis) == 1) {
                 "Unable to resume permission-paused media sync run ${paused.runId}"
             }

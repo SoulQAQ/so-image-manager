@@ -266,6 +266,174 @@ class MediaSyncRunArbitrationTest {
     }
 
     @Test
+    fun observerIncrementalDrainsAfterPermissionPausedInitialCompletes() = runTest {
+        val first = image(21L)
+        val second = image(22L)
+        val third = image(23L)
+        val gateway = ScriptedGateway(
+            ArrayDeque(
+                listOf(
+                    MediaStorePage(
+                        images = listOf(first),
+                        nextCursor = cursorFor(first),
+                        hasMore = true,
+                        observedGeneration = 23L,
+                        observedVersion = "v1",
+                    ),
+                    MediaStorePage(
+                        images = listOf(second),
+                        nextCursor = cursorFor(second),
+                        hasMore = false,
+                        observedGeneration = 23L,
+                        observedVersion = "v1",
+                    ),
+                    MediaStorePage(
+                        images = listOf(third),
+                        nextCursor = cursorFor(third),
+                        hasMore = false,
+                        observedGeneration = 23L,
+                        observedVersion = "v1",
+                    ),
+                ),
+            ),
+        )
+        val permission = MutablePermissionSource(GalleryAccessState.Full)
+        val engine = MediaSyncEngine(
+            gateway = gateway,
+            store = store,
+            permissionSource = permission,
+            clock = SyncClock { 1_100L },
+        )
+        val firstSlice = engine.runSlice(
+            mode = SyncMode.INITIAL,
+            volume = VOLUME,
+            maxItems = 1,
+        )
+        val initialRunId = firstSlice.run.runId
+        assertTrue(firstSlice is SliceResult.More)
+
+        permission.access = GalleryAccessState.Denied(canRequestAgain = true)
+        val paused = engine.runSlice(SyncMode.INITIAL, VOLUME)
+        assertTrue(paused is SliceResult.PausedPermission)
+        val observerRequest = SyncMode.INCREMENTAL
+
+        permission.access = GalleryAccessState.Full
+        val resumed = engine.runNextSlice(observerRequest)
+
+        assertTrue(resumed is SliceResult.Completed)
+        assertEquals(initialRunId, resumed.run.runId)
+        assertEquals(SyncMode.INITIAL, resumed.run.mode)
+        assertEquals(
+            listOf(
+                RunState(SyncMode.INITIAL, SyncRunState.SUCCEEDED),
+                RunState(SyncMode.INCREMENTAL, SyncRunState.QUEUED),
+            ),
+            runStates(),
+        )
+
+        val drained = requireNotNull(engine.continueNextSlice())
+
+        assertTrue(drained is SliceResult.Completed)
+        assertEquals(SyncMode.INCREMENTAL, drained.run.mode)
+        assertEquals(
+            listOf(
+                RunState(SyncMode.INITIAL, SyncRunState.SUCCEEDED),
+                RunState(SyncMode.INCREMENTAL, SyncRunState.SUCCEEDED),
+            ),
+            runStates(),
+        )
+        assertEquals(
+            listOf(SyncMode.INITIAL, SyncMode.INITIAL, SyncMode.INCREMENTAL),
+            gateway.readModes,
+        )
+        assertEquals(listOf(21L, 22L, 23L), indexedMediaStoreIds())
+    }
+
+    @Test
+    fun explicitReconciliationDrainsAfterPermissionPausedInitialCompletes() = runTest {
+        val first = image(31L)
+        val second = image(32L)
+        val third = image(33L)
+        val gateway = ScriptedGateway(
+            ArrayDeque(
+                listOf(
+                    MediaStorePage(
+                        images = listOf(first),
+                        nextCursor = cursorFor(first),
+                        hasMore = true,
+                        observedGeneration = 33L,
+                        observedVersion = "v1",
+                    ),
+                    MediaStorePage(
+                        images = listOf(second),
+                        nextCursor = cursorFor(second),
+                        hasMore = false,
+                        observedGeneration = 33L,
+                        observedVersion = "v1",
+                    ),
+                    MediaStorePage(
+                        images = listOf(first, second, third),
+                        nextCursor = cursorFor(third),
+                        hasMore = false,
+                        observedGeneration = 33L,
+                        observedVersion = "v1",
+                    ),
+                ),
+            ),
+        )
+        val permission = MutablePermissionSource(GalleryAccessState.Full)
+        val engine = MediaSyncEngine(
+            gateway = gateway,
+            store = store,
+            permissionSource = permission,
+            clock = SyncClock { 1_200L },
+        )
+        val firstSlice = engine.runSlice(
+            mode = SyncMode.INITIAL,
+            volume = VOLUME,
+            maxItems = 1,
+        )
+        val initialRunId = firstSlice.run.runId
+        assertTrue(firstSlice is SliceResult.More)
+
+        permission.access = GalleryAccessState.Denied(canRequestAgain = true)
+        val paused = engine.runSlice(SyncMode.INITIAL, VOLUME)
+        assertTrue(paused is SliceResult.PausedPermission)
+        val explicitRequest = SyncMode.RECONCILE
+
+        permission.access = GalleryAccessState.Full
+        val resumed = engine.runNextSlice(explicitRequest)
+
+        assertTrue(resumed is SliceResult.Completed)
+        assertEquals(initialRunId, resumed.run.runId)
+        assertEquals(SyncMode.INITIAL, resumed.run.mode)
+        assertEquals(
+            listOf(
+                RunState(SyncMode.INITIAL, SyncRunState.SUCCEEDED),
+                RunState(SyncMode.RECONCILE, SyncRunState.QUEUED),
+            ),
+            runStates(),
+        )
+
+        val drained = requireNotNull(engine.continueNextSlice())
+
+        assertTrue(drained is SliceResult.Completed)
+        assertEquals(SyncMode.RECONCILE, drained.run.mode)
+        assertEquals(
+            listOf(
+                RunState(SyncMode.INITIAL, SyncRunState.SUCCEEDED),
+                RunState(SyncMode.RECONCILE, SyncRunState.SUCCEEDED),
+            ),
+            runStates(),
+        )
+        assertEquals(
+            listOf(SyncMode.INITIAL, SyncMode.INITIAL, SyncMode.RECONCILE),
+            gateway.readModes,
+        )
+        assertEquals(listOf(31L, 32L, 33L), indexedMediaStoreIds())
+    }
+
+    @Test
     fun explicitSelectionChangeSchedulesDurableReconciliation() = runTest {
         val backend = RecordingSyncWorkBackend()
         val coordinator = GallerySyncAccessCoordinator(
@@ -564,6 +732,8 @@ class MediaSyncRunArbitrationTest {
     private class ScriptedGateway(
         private val pages: ArrayDeque<MediaStorePage>,
     ) : MediaStoreGateway {
+        val readModes = mutableListOf<SyncMode>()
+
         override fun externalVolumes(): Set<String> = setOf(VOLUME)
 
         override fun readPage(
@@ -571,7 +741,10 @@ class MediaSyncRunArbitrationTest {
             mode: SyncMode,
             cursor: MediaStoreCursor?,
             limit: Int,
-        ): MediaStorePage = pages.removeFirst()
+        ): MediaStorePage {
+            readModes += mode
+            return pages.removeFirst()
+        }
     }
 
     private class MutablePermissionSource(
