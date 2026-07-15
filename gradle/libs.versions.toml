@@ -19,6 +19,7 @@ junit = "4.13.2"
 androidxTestExtJunit = "1.2.1"
 androidxTestCore = "1.6.1"
 espressoCore = "3.6.1"
+pinyin4j = "2.5.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -66,6 +67,7 @@ androidx-test-core = { group = "androidx.test", name = "core", version.ref = "an
 androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+pinyin4j = { group = "com.belerweb", name = "pinyin4j", version.ref = "pinyin4j" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

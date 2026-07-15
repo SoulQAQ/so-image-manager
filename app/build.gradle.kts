@@ -123,6 +123,7 @@ dependencies {
 
     // Images
     implementation(libs.coil.compose)
+    implementation(libs.pinyin4j)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
