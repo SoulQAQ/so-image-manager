@@ -26,6 +26,7 @@
 - Live fixture averages must stay within 1.5 KiB/image for FTS4 and 4.5 KiB/image for search relations, preserving the full 10 KiB/image live-data ceiling.
 - The deterministic fixture uses 10k, 50k, and 100k subsets; 80% analyzed, 5% long captions, 4-24 tags, 1-4 categories, 4-32 tokens, 20% CJK terms, 10% polyphonic CJK terms, and 10% user corrections/tombstones.
 - Phase 3 contains no provider profile, secret, HTTP client, model request, durable model job, or batch-processing code.
+- Phase 4 handoff priority is OpenAI Responses first; no other provider preset may delay the first AI-capable test APK once OpenAI Responses and the declarative custom protocol pass their shared safety/canonical gates.
 - Ordinary development builds keep published version `0.4.1 / versionCode 7`; version changes occur only through the test-APK publisher.
 
 ---

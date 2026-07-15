@@ -286,6 +286,8 @@ The app ships presets for:
 - Anthropic Messages.
 - Gemini `generateContent`.
 
+Phase 4 implements and accepts OpenAI Responses first. The first AI-capable test APK must prove image input, non-streaming response mapping, canonical validation, custom endpoint/model selection, redacted debugging, quota acquisition, and one-image persistence through this preset before another provider preset can delay the release. Other presets remain in scope, and the declarative custom protocol uses the same transport, limit, credential, quota, and canonical-result boundaries rather than a separate compatibility path.
+
 The generic protocol supports declarative configuration of:
 
 - HTTP method and endpoint path.
