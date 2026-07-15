@@ -30,6 +30,10 @@ class GalleryOnboardingRepository(
         markFlag(PERMISSION_REQUESTED_SETTING_KEY)
     }
 
+    internal suspend fun clearHandled() {
+        appSettingDao.deleteByKey(HANDLED_SETTING_KEY)
+    }
+
     private fun observeFlag(key: String): Flow<Boolean> = appSettingDao.observeByKey(key)
         .map { setting -> setting?.valueJson == ENABLED_VALUE }
         .distinctUntilChanged()

@@ -4,12 +4,22 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import cn.soul2.imageai.data.db.dao.AppSettingDao
+import cn.soul2.imageai.data.db.dao.AnalysisDao
+import cn.soul2.imageai.data.db.dao.EffectiveMetadataDao
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.dao.MediaSyncDao
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
+import cn.soul2.imageai.data.db.entity.ActiveImageAnalysisEntity
+import cn.soul2.imageai.data.db.entity.AnalysisActivationDiagnosticEntity
+import cn.soul2.imageai.data.db.entity.AnalysisTermEntity
+import cn.soul2.imageai.data.db.entity.EffectiveImageMetadataEntity
+import cn.soul2.imageai.data.db.entity.EffectiveImageTermEntity
 import cn.soul2.imageai.data.db.entity.ImageEntity
+import cn.soul2.imageai.data.db.entity.ImageAnalysisEntity
+import cn.soul2.imageai.data.db.entity.ImageUserCorrectionEntity
 import cn.soul2.imageai.data.db.entity.MediaSyncCheckpointEntity
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
+import cn.soul2.imageai.data.db.entity.UserTermOverrideEntity
 
 @Database(
     entities = [
@@ -17,8 +27,16 @@ import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
         ImageEntity::class,
         MediaSyncCheckpointEntity::class,
         MediaSyncRunEntity::class,
+        ImageAnalysisEntity::class,
+        AnalysisTermEntity::class,
+        ActiveImageAnalysisEntity::class,
+        ImageUserCorrectionEntity::class,
+        UserTermOverrideEntity::class,
+        EffectiveImageMetadataEntity::class,
+        EffectiveImageTermEntity::class,
+        AnalysisActivationDiagnosticEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(RoomConverters::class)
@@ -26,4 +44,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun appSettingDao(): AppSettingDao
     abstract fun imageDao(): ImageDao
     abstract fun mediaSyncDao(): MediaSyncDao
+    internal abstract fun analysisDao(): AnalysisDao
+    internal abstract fun effectiveMetadataDao(): EffectiveMetadataDao
 }

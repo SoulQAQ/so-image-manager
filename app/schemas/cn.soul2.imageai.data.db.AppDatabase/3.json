@@ -1,0 +1,970 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 3,
+    "identityHash": "1d92821437cb8fd64a0ae880d5742f0c",
+    "entities": [
+      {
+        "tableName": "app_setting",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`key` TEXT NOT NULL, `value_json` TEXT NOT NULL, `updated_at_epoch_millis` INTEGER NOT NULL, PRIMARY KEY(`key`))",
+        "fields": [
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "valueJson",
+            "columnName": "value_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochMillis",
+            "columnName": "updated_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "key"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "image",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`local_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `volume_name` TEXT NOT NULL, `media_store_id` INTEGER NOT NULL, `content_uri` TEXT NOT NULL, `display_name` TEXT NOT NULL, `mime_type` TEXT NOT NULL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `size_bytes` INTEGER NOT NULL, `captured_at_epoch_millis` INTEGER, `added_at_epoch_millis` INTEGER NOT NULL, `modified_at_epoch_millis` INTEGER NOT NULL, `sort_time_epoch_millis` INTEGER NOT NULL, `bucket_id` INTEGER, `bucket_name` TEXT, `is_favorite` INTEGER NOT NULL, `quick_fingerprint` TEXT NOT NULL, `availability` TEXT NOT NULL, `last_seen_sync_run_id` INTEGER, `missing_candidate_since_epoch_millis` INTEGER, `missing_observation_count` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "localId",
+            "columnName": "local_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "volumeName",
+            "columnName": "volume_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mediaStoreId",
+            "columnName": "media_store_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentUri",
+            "columnName": "content_uri",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mime_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "width",
+            "columnName": "width",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "height",
+            "columnName": "height",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "size_bytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAtEpochMillis",
+            "columnName": "captured_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "addedAtEpochMillis",
+            "columnName": "added_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modifiedAtEpochMillis",
+            "columnName": "modified_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortTimeEpochMillis",
+            "columnName": "sort_time_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bucketId",
+            "columnName": "bucket_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "bucketName",
+            "columnName": "bucket_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isFavorite",
+            "columnName": "is_favorite",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "quickFingerprint",
+            "columnName": "quick_fingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "availability",
+            "columnName": "availability",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenSyncRunId",
+            "columnName": "last_seen_sync_run_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "missingCandidateSinceEpochMillis",
+            "columnName": "missing_candidate_since_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "missingObservationCount",
+            "columnName": "missing_observation_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "local_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_image_volume_name_media_store_id",
+            "unique": true,
+            "columnNames": [
+              "volume_name",
+              "media_store_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_image_volume_name_media_store_id` ON `${TABLE_NAME}` (`volume_name`, `media_store_id`)"
+          },
+          {
+            "name": "index_image_availability_sort_time_epoch_millis_media_store_id",
+            "unique": false,
+            "columnNames": [
+              "availability",
+              "sort_time_epoch_millis",
+              "media_store_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_image_availability_sort_time_epoch_millis_media_store_id` ON `${TABLE_NAME}` (`availability`, `sort_time_epoch_millis`, `media_store_id`)"
+          },
+          {
+            "name": "index_image_bucket_id_availability_sort_time_epoch_millis_media_store_id",
+            "unique": false,
+            "columnNames": [
+              "bucket_id",
+              "availability",
+              "sort_time_epoch_millis",
+              "media_store_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_image_bucket_id_availability_sort_time_epoch_millis_media_store_id` ON `${TABLE_NAME}` (`bucket_id`, `availability`, `sort_time_epoch_millis`, `media_store_id`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "media_sync_checkpoint",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`volume_name` TEXT NOT NULL, `generation` INTEGER, `media_store_version` TEXT, `full_scan_cursor_modified_at_epoch_millis` INTEGER, `full_scan_cursor_media_store_id` INTEGER, `incremental_high_water_modified_at_epoch_millis` INTEGER, `incremental_high_water_media_store_id` INTEGER, `completed_at_epoch_millis` INTEGER, `full_reconciliation_at_epoch_millis` INTEGER, PRIMARY KEY(`volume_name`))",
+        "fields": [
+          {
+            "fieldPath": "volumeName",
+            "columnName": "volume_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "generation",
+            "columnName": "generation",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "mediaStoreVersion",
+            "columnName": "media_store_version",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fullScanCursorModifiedAtEpochMillis",
+            "columnName": "full_scan_cursor_modified_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fullScanCursorMediaStoreId",
+            "columnName": "full_scan_cursor_media_store_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "incrementalHighWaterModifiedAtEpochMillis",
+            "columnName": "incremental_high_water_modified_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "incrementalHighWaterMediaStoreId",
+            "columnName": "incremental_high_water_media_store_id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "completedAtEpochMillis",
+            "columnName": "completed_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fullReconciliationAtEpochMillis",
+            "columnName": "full_reconciliation_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "volume_name"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "media_sync_run",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`run_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `mode` TEXT NOT NULL, `state` TEXT NOT NULL, `current_volume_name` TEXT, `discovered_count` INTEGER NOT NULL, `indexed_count` INTEGER NOT NULL, `unavailable_count` INTEGER NOT NULL, `error_code` TEXT, `error_message` TEXT, `started_at_epoch_millis` INTEGER NOT NULL, `updated_at_epoch_millis` INTEGER NOT NULL, `completed_at_epoch_millis` INTEGER)",
+        "fields": [
+          {
+            "fieldPath": "runId",
+            "columnName": "run_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "currentVolumeName",
+            "columnName": "current_volume_name",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "discoveredCount",
+            "columnName": "discovered_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "indexedCount",
+            "columnName": "indexed_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unavailableCount",
+            "columnName": "unavailable_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "errorCode",
+            "columnName": "error_code",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "error_message",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "startedAtEpochMillis",
+            "columnName": "started_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochMillis",
+            "columnName": "updated_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedAtEpochMillis",
+            "columnName": "completed_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "run_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "image_analysis",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`analysis_id` TEXT NOT NULL, `image_local_id` INTEGER NOT NULL, `schema_version` INTEGER NOT NULL, `caption` TEXT NOT NULL, `extension_json` TEXT, `content_hash` TEXT NOT NULL, `provider_profile_id` TEXT NOT NULL, `model_profile_id` TEXT NOT NULL, `protocol_definition_id` TEXT NOT NULL, `prompt_template_id` TEXT NOT NULL, `created_at_epoch_millis` INTEGER NOT NULL, `completed_at_epoch_millis` INTEGER NOT NULL, PRIMARY KEY(`analysis_id`), FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "analysisId",
+            "columnName": "analysis_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageLocalId",
+            "columnName": "image_local_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schema_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "caption",
+            "columnName": "caption",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "extensionJson",
+            "columnName": "extension_json",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "contentHash",
+            "columnName": "content_hash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "providerProfileId",
+            "columnName": "provider_profile_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "modelProfileId",
+            "columnName": "model_profile_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "protocolDefinitionId",
+            "columnName": "protocol_definition_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "promptTemplateId",
+            "columnName": "prompt_template_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtEpochMillis",
+            "columnName": "created_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedAtEpochMillis",
+            "columnName": "completed_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "analysis_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_image_analysis_image_local_id_completed_at_epoch_millis",
+            "unique": false,
+            "columnNames": [
+              "image_local_id",
+              "completed_at_epoch_millis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_image_analysis_image_local_id_completed_at_epoch_millis` ON `${TABLE_NAME}` (`image_local_id`, `completed_at_epoch_millis`)"
+          },
+          {
+            "name": "index_image_analysis_analysis_id_image_local_id",
+            "unique": true,
+            "columnNames": [
+              "analysis_id",
+              "image_local_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_image_analysis_analysis_id_image_local_id` ON `${TABLE_NAME}` (`analysis_id`, `image_local_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "image",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "image_local_id"
+            ],
+            "referencedColumns": [
+              "local_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "analysis_term",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`analysis_id` TEXT NOT NULL, `kind` TEXT NOT NULL, `normalized_key` TEXT NOT NULL, `display_value` TEXT NOT NULL, `confidence` REAL, PRIMARY KEY(`analysis_id`, `kind`, `normalized_key`), FOREIGN KEY(`analysis_id`) REFERENCES `image_analysis`(`analysis_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "analysisId",
+            "columnName": "analysis_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedKey",
+            "columnName": "normalized_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayValue",
+            "columnName": "display_value",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "REAL",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "analysis_id",
+            "kind",
+            "normalized_key"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_analysis_term_analysis_id",
+            "unique": false,
+            "columnNames": [
+              "analysis_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_analysis_term_analysis_id` ON `${TABLE_NAME}` (`analysis_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "image_analysis",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analysis_id"
+            ],
+            "referencedColumns": [
+              "analysis_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "active_image_analysis",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`image_local_id` INTEGER NOT NULL, `analysis_id` TEXT NOT NULL, PRIMARY KEY(`image_local_id`), FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`analysis_id`, `image_local_id`) REFERENCES `image_analysis`(`analysis_id`, `image_local_id`) ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED)",
+        "fields": [
+          {
+            "fieldPath": "imageLocalId",
+            "columnName": "image_local_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analysisId",
+            "columnName": "analysis_id",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "image_local_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_active_image_analysis_analysis_id_image_local_id",
+            "unique": false,
+            "columnNames": [
+              "analysis_id",
+              "image_local_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_active_image_analysis_analysis_id_image_local_id` ON `${TABLE_NAME}` (`analysis_id`, `image_local_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "image",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "image_local_id"
+            ],
+            "referencedColumns": [
+              "local_id"
+            ]
+          },
+          {
+            "table": "image_analysis",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analysis_id",
+              "image_local_id"
+            ],
+            "referencedColumns": [
+              "analysis_id",
+              "image_local_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "image_user_correction",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`image_local_id` INTEGER NOT NULL, `caption_mode` TEXT NOT NULL, `caption_value` TEXT, `revision` INTEGER NOT NULL, `updated_at_epoch_millis` INTEGER NOT NULL, PRIMARY KEY(`image_local_id`), FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "imageLocalId",
+            "columnName": "image_local_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "captionMode",
+            "columnName": "caption_mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "captionValue",
+            "columnName": "caption_value",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochMillis",
+            "columnName": "updated_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "image_local_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "image",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "image_local_id"
+            ],
+            "referencedColumns": [
+              "local_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "user_term_override",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`image_local_id` INTEGER NOT NULL, `kind` TEXT NOT NULL, `normalized_key` TEXT NOT NULL, `action` TEXT NOT NULL, `display_value` TEXT, `revision` INTEGER NOT NULL, `updated_at_epoch_millis` INTEGER NOT NULL, PRIMARY KEY(`image_local_id`, `kind`, `normalized_key`), FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "imageLocalId",
+            "columnName": "image_local_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedKey",
+            "columnName": "normalized_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "action",
+            "columnName": "action",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayValue",
+            "columnName": "display_value",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochMillis",
+            "columnName": "updated_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "image_local_id",
+            "kind",
+            "normalized_key"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_user_term_override_image_local_id",
+            "unique": false,
+            "columnNames": [
+              "image_local_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_user_term_override_image_local_id` ON `${TABLE_NAME}` (`image_local_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "image",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "image_local_id"
+            ],
+            "referencedColumns": [
+              "local_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "effective_image_metadata",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`image_local_id` INTEGER NOT NULL, `caption` TEXT, `caption_source` TEXT NOT NULL, `projection_generation` INTEGER NOT NULL, `updated_at_epoch_millis` INTEGER NOT NULL, PRIMARY KEY(`image_local_id`), FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "imageLocalId",
+            "columnName": "image_local_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "caption",
+            "columnName": "caption",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "captionSource",
+            "columnName": "caption_source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "projectionGeneration",
+            "columnName": "projection_generation",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtEpochMillis",
+            "columnName": "updated_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "image_local_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "image",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "image_local_id"
+            ],
+            "referencedColumns": [
+              "local_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "effective_image_term",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`image_local_id` INTEGER NOT NULL, `kind` TEXT NOT NULL, `normalized_key` TEXT NOT NULL, `display_value` TEXT NOT NULL, `source` TEXT NOT NULL, `confidence` REAL, `source_analysis_id` TEXT, PRIMARY KEY(`image_local_id`, `kind`, `normalized_key`), FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`source_analysis_id`, `image_local_id`) REFERENCES `image_analysis`(`analysis_id`, `image_local_id`) ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED)",
+        "fields": [
+          {
+            "fieldPath": "imageLocalId",
+            "columnName": "image_local_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "normalizedKey",
+            "columnName": "normalized_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayValue",
+            "columnName": "display_value",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "REAL",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sourceAnalysisId",
+            "columnName": "source_analysis_id",
+            "affinity": "TEXT",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "image_local_id",
+            "kind",
+            "normalized_key"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_effective_image_term_kind_normalized_key_image_local_id",
+            "unique": false,
+            "columnNames": [
+              "kind",
+              "normalized_key",
+              "image_local_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_effective_image_term_kind_normalized_key_image_local_id` ON `${TABLE_NAME}` (`kind`, `normalized_key`, `image_local_id`)"
+          },
+          {
+            "name": "index_effective_image_term_source_analysis_id_image_local_id",
+            "unique": false,
+            "columnNames": [
+              "source_analysis_id",
+              "image_local_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_effective_image_term_source_analysis_id_image_local_id` ON `${TABLE_NAME}` (`source_analysis_id`, `image_local_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "image",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "image_local_id"
+            ],
+            "referencedColumns": [
+              "local_id"
+            ]
+          },
+          {
+            "table": "image_analysis",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "source_analysis_id",
+              "image_local_id"
+            ],
+            "referencedColumns": [
+              "analysis_id",
+              "image_local_id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "analysis_activation_diagnostic",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`analysis_id` TEXT NOT NULL, `code` TEXT NOT NULL, `detail` TEXT, `updated_at_epoch_millis` INTEGER NOT NULL, PRIMARY KEY(`analysis_id`), FOREIGN KEY(`analysis_id`) REFERENCES `image_analysis`(`analysis_id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "analysisId",
+            "columnName": "analysis_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "code",
+            "columnName": "code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "detail",
+            "columnName": "detail",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "updatedAtEpochMillis",
+            "columnName": "updated_at_epoch_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "analysis_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "image_analysis",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "analysis_id"
+            ],
+            "referencedColumns": [
+              "analysis_id"
+            ]
+          }
+        ]
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1d92821437cb8fd64a0ae880d5742f0c')"
+    ]
+  }
+}

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import cn.soul2.imageai.SoImApplication
+import cn.soul2.imageai.runCanonicalRetentionMaintenance
 
 enum class WorkerDirective {
     SUCCESS,
@@ -42,6 +43,9 @@ class MediaSyncWorker(
     override suspend fun doWork(): Result {
         val container = (applicationContext.applicationContext as SoImApplication).container
         if (inputData.getBoolean(INPUT_PERIODIC_TRIGGER, false)) {
+            runCanonicalRetentionMaintenance(
+                cleanup = { container.canonicalMetadataRepository.enforceRetention() },
+            )
             container.mediaSyncScheduler.requestReconciliation()
             return Result.success()
         }

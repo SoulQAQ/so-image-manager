@@ -2,6 +2,7 @@ package cn.soul2.imageai
 
 import android.content.Context
 import androidx.work.WorkManager
+import cn.soul2.imageai.analysis.CanonicalMetadataRepository
 import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.data.db.AppDatabaseFactory
 import cn.soul2.imageai.gallery.GalleryRepository
@@ -26,8 +27,12 @@ class AppContainer(
 ) {
     private val applicationContext = context.applicationContext
 
-    val database: AppDatabase = AppDatabaseFactory.create(applicationContext)
-    val galleryRepository: GalleryRepository = RoomGalleryRepository(database.imageDao())
+    private val database: AppDatabase = AppDatabaseFactory.create(applicationContext)
+    val canonicalMetadataRepository = CanonicalMetadataRepository(database)
+    val galleryRepository: GalleryRepository = RoomGalleryRepository(
+        database.imageDao(),
+        canonicalMetadataRepository,
+    )
     val gallerySyncRuns = database.mediaSyncDao().observeCurrentRun()
     val galleryLastSyncCompletedAt = database.mediaSyncDao().observeLastCompletedAt()
     val galleryUnavailableCounts = database.imageDao().observeUnavailableCount()
@@ -52,4 +57,8 @@ class AppContainer(
         scheduler = mediaSyncScheduler,
         scope = processScope,
     )
+
+    internal suspend fun cleanupLegacyDatabaseIfNeeded() {
+        AppDatabaseFactory.cleanupLegacyDatabaseIfNeeded(applicationContext, database)
+    }
 }

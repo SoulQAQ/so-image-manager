@@ -29,13 +29,7 @@ class AppShellTest {
             composeRule.activityRule.scenario.recreate()
             composeRule.onNodeWithTag("screen_settings").assertIsDisplayed()
         } finally {
-            runBlocking {
-                container.database.appSettingDao().deleteByKey(GALLERY_ONBOARDING_KEY)
-            }
+            runBlocking { container.galleryOnboardingRepository.clearHandled() }
         }
-    }
-
-    private companion object {
-        const val GALLERY_ONBOARDING_KEY = "onboarding.gallery_permission_handled"
     }
 }

@@ -85,4 +85,141 @@ object AppDatabaseMigrations {
             )
         }
     }
+
+    val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            listOf(
+                """
+                CREATE TABLE IF NOT EXISTS `image_analysis` (
+                    `analysis_id` TEXT NOT NULL,
+                    `image_local_id` INTEGER NOT NULL,
+                    `schema_version` INTEGER NOT NULL,
+                    `caption` TEXT NOT NULL,
+                    `extension_json` TEXT,
+                    `content_hash` TEXT NOT NULL,
+                    `provider_profile_id` TEXT NOT NULL,
+                    `model_profile_id` TEXT NOT NULL,
+                    `protocol_definition_id` TEXT NOT NULL,
+                    `prompt_template_id` TEXT NOT NULL,
+                    `created_at_epoch_millis` INTEGER NOT NULL,
+                    `completed_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`analysis_id`),
+                    FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS " +
+                    "`index_image_analysis_image_local_id_completed_at_epoch_millis` " +
+                    "ON `image_analysis` (`image_local_id`, `completed_at_epoch_millis`)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "`index_image_analysis_analysis_id_image_local_id` " +
+                    "ON `image_analysis` (`analysis_id`, `image_local_id`)",
+                """
+                CREATE TABLE IF NOT EXISTS `analysis_term` (
+                    `analysis_id` TEXT NOT NULL,
+                    `kind` TEXT NOT NULL,
+                    `normalized_key` TEXT NOT NULL,
+                    `display_value` TEXT NOT NULL,
+                    `confidence` REAL,
+                    PRIMARY KEY(`analysis_id`, `kind`, `normalized_key`),
+                    FOREIGN KEY(`analysis_id`) REFERENCES `image_analysis`(`analysis_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS `index_analysis_term_analysis_id` " +
+                    "ON `analysis_term` (`analysis_id`)",
+                """
+                CREATE TABLE IF NOT EXISTS `active_image_analysis` (
+                    `image_local_id` INTEGER NOT NULL,
+                    `analysis_id` TEXT NOT NULL,
+                    PRIMARY KEY(`image_local_id`),
+                    FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`analysis_id`, `image_local_id`)
+                        REFERENCES `image_analysis`(`analysis_id`, `image_local_id`)
+                        ON UPDATE NO ACTION ON DELETE NO ACTION
+                        DEFERRABLE INITIALLY DEFERRED
+                )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS " +
+                    "`index_active_image_analysis_analysis_id_image_local_id` " +
+                    "ON `active_image_analysis` (`analysis_id`, `image_local_id`)",
+                """
+                CREATE TABLE IF NOT EXISTS `image_user_correction` (
+                    `image_local_id` INTEGER NOT NULL,
+                    `caption_mode` TEXT NOT NULL,
+                    `caption_value` TEXT,
+                    `revision` INTEGER NOT NULL,
+                    `updated_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`image_local_id`),
+                    FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+                """
+                CREATE TABLE IF NOT EXISTS `user_term_override` (
+                    `image_local_id` INTEGER NOT NULL,
+                    `kind` TEXT NOT NULL,
+                    `normalized_key` TEXT NOT NULL,
+                    `action` TEXT NOT NULL,
+                    `display_value` TEXT,
+                    `revision` INTEGER NOT NULL,
+                    `updated_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`image_local_id`, `kind`, `normalized_key`),
+                    FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS `index_user_term_override_image_local_id` " +
+                    "ON `user_term_override` (`image_local_id`)",
+                """
+                CREATE TABLE IF NOT EXISTS `effective_image_metadata` (
+                    `image_local_id` INTEGER NOT NULL,
+                    `caption` TEXT,
+                    `caption_source` TEXT NOT NULL,
+                    `projection_generation` INTEGER NOT NULL,
+                    `updated_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`image_local_id`),
+                    FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+                """
+                CREATE TABLE IF NOT EXISTS `effective_image_term` (
+                    `image_local_id` INTEGER NOT NULL,
+                    `kind` TEXT NOT NULL,
+                    `normalized_key` TEXT NOT NULL,
+                    `display_value` TEXT NOT NULL,
+                    `source` TEXT NOT NULL,
+                    `confidence` REAL,
+                    `source_analysis_id` TEXT,
+                    PRIMARY KEY(`image_local_id`, `kind`, `normalized_key`),
+                    FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`source_analysis_id`, `image_local_id`)
+                        REFERENCES `image_analysis`(`analysis_id`, `image_local_id`)
+                        ON UPDATE NO ACTION ON DELETE NO ACTION
+                        DEFERRABLE INITIALLY DEFERRED
+                )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS " +
+                    "`index_effective_image_term_kind_normalized_key_image_local_id` " +
+                    "ON `effective_image_term` (`kind`, `normalized_key`, `image_local_id`)",
+                "CREATE INDEX IF NOT EXISTS " +
+                    "`index_effective_image_term_source_analysis_id_image_local_id` " +
+                    "ON `effective_image_term` (`source_analysis_id`, `image_local_id`)",
+                """
+                CREATE TABLE IF NOT EXISTS `analysis_activation_diagnostic` (
+                    `analysis_id` TEXT NOT NULL,
+                    `code` TEXT NOT NULL,
+                    `detail` TEXT,
+                    `updated_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`analysis_id`),
+                    FOREIGN KEY(`analysis_id`) REFERENCES `image_analysis`(`analysis_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            ).forEach(database::execSQL)
+        }
+    }
 }

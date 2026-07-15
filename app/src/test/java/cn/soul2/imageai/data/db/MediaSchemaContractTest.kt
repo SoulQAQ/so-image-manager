@@ -129,6 +129,57 @@ class MediaSchemaContractTest {
     }
 
     @Test
+    fun versionThreeExportsCanonicalProjectionWithoutPhaseThreeSearchTables() {
+        val schema = schemaFile(version = 3)
+        assertTrue("Room schema v3 must be exported", schema.isFile)
+
+        val text = schema.readText()
+        assertTrue(Regex("\\\"version\\\"\\s*:\\s*3").containsMatchIn(text))
+        assertEquals(
+            setOf(
+                "app_setting",
+                "image",
+                "media_sync_checkpoint",
+                "media_sync_run",
+                "image_analysis",
+                "analysis_term",
+                "active_image_analysis",
+                "image_user_correction",
+                "user_term_override",
+                "effective_image_metadata",
+                "effective_image_term",
+                "analysis_activation_diagnostic",
+            ),
+            Regex("\\\"tableName\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
+                .findAll(text)
+                .map { it.groupValues[1] }
+                .toSet(),
+        )
+
+        val active = entityObject(text, "active_image_analysis")
+        assertTrue(active.contains("analysis_id"))
+        assertTrue(active.contains("image_local_id"))
+        assertTrue(active.contains("ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED"))
+        assertTrue(active.contains("ON UPDATE NO ACTION ON DELETE CASCADE"))
+
+        val effectiveTerms = entityObject(text, "effective_image_term")
+        assertTrue(effectiveTerms.contains("source_analysis_id"))
+        assertTrue(effectiveTerms.contains("ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED"))
+
+        listOf(
+            "search_document",
+            "image_search_term",
+            "search_term_alias",
+            "search_text_alias_chunk",
+            "search_gram",
+            "fts4",
+            "fts5",
+        ).forEach { forbidden ->
+            assertFalse("Phase 3 schema leaked into v3: $forbidden", text.contains(forbidden, true))
+        }
+    }
+
+    @Test
     fun migrationOneToTwoCreatesSeparatedFullScanAndIncrementalCursors() {
         val source = projectFile(
             "app/src/main/java/cn/soul2/imageai/data/db/AppDatabaseMigrations.kt",

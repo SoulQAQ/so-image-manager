@@ -4,12 +4,17 @@ import android.app.Application
 import androidx.paging.testing.asSnapshot
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import cn.soul2.imageai.analysis.EffectiveImageMetadata
+import cn.soul2.imageai.analysis.EffectiveMetadataReader
 import cn.soul2.imageai.data.db.AppDatabase
+import cn.soul2.imageai.data.db.entity.EffectiveCaptionSource
 import cn.soul2.imageai.data.db.entity.ImageAvailability
 import cn.soul2.imageai.data.db.entity.ImageEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -172,6 +177,28 @@ class RoomGalleryRepositoryTest {
         assertEquals(null, unavailableDetail)
         collection.join()
         details.close()
+    }
+
+    @Test
+    fun effectiveMetadataDelegatesToTheInjectedCanonicalReader() = runTest {
+        val expected = EffectiveImageMetadata(
+            imageLocalId = 8L,
+            activeAnalysis = null,
+            caption = null,
+            captionSource = EffectiveCaptionSource.NONE,
+            projectionGeneration = 3L,
+            updatedAtEpochMillis = 100L,
+            terms = emptyList(),
+            captionCorrection = null,
+            termOverrides = emptyList(),
+            history = emptyList(),
+        )
+        val repositoryWithReader = RoomGalleryRepository(
+            database.imageDao(),
+            EffectiveMetadataReader { flowOf(expected) },
+        )
+
+        assertEquals(expected, repositoryWithReader.observeEffectiveMetadata(8L).first())
     }
 
     private fun image(

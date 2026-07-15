@@ -45,4 +45,25 @@ class SoImApplicationMaintenanceTest {
         assertFalse(warnings.single().contains("sensitive"))
         scope.cancel()
     }
+
+    @Test
+    fun canonicalRetentionFailureWaitsForLaterMaintenanceWithoutCancellingScope() = runTest {
+        val warnings = mutableListOf<String>()
+        val supervisor = SupervisorJob()
+        val scope = CoroutineScope(supervisor + StandardTestDispatcher(testScheduler))
+
+        val cleanup = launchCanonicalRetentionMaintenance(
+            scope = scope,
+            cleanup = { error("database detail must not leak") },
+            logWarning = warnings::add,
+        )
+
+        advanceUntilIdle()
+
+        assertTrue(cleanup.isCompleted)
+        assertTrue(supervisor.isActive)
+        assertEquals(listOf("Canonical analysis retention will retry later"), warnings)
+        assertFalse(warnings.single().contains("database detail"))
+        scope.cancel()
+    }
 }

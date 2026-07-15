@@ -353,22 +353,35 @@ function Test-LatestRoomSchema {
         throw "No exported Room schema found"
     }
     $latest = $schemaFiles | Sort-Object { [int] $_.BaseName } -Descending | Select-Object -First 1
-    if ($latest.BaseName -cne "2") {
-        throw "Latest Room schema filename must be 2.json"
+    if ($latest.BaseName -cne "3") {
+        throw "Latest Room schema filename must be 3.json"
     }
     $schemaBytes = [IO.File]::ReadAllBytes($latest.FullName)
     $schemaText = [Text.Encoding]::UTF8.GetString($schemaBytes)
     $schema = $schemaText | ConvertFrom-Json
-    if ([int] $schema.database.version -ne 2) {
-        throw "Latest Room schema database version must be 2"
+    if ([int] $schema.database.version -ne 3) {
+        throw "Latest Room schema database version must be 3"
     }
     $tables = @($schema.database.entities | ForEach-Object { $_.tableName } | Sort-Object)
-    $expected = @("app_setting", "image", "media_sync_checkpoint", "media_sync_run" | Sort-Object)
+    $expected = @(
+        "active_image_analysis",
+        "analysis_activation_diagnostic",
+        "analysis_term",
+        "app_setting",
+        "effective_image_metadata",
+        "effective_image_term",
+        "image",
+        "image_analysis",
+        "image_user_correction",
+        "media_sync_checkpoint",
+        "media_sync_run",
+        "user_term_override"
+    ) | Sort-Object
     if (($tables -join "|") -cne ($expected -join "|")) {
         throw "Unexpected Room schema tables: $($tables -join ', ')"
     }
-    if ($schemaText -match "(?i)(fts5|image_fts|canonical)") {
-        throw "Out-of-scope FTS or canonical schema detected"
+    if ($schemaText -match "(?i)(fts5|image_fts|search_document|search_gram|search_term_alias|search_text_alias_chunk)") {
+        throw "Out-of-scope Phase 3 search schema detected"
     }
 }
 

@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_1_2
+import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_2_3
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -36,6 +37,7 @@ class AppDatabaseMigrationTest {
     @After
     fun cleanUpDatabases() {
         context.deleteDatabase(TEST_DATABASE)
+        context.deleteDatabase(FRESH_DATABASE)
         context.deleteDatabase(LEGACY_DATABASE)
     }
 
@@ -69,6 +71,105 @@ class AppDatabaseMigrationTest {
             } catch (_: SQLiteConstraintException) {
                 // Expected: (volume_name, media_store_id) is the external identity.
             }
+        }
+    }
+
+    @Test
+    fun migrationTwoToThreePreservesMediaAndEnforcesSameImageActiveAnalysis() {
+        migrationHelper.createDatabase(TEST_DATABASE, 2).apply {
+            execSQL(
+                "INSERT INTO app_setting (`key`, value_json, updated_at_epoch_millis) " +
+                    "VALUES ('appearance.theme', '\"system\"', 1720598400000)",
+            )
+            insertImage(this, mediaStoreId = 41L, contentUri = "content://media/41")
+            insertImage(this, mediaStoreId = 42L, contentUri = "content://media/42")
+            insertImage(
+                this,
+                mediaStoreId = 43L,
+                contentUri = "content://media/43",
+                availability = "PERMISSION_REVOKED",
+            )
+            execSQL(
+                "INSERT INTO media_sync_checkpoint " +
+                    "(volume_name, generation, media_store_version, " +
+                    "full_scan_cursor_modified_at_epoch_millis, full_scan_cursor_media_store_id, " +
+                    "incremental_high_water_modified_at_epoch_millis, " +
+                    "incremental_high_water_media_store_id, completed_at_epoch_millis, " +
+                    "full_reconciliation_at_epoch_millis) " +
+                    "VALUES ('external', 7, 'v7', 100, 41, 200, 42, 300, 400)",
+            )
+            execSQL(
+                "INSERT INTO media_sync_run " +
+                    "(mode, state, current_volume_name, discovered_count, indexed_count, " +
+                    "unavailable_count, error_code, error_message, started_at_epoch_millis, " +
+                    "updated_at_epoch_millis, completed_at_epoch_millis) " +
+                    "VALUES ('RECONCILE', 'COMPLETED', 'external', 3, 2, 1, NULL, NULL, " +
+                    "100, 200, 300)",
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            3,
+            true,
+            MIGRATION_2_3,
+        ).use { database ->
+            assertEquals(3, queryCount(database, "image"))
+            assertEquals(1, queryCount(database, "app_setting"))
+            assertEquals(1, queryCount(database, "media_sync_checkpoint"))
+            assertEquals(1, queryCount(database, "media_sync_run"))
+            database.query(
+                "SELECT availability FROM image WHERE media_store_id = 43",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals("PERMISSION_REVOKED", cursor.getString(0))
+            }
+            val firstImageId = queryImageLocalId(database, 41L)
+            val secondImageId = queryImageLocalId(database, 42L)
+            insertAnalysis(database, ANALYSIS_ID, firstImageId)
+
+            try {
+                database.execSQL(
+                    "INSERT INTO active_image_analysis (image_local_id, analysis_id) VALUES (?, ?)",
+                    arrayOf(secondImageId, ANALYSIS_ID),
+                )
+                throw AssertionError("An analysis cannot become active for another image")
+            } catch (_: SQLiteConstraintException) {
+                // Expected: the composite FK binds the pointer to the analysis image.
+            }
+
+            database.execSQL(
+                "INSERT INTO active_image_analysis (image_local_id, analysis_id) VALUES (?, ?)",
+                arrayOf(firstImageId, ANALYSIS_ID),
+            )
+            assertEquals(1, queryCount(database, "active_image_analysis"))
+        }
+    }
+
+    @Test
+    fun migrationOneToThreeRunsTheFullChainAndMatchesFreshCascadeBehavior() {
+        migrationHelper.createDatabase(TEST_DATABASE, 1).apply {
+            execSQL(
+                "INSERT INTO app_setting (`key`, value_json, updated_at_epoch_millis) " +
+                    "VALUES ('appearance.theme', '\"system\"', 1720598400000)",
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            3,
+            true,
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+        ).use { migrated ->
+            assertEquals(1, queryCount(migrated, "app_setting"))
+            assertCanonicalGraphCascadesWithImage(migrated, mediaStoreId = 101L)
+        }
+
+        migrationHelper.createDatabase(FRESH_DATABASE, 3).use { fresh ->
+            assertCanonicalGraphCascadesWithImage(fresh, mediaStoreId = 202L)
         }
     }
 
@@ -196,6 +297,7 @@ class AppDatabaseMigrationTest {
         database: SupportSQLiteDatabase,
         mediaStoreId: Long,
         contentUri: String,
+        availability: String = "AVAILABLE",
     ) {
         database.execSQL(
             """
@@ -225,7 +327,7 @@ class AppDatabaseMigrationTest {
                 null,
                 0,
                 "1024:200",
-                "AVAILABLE",
+                availability,
                 null,
                 null,
                 0,
@@ -233,10 +335,113 @@ class AppDatabaseMigrationTest {
         )
     }
 
+    private fun insertAnalysis(
+        database: SupportSQLiteDatabase,
+        analysisId: String,
+        imageLocalId: Long,
+    ) {
+        database.execSQL(
+            """
+            INSERT INTO image_analysis (
+                analysis_id, image_local_id, schema_version, caption, extension_json,
+                content_hash, provider_profile_id, model_profile_id,
+                protocol_definition_id, prompt_template_id,
+                created_at_epoch_millis, completed_at_epoch_millis
+            ) VALUES (?, ?, 1, 'caption', NULL, 'HASH', 'provider', 'model',
+                'protocol', 'prompt', 10, 20)
+            """.trimIndent(),
+            arrayOf(analysisId, imageLocalId),
+        )
+    }
+
+    private fun assertCanonicalGraphCascadesWithImage(
+        database: SupportSQLiteDatabase,
+        mediaStoreId: Long,
+    ) {
+        insertImage(
+            database,
+            mediaStoreId = mediaStoreId,
+            contentUri = "content://media/$mediaStoreId",
+        )
+        val imageLocalId = queryImageLocalId(database, mediaStoreId)
+        val analysisId = "123e4567-e89b-12d3-a456-${mediaStoreId.toString().padStart(12, '0')}"
+        insertAnalysis(database, analysisId, imageLocalId)
+        database.execSQL(
+            "INSERT INTO analysis_term " +
+                "(analysis_id, kind, normalized_key, display_value, confidence) " +
+                "VALUES (?, 'TAG', 'cat', 'Cat', 0.8)",
+            arrayOf(analysisId),
+        )
+        database.execSQL(
+            "INSERT INTO active_image_analysis (image_local_id, analysis_id) VALUES (?, ?)",
+            arrayOf(imageLocalId, analysisId),
+        )
+        database.execSQL(
+            "INSERT INTO image_user_correction " +
+                "(image_local_id, caption_mode, caption_value, revision, updated_at_epoch_millis) " +
+                "VALUES (?, 'SET', 'User caption', 1, 30)",
+            arrayOf(imageLocalId),
+        )
+        database.execSQL(
+            "INSERT INTO user_term_override " +
+                "(image_local_id, kind, normalized_key, action, display_value, revision, " +
+                "updated_at_epoch_millis) VALUES (?, 'TAG', 'favorite', 'ADD', 'Favorite', 1, 30)",
+            arrayOf(imageLocalId),
+        )
+        database.execSQL(
+            "INSERT INTO effective_image_metadata " +
+                "(image_local_id, caption, caption_source, projection_generation, " +
+                "updated_at_epoch_millis) VALUES (?, 'User caption', 'USER', 1, 30)",
+            arrayOf(imageLocalId),
+        )
+        database.execSQL(
+            "INSERT INTO effective_image_term " +
+                "(image_local_id, kind, normalized_key, display_value, source, confidence, " +
+                "source_analysis_id) VALUES (?, 'TAG', 'cat', 'Cat', 'AI', 0.8, ?)",
+            arrayOf(imageLocalId, analysisId),
+        )
+        database.execSQL(
+            "INSERT INTO analysis_activation_diagnostic " +
+                "(analysis_id, code, detail, updated_at_epoch_millis) " +
+                "VALUES (?, 'SEARCH_INDEX_LIMIT', 'fixture', 30)",
+            arrayOf(analysisId),
+        )
+
+        database.execSQL("DELETE FROM image WHERE local_id = ?", arrayOf(imageLocalId))
+
+        listOf(
+            "image_analysis",
+            "analysis_term",
+            "active_image_analysis",
+            "image_user_correction",
+            "user_term_override",
+            "effective_image_metadata",
+            "effective_image_term",
+            "analysis_activation_diagnostic",
+        ).forEach { table -> assertEquals("Orphaned rows in $table", 0, queryCount(database, table)) }
+    }
+
+    private fun queryCount(database: SupportSQLiteDatabase, table: String): Int =
+        database.query("SELECT COUNT(*) FROM `$table`").use { cursor ->
+            check(cursor.moveToFirst())
+            cursor.getInt(0)
+        }
+
+    private fun queryImageLocalId(database: SupportSQLiteDatabase, mediaStoreId: Long): Long =
+        database.query(
+            "SELECT local_id FROM image WHERE media_store_id = ?",
+            arrayOf(mediaStoreId),
+        ).use { cursor ->
+            check(cursor.moveToFirst())
+            cursor.getLong(0)
+        }
+
     private companion object {
         const val TEST_DATABASE = "task-2-migration-test.db"
+        const val FRESH_DATABASE = "task-2-fresh-schema-test.db"
         const val LEGACY_DATABASE = "image_ai.db"
         const val LEGACY_MARKER = "maintenance.legacy_database_cleaned"
+        const val ANALYSIS_ID = "123e4567-e89b-12d3-a456-426614174000"
     }
 
     private class LegacyCleanupContext(

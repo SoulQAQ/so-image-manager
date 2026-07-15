@@ -231,16 +231,18 @@ class PublishContractTest {
     }
 
     @Test
-    fun latestRoomSchemaIsPinnedToVersionTwo() {
+    fun latestRoomSchemaIsPinnedToVersionThreeCanonicalFoundation() {
         val schema = scriptText().substringAfter("function Test-LatestRoomSchema")
             .substringBefore("function Get-ApkSha256")
 
-        assertTrue(schema.contains("\$latest.BaseName -cne \"2\""))
-        assertTrue(schema.contains("[int] \$schema.database.version -ne 2"))
+        assertTrue(schema.contains("\$latest.BaseName -cne \"3\""))
+        assertTrue(schema.contains("[int] \$schema.database.version -ne 3"))
         assertTrue(schema.contains("app_setting"))
         assertTrue(schema.contains("media_sync_checkpoint"))
         assertTrue(schema.contains("media_sync_run"))
-        assertTrue(schema.contains("fts5|image_fts|canonical"))
+        assertTrue(schema.contains("image_analysis"))
+        assertTrue(schema.contains("effective_image_term"))
+        assertTrue(schema.contains("fts5|image_fts|search_document"))
     }
 
     @Test

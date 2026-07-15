@@ -4,6 +4,8 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.map
+import cn.soul2.imageai.analysis.EffectiveImageMetadata
+import cn.soul2.imageai.analysis.EffectiveMetadataReader
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.entity.ImageEntity
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +18,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomGalleryRepository(
     private val imageDao: ImageDao,
+    private val effectiveMetadataReader: EffectiveMetadataReader = EffectiveMetadataReader.Empty,
 ) : GalleryRepository {
     override fun observe(query: GalleryQuery): Flow<PagingData<GalleryImage>> = Pager(
         config = PAGING_CONFIG,
@@ -31,6 +34,9 @@ class RoomGalleryRepository(
 
     override fun observeImage(localId: Long): Flow<GalleryImage?> =
         imageDao.observeAvailableById(localId).map { entity -> entity?.toGalleryImage() }
+
+    override fun observeEffectiveMetadata(localId: Long): Flow<EffectiveImageMetadata?> =
+        effectiveMetadataReader.observeEffectiveMetadata(localId)
 
     override fun observeImageWindow(localId: Long): Flow<GalleryImageWindow?> =
         imageDao.observeAvailableById(localId).flatMapLatest { current ->

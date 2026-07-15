@@ -2,7 +2,6 @@ package cn.soul2.imageai
 
 import android.app.Application
 import android.util.Log
-import cn.soul2.imageai.data.db.AppDatabaseFactory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,12 +22,11 @@ class SoImApplication : Application() {
         container.mediaSyncScheduler.ensurePeriodicReconciliation()
         launchLegacyDatabaseCleanup(
             scope = processIoScope,
-            cleanup = {
-                AppDatabaseFactory.cleanupLegacyDatabaseIfNeeded(
-                    this@SoImApplication,
-                    container.database,
-                )
-            },
+            cleanup = container::cleanupLegacyDatabaseIfNeeded,
+        )
+        launchCanonicalRetentionMaintenance(
+            scope = processIoScope,
+            cleanup = { container.canonicalMetadataRepository.enforceRetention() },
         )
     }
 }
@@ -44,5 +42,26 @@ internal fun launchLegacyDatabaseCleanup(
         throw error
     } catch (_: Throwable) {
         logWarning("Legacy database cleanup failed; will retry")
+    }
+}
+
+internal fun launchCanonicalRetentionMaintenance(
+    scope: CoroutineScope,
+    cleanup: suspend () -> Unit,
+    logWarning: (String) -> Unit = { message -> Log.w("SoImMaintenance", message) },
+): Job = scope.launch {
+    runCanonicalRetentionMaintenance(cleanup, logWarning)
+}
+
+internal suspend fun runCanonicalRetentionMaintenance(
+    cleanup: suspend () -> Unit,
+    logWarning: (String) -> Unit = { message -> Log.w("SoImMaintenance", message) },
+) {
+    try {
+        cleanup()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Throwable) {
+        logWarning("Canonical analysis retention will retry later")
     }
 }
