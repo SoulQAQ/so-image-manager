@@ -142,25 +142,25 @@ Commit: `feat: add bounded search text engine`
 - `search_text_alias_chunk(alias_chunk_id INTEGER PK AUTOINCREMENT, image_local_id FK CASCADE, field, alias_type, ordinal, alias_text, UNIQUE(image_local_id,field,alias_type,ordinal))`.
 - `search_gram(gram, owner_type, owner_id, PRIMARY KEY(gram,owner_type,owner_id))`; owner types are `TERM`, `TERM_ALIAS`, `SOURCE_CHUNK`, and `TEXT_ALIAS_CHUNK`. DAO deletion is owner-aware because SQLite cannot express a polymorphic FK.
 
-- [ ] **Step 1: Change schema contract tests to require exactly version 4 and all eight search tables plus FTS shadow tables.** Continue explicitly rejecting FTS5.
+- [x] **Step 1: Change schema contract tests to require exactly version 4 and all eight search tables plus FTS shadow tables.** Continue explicitly rejecting FTS5.
 
-- [ ] **Step 2: Run schema tests and verify RED.**
+- [x] **Step 2: Run schema tests and verify RED.**
 
 Run: `./gradlew testDebugUnitTest --tests "cn.soul2.imageai.data.db.MediaSchemaContractTest"`
 
 Expected: failure because latest exported schema is 3.
 
-- [ ] **Step 3: Implement Room entities and converters.** Store enums as stable uppercase text. Add indexes for `(normalized_key)`, `(image_local_id,field_mask,weight)`, `(term_id,alias_type)`, `(image_local_id,field,ordinal)`, `(image_local_id,field,alias_type,ordinal)`, and `(gram,owner_type)`.
+- [x] **Step 3: Implement Room entities and converters.** Store enums as stable uppercase text. Add indexes for `(normalized_key)`, `(image_local_id,field_mask,weight)`, `(term_id,alias_type)`, `(image_local_id,field,ordinal)`, `(image_local_id,field,alias_type,ordinal)`, and `(gram,owner_type)`.
 
-- [ ] **Step 4: Raise AppDatabase to version 4 and export `app/schemas/cn.soul2.imageai.data.db.AppDatabase/4.json`.** Add `searchIndexDao()` as an internal accessor covered by the raw-DAO architecture contract.
+- [x] **Step 4: Raise AppDatabase to version 4 and export `app/schemas/cn.soul2.imageai.data.db.AppDatabase/4.json`.** Add `searchIndexDao()` as an internal accessor covered by the raw-DAO architecture contract.
 
-- [ ] **Step 5: Write failing `3 -> 4` and direct `1 -> 4` migration tests.** Seed available/unavailable media, canonical active/inactive analyses, corrections, diagnostics, sync checkpoint, and sync run. Verify every existing row survives.
+- [x] **Step 5: Write failing `3 -> 4` and direct `1 -> 4` migration tests.** Seed available/unavailable media, canonical active/inactive analyses, corrections, diagnostics, sync checkpoint, and sync run. Verify every existing row survives.
 
-- [ ] **Step 6: Implement `MIGRATION_3_4` with SQL byte-for-byte equivalent to Room clean creation.** Create the content table before FTS4 and use the exact Room-generated FTS4 trigger definitions copied from exported schema 4. Register `1 -> 2 -> 3 -> 4`; do not use destructive fallback.
+- [x] **Step 6: Implement `MIGRATION_3_4` with SQL byte-for-byte equivalent to Room clean creation.** Create the content table before FTS4 and use the exact Room-generated FTS4 trigger definitions copied from exported schema 4. Register `1 -> 2 -> 3 -> 4`; do not use destructive fallback.
 
-- [ ] **Step 7: Add clean/migrated FK tests.** Purging an image removes its document, terms mappings, source chunks, aliases, and grams. Removing one image does not remove a shared lexical term still mapped by another image. Orphan polymorphic grams are removed by the writer transaction and maintenance assertion.
+- [x] **Step 7: Add clean/migrated FK tests.** Purging an image removes its document, terms mappings, source chunks, aliases, and grams. Removing one image does not remove a shared lexical term still mapped by another image. Orphan polymorphic grams are removed by the writer transaction and maintenance assertion.
 
-- [ ] **Step 8: Run schema, migration compilation, and unit tests; commit.**
+- [x] **Step 8: Run schema, migration compilation, and unit tests; commit.**
 
 Run: `./gradlew testDebugUnitTest compileDebugAndroidTestKotlin`
 
