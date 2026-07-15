@@ -38,6 +38,17 @@ class PublishContractTest {
     }
 
     @Test
+    fun publisherDerivesLocalReleaseDateAtRuntime() {
+        val text = scriptText()
+        val hardcodedReleaseDate = Regex(
+            "[$]ReleaseDate\\s*=\\s*\"\\d{4}-\\d{2}-\\d{2}\"",
+        )
+
+        assertFalse(hardcodedReleaseDate.containsMatchIn(text))
+        assertTrue(text.contains("\$ReleaseDate = Get-Date -Format \"yyyy-MM-dd\""))
+    }
+
+    @Test
     fun publisherBuildsEveryGateBeforeCommittingMetadata() {
         val text = scriptText()
         val main = text.substringAfter("$" + "CommittedProperties = Get-CommittedVersionProperties")

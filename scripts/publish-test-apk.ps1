@@ -21,7 +21,7 @@ $Root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $VersionFile = Join-Path $Root "version.properties"
 $ApkDirectory = [IO.DirectoryInfo] (Join-Path $Root "apk")
 $ChangelogFile = Join-Path $ApkDirectory.FullName "ver_change_log.md"
-$ReleaseDate = "2026-07-14"
+$ReleaseDate = Get-Date -Format "yyyy-MM-dd"
 
 function ConvertFrom-VersionPropertiesLines {
     param([Parameter(Mandatory = $true)][string[]] $Lines)
