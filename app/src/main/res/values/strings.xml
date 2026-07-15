@@ -44,6 +44,7 @@
     <string name="settings_section_maintenance">图库维护</string>
     <string name="settings_reselect_photos">重新选择照片</string>
     <string name="settings_rescan">重新扫描</string>
+    <string name="settings_rescan_requested">已请求重新扫描</string>
     <string name="gallery_permission_title">访问您的照片</string>
     <string name="gallery_permission_description">授权后即可在设备上整理和搜索照片。照片索引保留在本机。</string>
     <string name="gallery_permission_denied_title">尚未获得照片权限</string>

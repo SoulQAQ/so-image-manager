@@ -7,11 +7,9 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -77,9 +75,6 @@ internal fun GalleryScreen(
                 )
             }
             GalleryContentState.Content -> {
-                if (uiState.isSyncing) {
-                    SyncStatusRow(uiState.syncRun?.indexedCount ?: 0)
-                }
                 GalleryCollection(
                     images = images,
                     layout = layout,
@@ -136,24 +131,6 @@ private fun SyncingEmptyState(indexedCount: Int) {
             text = stringResource(R.string.gallery_sync_count, indexedCount),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-}
-
-@Composable
-private fun SyncStatusRow(indexedCount: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth().height(36.dp).padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LinearProgressIndicator(
-            modifier = Modifier.width(72.dp).testTag("gallery_sync_progress"),
-        )
-        Text(
-            text = stringResource(R.string.gallery_sync_count, indexedCount),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
         )
     }
 }

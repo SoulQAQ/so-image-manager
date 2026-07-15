@@ -8,19 +8,28 @@ import org.junit.Test
 
 class MediaSchemaContractTest {
     @Test
-    fun pagingQueriesUseATotalOrderAcrossVolumes() {
+    fun galleryAndNeighborQueriesUseATotalOrderAcrossVolumes() {
         val source = projectFile(
             "app/src/main/java/cn/soul2/imageai/data/db/dao/ImageDao.kt",
         ).readText()
-        val totalOrder = Regex(
+        val descendingOrder = Regex(
             "ORDER BY\\s+sort_time_epoch_millis\\s+DESC,\\s*" +
                 "media_store_id\\s+DESC,\\s*volume_name\\s+DESC,\\s*local_id\\s+DESC",
         )
+        val ascendingOrder = Regex(
+            "ORDER BY\\s+sort_time_epoch_millis\\s+ASC,\\s*" +
+                "media_store_id\\s+ASC,\\s*volume_name\\s+ASC,\\s*local_id\\s+ASC",
+        )
 
         assertEquals(
-            "pagingAll and pagingRecent must share the same total order",
-            2,
-            totalOrder.findAll(source).count(),
+            "pagingAll, pagingRecent and the next-neighbor query must share the total order",
+            3,
+            descendingOrder.findAll(source).count(),
+        )
+        assertEquals(
+            "the previous-neighbor query must reverse the complete total order",
+            1,
+            ascendingOrder.findAll(source).count(),
         )
     }
 

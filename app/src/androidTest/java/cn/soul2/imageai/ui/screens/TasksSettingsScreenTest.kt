@@ -107,6 +107,7 @@ class TasksSettingsScreenTest {
         listOf("重新选择照片", "重新扫描", "前往系统设置").forEach { action ->
             composeRule.onNodeWithText(action).assertIsDisplayed().performClick()
         }
+        composeRule.onNodeWithText("已请求重新扫描").assertIsDisplayed()
         composeRule.runOnIdle {
             assertEquals(listOf("reselect", "rescan", "settings"), actions)
             shellAccessState.value = GalleryAccessState.Full
@@ -124,6 +125,23 @@ class TasksSettingsScreenTest {
             accessStates.value = GalleryAccessState.Denied(canRequestAgain = false)
         }
         composeRule.onNodeWithText("未授权").assertIsDisplayed()
+    }
+
+    @Test
+    fun committedGalleryContentDoesNotRepeatBackgroundSyncProgress() {
+        composeRule.setContent {
+            SoImageManagerTheme {
+                SoImageManagerApp(
+                    galleryRepository = MutableGalleryRepository(12),
+                    syncRuns = flowOf(syncRun(mode = "INCREMENTAL", state = "RUNNING")),
+                    galleryAccessState = GalleryAccessState.Full,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("gallery_sync_progress").assertDoesNotExist()
+        composeRule.onNodeWithTag("destination_library").performClick()
+        composeRule.onNodeWithTag("gallery_sync_progress").assertDoesNotExist()
     }
 
     @Test

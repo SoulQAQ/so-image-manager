@@ -28,6 +28,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.media.permission.GalleryPermissionPolicy
 import cn.soul2.imageai.media.permission.GalleryPermissionRequestHistoryPolicy
+import cn.soul2.imageai.media.permission.GalleryReselectionDestination
+import cn.soul2.imageai.media.permission.GalleryReselectionPolicy
 import cn.soul2.imageai.ui.app.SoImageManagerApp
 import cn.soul2.imageai.ui.onboarding.GalleryAccessViewModel
 import cn.soul2.imageai.ui.onboarding.GalleryPermissionRequestCoordinator
@@ -116,6 +118,17 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+        val launchGalleryReselection: () -> Unit = {
+            when (
+                GalleryReselectionPolicy.destination(
+                    android.os.Build.VERSION.SDK_INT,
+                    uiState.galleryAccessState,
+                )
+            ) {
+                GalleryReselectionDestination.PermissionRequest -> launchPermissionRequest()
+                GalleryReselectionDestination.AppSettings -> openAppSettings()
+            }
+        }
 
         if (uiState.isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -135,7 +148,7 @@ class MainActivity : ComponentActivity() {
                 onRequestGalleryPermission = launchPermissionRequest,
                 onOpenAppSettings = ::openAppSettings,
                 onDismissGalleryOnboarding = accessViewModel::dismissOnboarding,
-                onRequestGalleryReselection = launchPermissionRequest,
+                onRequestGalleryReselection = launchGalleryReselection,
                 onRetryGallerySync = container.mediaSyncScheduler::retry,
                 onRequestGalleryReconciliation =
                     container.mediaSyncScheduler::requestReconciliation,

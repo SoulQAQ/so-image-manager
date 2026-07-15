@@ -11,6 +11,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -62,6 +63,47 @@ class RoomGalleryRepositoryTest {
                 repository.observe(GalleryQuery(source)).asSnapshot().map { it.localId },
             )
         }
+    }
+
+    @Test
+    fun pendingMissingImagesAreRetainedButHiddenFromGalleryAndDetail() = runTest {
+        database.imageDao().upsert(
+            listOf(
+                image(localId = 1L, mediaStoreId = 1L),
+                image(localId = 2L, mediaStoreId = 2L).copy(
+                    missingCandidateSinceEpochMillis = 500L,
+                    missingObservationCount = 1,
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(1L),
+            repository.observe(GalleryQuery(GallerySource.All)).asSnapshot().map { it.localId },
+        )
+        assertEquals(1, repository.observeCount().take(1).toList().single())
+        assertEquals(null, repository.observeImage(2L).take(1).toList().single())
+    }
+
+    @Test
+    fun detailWindowUsesTheSameStableOrderAsTheGallery() = runTest {
+        database.imageDao().upsert(
+            listOf(
+                image(localId = 1L, mediaStoreId = 1L, sortTime = 300L),
+                image(localId = 2L, mediaStoreId = 9L, sortTime = 200L, volume = "b"),
+                image(localId = 3L, mediaStoreId = 9L, sortTime = 200L, volume = "a"),
+                image(localId = 4L, mediaStoreId = 8L, sortTime = 200L, volume = "z"),
+                image(localId = 5L, mediaStoreId = 5L, sortTime = 100L),
+            ),
+        )
+
+        val window = requireNotNull(
+            repository.observeImageWindow(3L).take(1).toList().single(),
+        )
+
+        assertEquals(2L, window.previous?.localId)
+        assertEquals(3L, window.current.localId)
+        assertEquals(4L, window.next?.localId)
     }
 
     @Test

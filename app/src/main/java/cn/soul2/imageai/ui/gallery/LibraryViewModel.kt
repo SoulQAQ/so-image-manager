@@ -25,7 +25,7 @@ class LibraryViewModel(
         GalleryUiState(count, syncRun)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5_000),
+        started = SharingStarted.Eagerly,
         initialValue = GalleryUiState(availableCount = null, syncRun = null),
     )
 

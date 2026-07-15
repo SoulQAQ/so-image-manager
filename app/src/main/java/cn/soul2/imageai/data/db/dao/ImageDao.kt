@@ -10,7 +10,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 abstract class ImageDao {
-    @Query("SELECT COUNT(*) FROM image WHERE availability = 'AVAILABLE'")
+    @Query(
+        """
+        SELECT COUNT(*) FROM image
+        WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL
+        """,
+    )
     abstract fun observeAvailableCount(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM image WHERE availability != 'AVAILABLE'")
@@ -19,7 +24,7 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE availability = 'AVAILABLE'
+        WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL
         ORDER BY sort_time_epoch_millis DESC, media_store_id DESC,
             volume_name DESC, local_id DESC
         """,
@@ -29,7 +34,7 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE availability = 'AVAILABLE'
+        WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL
         ORDER BY sort_time_epoch_millis DESC, media_store_id DESC,
             volume_name DESC, local_id DESC
         """,
@@ -39,11 +44,63 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE local_id = :localId AND availability = 'AVAILABLE'
+        WHERE local_id = :localId
+          AND availability = 'AVAILABLE'
+          AND missing_candidate_since_epoch_millis IS NULL
         LIMIT 1
         """,
     )
     abstract fun observeAvailableById(localId: Long): Flow<ImageEntity?>
+
+    @Query(
+        """
+        SELECT * FROM image
+        WHERE availability = 'AVAILABLE'
+          AND missing_candidate_since_epoch_millis IS NULL
+          AND (
+            sort_time_epoch_millis > :sortTime
+            OR (sort_time_epoch_millis = :sortTime AND media_store_id > :mediaStoreId)
+            OR (sort_time_epoch_millis = :sortTime AND media_store_id = :mediaStoreId
+                AND volume_name > :volumeName)
+            OR (sort_time_epoch_millis = :sortTime AND media_store_id = :mediaStoreId
+                AND volume_name = :volumeName AND local_id > :localId)
+          )
+        ORDER BY sort_time_epoch_millis ASC, media_store_id ASC,
+            volume_name ASC, local_id ASC
+        LIMIT 1
+        """,
+    )
+    abstract fun observePreviousAvailable(
+        sortTime: Long,
+        mediaStoreId: Long,
+        volumeName: String,
+        localId: Long,
+    ): Flow<ImageEntity?>
+
+    @Query(
+        """
+        SELECT * FROM image
+        WHERE availability = 'AVAILABLE'
+          AND missing_candidate_since_epoch_millis IS NULL
+          AND (
+            sort_time_epoch_millis < :sortTime
+            OR (sort_time_epoch_millis = :sortTime AND media_store_id < :mediaStoreId)
+            OR (sort_time_epoch_millis = :sortTime AND media_store_id = :mediaStoreId
+                AND volume_name < :volumeName)
+            OR (sort_time_epoch_millis = :sortTime AND media_store_id = :mediaStoreId
+                AND volume_name = :volumeName AND local_id < :localId)
+          )
+        ORDER BY sort_time_epoch_millis DESC, media_store_id DESC,
+            volume_name DESC, local_id DESC
+        LIMIT 1
+        """,
+    )
+    abstract fun observeNextAvailable(
+        sortTime: Long,
+        mediaStoreId: Long,
+        volumeName: String,
+        localId: Long,
+    ): Flow<ImageEntity?>
 
     @Query("SELECT * FROM image WHERE local_id = :localId LIMIT 1")
     abstract suspend fun getById(localId: Long): ImageEntity?

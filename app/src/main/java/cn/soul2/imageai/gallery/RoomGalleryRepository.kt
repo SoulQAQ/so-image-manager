@@ -7,8 +7,13 @@ import androidx.paging.map
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.entity.ImageEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class RoomGalleryRepository(
     private val imageDao: ImageDao,
 ) : GalleryRepository {
@@ -26,6 +31,34 @@ class RoomGalleryRepository(
 
     override fun observeImage(localId: Long): Flow<GalleryImage?> =
         imageDao.observeAvailableById(localId).map { entity -> entity?.toGalleryImage() }
+
+    override fun observeImageWindow(localId: Long): Flow<GalleryImageWindow?> =
+        imageDao.observeAvailableById(localId).flatMapLatest { current ->
+            if (current == null) {
+                flowOf(null)
+            } else {
+                combine(
+                    imageDao.observePreviousAvailable(
+                        current.sortTimeEpochMillis,
+                        current.mediaStoreId,
+                        current.volumeName,
+                        current.localId,
+                    ),
+                    imageDao.observeNextAvailable(
+                        current.sortTimeEpochMillis,
+                        current.mediaStoreId,
+                        current.volumeName,
+                        current.localId,
+                    ),
+                ) { previous, next ->
+                    GalleryImageWindow(
+                        previous = previous?.toGalleryImage(),
+                        current = current.toGalleryImage(),
+                        next = next?.toGalleryImage(),
+                    )
+                }
+            }
+        }
 
     companion object {
         internal val PAGING_CONFIG = PagingConfig(

@@ -3,7 +3,12 @@ package cn.soul2.imageai.ui.gallery
 import android.net.Uri
 import android.text.format.Formatter
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,8 +27,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +56,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import cn.soul2.imageai.R
 import cn.soul2.imageai.gallery.GalleryImage
+import cn.soul2.imageai.gallery.GalleryImageWindow
 import cn.soul2.imageai.gallery.GalleryRepository
 import java.text.DateFormat
 import java.util.Date
@@ -94,8 +102,10 @@ fun ImageDetailScreen(
                 style = MaterialTheme.typography.bodyLarge,
             )
             is ImageDetailUiState.Ready -> {
-                ZoomableImage(state.image)
-                MetadataPanel(state.image, Modifier.align(Alignment.BottomCenter))
+                ImageDetailPager(
+                    window = state.window,
+                    onSelectImage = viewModel::showImage,
+                )
             }
         }
         IconButton(
@@ -112,6 +122,57 @@ fun ImageDetailScreen(
             )
         }
     }
+}
+
+@Composable
+private fun ImageDetailPager(
+    window: GalleryImageWindow,
+    onSelectImage: (Long) -> Unit,
+) {
+    val model = detailPagerModel(window)
+
+    key(model.stateKey) {
+        val pagerState = rememberPagerState(
+            initialPage = model.currentPage,
+            pageCount = model.images::size,
+        )
+        LaunchedEffect(pagerState.settledPage) {
+            val settledImage = model.images[pagerState.settledPage]
+            if (settledImage.localId != window.current.localId) {
+                onSelectImage(settledImage.localId)
+            }
+        }
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize().testTag("image_detail_pager"),
+            key = { page -> model.images[page].localId },
+        ) { page ->
+            val image = model.images[page]
+            Box(Modifier.fillMaxSize()) {
+                ZoomableImage(image)
+                MetadataPanel(image, Modifier.align(Alignment.BottomCenter))
+            }
+        }
+    }
+}
+
+internal data class ImageDetailPagerModel(
+    val images: List<GalleryImage>,
+    val currentPage: Int,
+    val stateKey: List<Long>,
+)
+
+internal fun detailPagerModel(window: GalleryImageWindow): ImageDetailPagerModel {
+    val images = buildList {
+        window.previous?.let(::add)
+        add(window.current)
+        window.next?.let(::add)
+    }
+    return ImageDetailPagerModel(
+        images = images,
+        currentPage = if (window.previous == null) 0 else 1,
+        stateKey = images.map(GalleryImage::localId),
+    )
 }
 
 @Composable
@@ -137,19 +198,28 @@ private fun ZoomableImage(image: GalleryImage) {
             .fillMaxSize()
             .onSizeChanged { viewport = it }
             .pointerInput(image.localId, viewport) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
-                    if (nextScale == 1f) {
-                        offset = Offset.Zero
-                    } else {
-                        val maxX = viewport.width * (nextScale - 1f) / 2f
-                        val maxY = viewport.height * (nextScale - 1f) / 2f
-                        offset = Offset(
-                            x = (offset.x + pan.x).coerceIn(-maxX, maxX),
-                            y = (offset.y + pan.y).coerceIn(-maxY, maxY),
-                        )
-                    }
-                    scale = nextScale
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressedPointers = event.changes.count { it.pressed }
+                        if (pressedPointers >= 2 || scale > 1f) {
+                            val nextScale = (scale * event.calculateZoom()).coerceIn(1f, 5f)
+                            if (nextScale == 1f) {
+                                offset = Offset.Zero
+                            } else {
+                                val pan = event.calculatePan()
+                                val maxX = viewport.width * (nextScale - 1f) / 2f
+                                val maxY = viewport.height * (nextScale - 1f) / 2f
+                                offset = Offset(
+                                    x = (offset.x + pan.x).coerceIn(-maxX, maxX),
+                                    y = (offset.y + pan.y).coerceIn(-maxY, maxY),
+                                )
+                            }
+                            scale = nextScale
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
                 }
             }
             .graphicsLayer {
