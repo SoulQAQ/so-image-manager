@@ -56,15 +56,15 @@
 - Produces: `DamerauLevenshtein.withinDistance(left, right, maximum): Int?`.
 - Produces: `PinyinTransliterator.lexicalAliases(term): List<PinyinAlias>` and `completeStreams(text): PinyinStreams`.
 
-- [ ] **Step 1: Add failing normalization and query-limit tests.** Assert NFKC equivalence, `Locale.ROOT` folding, whitespace collapse, invalid UTF-16 rejection, blank-query behavior, exactly 128 accepted code points, and 129 rejected code points with `SearchValidationException`.
+- [x] **Step 1: Add failing normalization and query-limit tests.** Assert NFKC equivalence, `Locale.ROOT` folding, whitespace collapse, invalid UTF-16 rejection, blank-query behavior, exactly 128 accepted code points, and 129 rejected code points with `SearchValidationException`.
 
-- [ ] **Step 2: Run the normalization tests and verify RED.**
+- [x] **Step 2: Run the normalization tests and verify RED.**
 
 Run: `./gradlew testDebugUnitTest --tests "cn.soul2.imageai.search.SearchTextNormalizerTest"`
 
 Expected: compilation failure because `SearchTextNormalizer` does not exist.
 
-- [ ] **Step 3: Implement frozen constants and normalization.** Use these exact constants:
+- [x] **Step 3: Implement frozen constants and normalization.** Use these exact constants:
 
 ```kotlin
 object SearchLimits {
@@ -82,23 +82,23 @@ object SearchLimits {
 }
 ```
 
-- [ ] **Step 4: Add boundary-first chunk tests.** Cover empty input, exact 512, 513, 896, surrogate pairs, a 128-code-point query crossing every 512/127 boundary, and reconstruction proving no suffix loss.
+- [x] **Step 4: Add boundary-first chunk tests.** Cover empty input, exact 512, 513, 896, surrogate pairs, a 128-code-point query crossing every 512/127 boundary, and reconstruction proving no suffix loss.
 
-- [ ] **Step 5: Implement deterministic code-point and character chunkers.** Every chunk records `ordinal`, `startOffset`, and text. Reject invalid `size <= overlap`, negative values, and invalid UTF-16.
+- [x] **Step 5: Implement deterministic code-point and character chunkers.** Every chunk records `ordinal`, `startOffset`, and text. Reject invalid `size <= overlap`, negative values, and invalid UTF-16.
 
-- [ ] **Step 6: Add gram and short-query tests.** CJK input emits unique Unicode bigrams. Latin/digit input emits unique trigrams. Mixed text emits both relevant forms. Inputs shorter than their required gram size emit an empty set.
+- [x] **Step 6: Add gram and short-query tests.** CJK input emits unique Unicode bigrams. Latin/digit input emits unique trigrams. Mixed text emits both relevant forms. Inputs shorter than their required gram size emit an empty set.
 
-- [ ] **Step 7: Implement bounded gram generation.** Normalize separators to a single ASCII space for aliases; never emit duplicate grams from one search unit.
+- [x] **Step 7: Implement bounded gram generation.** Normalize separators to a single ASCII space for aliases; never emit duplicate grams from one search unit.
 
-- [ ] **Step 8: Add Damerau-Levenshtein tests.** Cover insertion, deletion, substitution, adjacent transposition, Unicode code points, early exit over the limit, and the exact length-to-distance rule.
+- [x] **Step 8: Add Damerau-Levenshtein tests.** Cover insertion, deletion, substitution, adjacent transposition, Unicode code points, early exit over the limit, and the exact length-to-distance rule.
 
-- [ ] **Step 9: Implement banded Damerau-Levenshtein.** Work on code-point arrays, allocate `O(min(left,right))` rows, and stop when a complete row minimum exceeds `maximum`.
+- [x] **Step 9: Implement banded Damerau-Levenshtein.** Work on code-point arrays, allocate `O(min(left,right))` rows, and stop when a complete row minimum exceeds `maximum`.
 
-- [ ] **Step 10: Add pinyin4j and failing transliteration tests.** Add `pinyin4j = "2.5.1"` and `pinyin4j = { group = "com.belerweb", name = "pinyin4j", version.ref = "pinyin4j" }`. Tests cover `重庆`, `银行`, `长安`, non-CJK passthrough, tone removal, `v` normalization, at most two full forms plus one initials form, full-caption streams longer than 128 characters, and 512/127 pinyin chunk boundaries.
+- [x] **Step 10: Add pinyin4j and failing transliteration tests.** Add `pinyin4j = "2.5.1"` and `pinyin4j = { group = "com.belerweb", name = "pinyin4j", version.ref = "pinyin4j" }`. Tests cover `重庆`, `银行`, `长安`, non-CJK passthrough, tone removal, `v` normalization, at most two full forms plus one initials form, full-caption streams longer than 128 characters, and 512/127 pinyin chunk boundaries.
 
-- [ ] **Step 11: Implement phrase-first transliteration.** Load the UTF-8 TSV once into an immutable longest-match trie. The TSV format is `phrase<TAB>space-separated-syllables`; include the query-corpus polyphonic phrases and their primary pronunciations. Fall back to pinyin4j for characters outside a phrase. Lexical alternate expansion is character-local, deduplicated, and stops after two full forms; complete free-text streams use only the primary phrase-aware pronunciation.
+- [x] **Step 11: Implement phrase-first transliteration.** Load the UTF-8 TSV once into an immutable longest-match trie. The TSV format is `phrase<TAB>space-separated-syllables`; include the query-corpus polyphonic phrases and their primary pronunciations. Fall back to pinyin4j for characters outside a phrase. Lexical alternate expansion is character-local, deduplicated, and stops after two full forms; complete free-text streams use only the primary phrase-aware pronunciation.
 
-- [ ] **Step 12: Run all Task 1 tests and commit.**
+- [x] **Step 12: Run all Task 1 tests and commit.**
 
 Run: `./gradlew testDebugUnitTest --tests "cn.soul2.imageai.search.*"`
 
