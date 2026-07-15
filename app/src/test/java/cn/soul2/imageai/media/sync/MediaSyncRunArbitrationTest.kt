@@ -3,6 +3,7 @@ package cn.soul2.imageai.media.sync
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import androidx.work.ExistingWorkPolicy
 import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.media.store.MediaStoreCursor
@@ -25,7 +26,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -144,6 +147,229 @@ class MediaSyncRunArbitrationTest {
         } finally {
             Dispatchers.resetMain()
         }
+    }
+
+    @Test
+    fun onlySuccessfulInitialOrReconciliationEstablishesScanBaseline() = runTest {
+        val incomplete = store.startRun(SyncMode.INITIAL, 100L)
+        val incompleteProgress = incomplete.withPage(VOLUME, imageCount = 1, 110L)
+        store.commitBatch(
+            images = listOf(image(1L)),
+            checkpoint = checkpoint(generation = 1L, completedAtEpochMillis = null),
+            run = incompleteProgress,
+        )
+        store.pauseForPermission(incompleteProgress, 120L, SecurityException("revoked"))
+
+        assertFalse(store.hasPersistedScanBaseline())
+
+        database.clearAllTables()
+        val emptyInitial = store.startRun(SyncMode.INITIAL, 200L)
+        store.finishRun(emptyInitial, emptySet(), GalleryAccessState.Full, 210L)
+        assertTrue(store.hasPersistedScanBaseline())
+
+        database.clearAllTables()
+        val completedInitial = store.startRun(SyncMode.INITIAL, 300L)
+        val completedProgress = completedInitial.withPage(VOLUME, imageCount = 1, 310L)
+        store.commitBatch(
+            images = listOf(image(2L)),
+            checkpoint = checkpoint(generation = 2L, completedAtEpochMillis = 310L),
+            run = completedProgress,
+        )
+        store.finishRun(
+            completedProgress,
+            setOf(VOLUME),
+            GalleryAccessState.Full,
+            320L,
+        )
+        assertTrue(store.hasPersistedScanBaseline())
+
+        database.clearAllTables()
+        val reconciliation = store.startRun(SyncMode.RECONCILE, 400L)
+        store.finishRun(reconciliation, emptySet(), GalleryAccessState.Full, 410L)
+        assertTrue(store.hasPersistedScanBaseline())
+
+        database.clearAllTables()
+        val incremental = store.startRun(SyncMode.INCREMENTAL, 500L)
+        store.finishRun(incremental, emptySet(), GalleryAccessState.Full, 510L)
+        assertFalse(store.hasPersistedScanBaseline())
+    }
+
+    @Test
+    fun passiveAccessResumesPermissionPausedInitialWithoutCreatingIncrementalRun() = runTest {
+        val first = image(11L)
+        val second = image(12L)
+        val gateway = ScriptedGateway(
+            ArrayDeque(
+                listOf(
+                    MediaStorePage(
+                        images = listOf(first),
+                        nextCursor = cursorFor(first),
+                        hasMore = true,
+                        observedGeneration = 12L,
+                        observedVersion = "v1",
+                    ),
+                    MediaStorePage(
+                        images = listOf(second),
+                        nextCursor = cursorFor(second),
+                        hasMore = false,
+                        observedGeneration = 12L,
+                        observedVersion = "v1",
+                    ),
+                ),
+            ),
+        )
+        val permission = MutablePermissionSource(GalleryAccessState.Full)
+        val engine = MediaSyncEngine(
+            gateway = gateway,
+            store = store,
+            permissionSource = permission,
+            clock = SyncClock { 1_000L },
+        )
+        val firstSlice = engine.runSlice(
+            mode = SyncMode.INITIAL,
+            volume = VOLUME,
+            maxItems = 1,
+        )
+        val initialRunId = firstSlice.run.runId
+        assertTrue(firstSlice is SliceResult.More)
+
+        permission.access = GalleryAccessState.Denied(canRequestAgain = true)
+        assertTrue(engine.runSlice(SyncMode.INITIAL, VOLUME) is SliceResult.PausedPermission)
+        assertFalse(store.hasPersistedScanBaseline())
+
+        val backend = RecordingSyncWorkBackend()
+        val coordinator = GallerySyncAccessCoordinator(
+            store = store,
+            scheduler = MediaSyncScheduler(backend),
+        )
+        permission.access = GalleryAccessState.Full
+        coordinator.onAccessAvailable(GalleryAccessState.Full)
+
+        assertEquals(
+            listOf(
+                ScheduledImmediate(
+                    ImmediateSyncWork.Coordinator,
+                    ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ),
+            ),
+            backend.immediate,
+        )
+
+        val completed = requireNotNull(engine.continueNextSlice())
+        assertTrue(completed is SliceResult.Completed)
+        assertEquals(initialRunId, completed.run.runId)
+        assertEquals(
+            listOf(RunState(SyncMode.INITIAL, SyncRunState.SUCCEEDED)),
+            runStates(),
+        )
+        assertEquals(listOf(11L, 12L), indexedMediaStoreIds())
+    }
+
+    @Test
+    fun explicitSelectionChangeSchedulesDurableReconciliation() = runTest {
+        val backend = RecordingSyncWorkBackend()
+        val coordinator = GallerySyncAccessCoordinator(
+            store = store,
+            scheduler = MediaSyncScheduler(backend),
+        )
+
+        coordinator.onExplicitSelectionChanged(GalleryAccessState.Partial)
+
+        assertEquals(
+            listOf(
+                ScheduledImmediate(
+                    ImmediateSyncWork.RequestedMode(SyncMode.RECONCILE),
+                    ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ),
+            ),
+            backend.immediate,
+        )
+    }
+
+    @Test
+    fun passiveRecreationWithBaselineRequestsIncrementalWithoutResumingPausedError() = runTest {
+        val initial = store.startRun(SyncMode.INITIAL, 2_000L)
+        store.finishRun(initial, emptySet(), GalleryAccessState.Full, 2_100L)
+        val pausedError = store.startRun(SyncMode.RECONCILE, 2_200L)
+        store.updateRun(pausedError.pausedError(2_300L, IOException("user retry required")))
+        val backend = RecordingSyncWorkBackend()
+        val coordinator = GallerySyncAccessCoordinator(
+            store = store,
+            scheduler = MediaSyncScheduler(backend),
+        )
+
+        coordinator.onAccessAvailable(GalleryAccessState.Full)
+
+        assertEquals(
+            listOf(
+                ScheduledImmediate(
+                    ImmediateSyncWork.RequestedMode(SyncMode.INCREMENTAL),
+                    ExistingWorkPolicy.KEEP,
+                ),
+            ),
+            backend.immediate,
+        )
+        assertEquals(SyncRunState.PAUSED_ERROR, runState(pausedError.runId))
+    }
+
+    @Test
+    fun passiveAccessRequestsInitialWithoutResumingPausedErrorWhenBaselineIsAbsent() = runTest {
+        val pausedError = store.startRun(SyncMode.INITIAL, 2_400L)
+        store.updateRun(pausedError.pausedError(2_500L, IOException("user retry required")))
+        val backend = RecordingSyncWorkBackend()
+        val coordinator = GallerySyncAccessCoordinator(
+            store = store,
+            scheduler = MediaSyncScheduler(backend),
+        )
+
+        coordinator.onAccessAvailable(GalleryAccessState.Full)
+
+        assertEquals(
+            listOf(
+                ScheduledImmediate(
+                    ImmediateSyncWork.RequestedMode(SyncMode.INITIAL),
+                    ExistingWorkPolicy.KEEP,
+                ),
+            ),
+            backend.immediate,
+        )
+        assertEquals(SyncRunState.PAUSED_ERROR, runState(pausedError.runId))
+    }
+
+    @Test
+    fun historicalPermissionPauseSupersededBySuccessfulBaselineIsNotResumed() = runTest {
+        val pausedPermission = store.startRun(SyncMode.INITIAL, 2_600L)
+        store.pauseForPermission(
+            pausedPermission,
+            2_700L,
+            SecurityException("temporarily revoked"),
+        )
+        val newerReconciliation = store.startRun(SyncMode.RECONCILE, 2_800L)
+        store.finishRun(
+            newerReconciliation,
+            emptySet(),
+            GalleryAccessState.Full,
+            2_900L,
+        )
+        val backend = RecordingSyncWorkBackend()
+        val coordinator = GallerySyncAccessCoordinator(
+            store = store,
+            scheduler = MediaSyncScheduler(backend),
+        )
+
+        coordinator.onAccessAvailable(GalleryAccessState.Full)
+
+        assertEquals(
+            listOf(
+                ScheduledImmediate(
+                    ImmediateSyncWork.RequestedMode(SyncMode.INCREMENTAL),
+                    ExistingWorkPolicy.KEEP,
+                ),
+            ),
+            backend.immediate,
+        )
+        assertEquals(SyncRunState.PAUSED_PERMISSION, runState(pausedPermission.runId))
+        assertEquals(SyncRunState.SUCCEEDED, runState(newerReconciliation.runId))
     }
 
     @Test
@@ -289,6 +515,15 @@ class MediaSyncRunArbitrationTest {
         }
     }
 
+    private fun indexedMediaStoreIds(): List<Long> =
+        database.openHelper.readableDatabase.query(
+            "SELECT media_store_id FROM image ORDER BY media_store_id",
+        ).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) add(cursor.getLong(0))
+            }
+        }
+
     private class EmptyGateway(
         private val observedGeneration: Long,
     ) : MediaStoreGateway {
@@ -326,6 +561,40 @@ class MediaSyncRunArbitrationTest {
         ): MediaStorePage = throw error
     }
 
+    private class ScriptedGateway(
+        private val pages: ArrayDeque<MediaStorePage>,
+    ) : MediaStoreGateway {
+        override fun externalVolumes(): Set<String> = setOf(VOLUME)
+
+        override fun readPage(
+            volume: String,
+            mode: SyncMode,
+            cursor: MediaStoreCursor?,
+            limit: Int,
+        ): MediaStorePage = pages.removeFirst()
+    }
+
+    private class MutablePermissionSource(
+        var access: GalleryAccessState,
+    ) : MediaSyncPermissionSource {
+        override fun currentAccess(): GalleryAccessState = access
+    }
+
+    private data class ScheduledImmediate(
+        val work: ImmediateSyncWork,
+        val policy: ExistingWorkPolicy,
+    )
+
+    private class RecordingSyncWorkBackend : SyncWorkBackend {
+        val immediate = mutableListOf<ScheduledImmediate>()
+
+        override fun enqueueImmediate(work: ImmediateSyncWork, policy: ExistingWorkPolicy) {
+            immediate += ScheduledImmediate(work, policy)
+        }
+
+        override fun enqueuePeriodic(intervalHours: Long) = Unit
+    }
+
     private data class RunState(
         val mode: SyncMode,
         val state: SyncRunState,
@@ -336,7 +605,7 @@ class MediaSyncRunArbitrationTest {
 
         fun checkpoint(
             generation: Long,
-            completedAtEpochMillis: Long,
+            completedAtEpochMillis: Long?,
         ) = SyncCheckpoint(
             volumeName = VOLUME,
             generation = generation,
@@ -365,6 +634,12 @@ class MediaSyncRunArbitrationTest {
             bucketName = "Camera",
             isFavorite = false,
             generationModified = id,
+        )
+
+        fun cursorFor(image: MediaStoreImage) = MediaStoreCursor(
+            modifiedAtEpochMillis = image.modifiedAtEpochMillis,
+            mediaStoreId = image.mediaStoreId,
+            generation = image.generationModified,
         )
     }
 }

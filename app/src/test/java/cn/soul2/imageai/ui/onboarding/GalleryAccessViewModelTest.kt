@@ -29,7 +29,42 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class GalleryAccessViewModelTest {
     @Test
-    fun `partial permission result invokes access callback exactly once`() = withTestMain {
+    fun `first grant updates state without invoking explicit selection callback`() = withTestMain {
+        val store = ViewModelStore()
+        val onboardingStore = FakeGalleryOnboardingStore()
+        val permissionMonitor = FakeGalleryPermissionStateMonitor(
+            initialState = GalleryAccessState.Denied(canRequestAgain = true),
+            refreshedState = GalleryAccessState.Partial,
+        )
+        val viewModel = createViewModel(
+            store = store,
+            permissionMonitor = permissionMonitor,
+            onboardingStore = onboardingStore,
+        )
+        val passiveObservations = mutableListOf<GalleryAccessState>()
+        var callbackCount = 0
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            permissionMonitor.state.collect { access ->
+                if (access !is GalleryAccessState.Denied) passiveObservations += access
+            }
+        }
+
+        try {
+            runCurrent()
+            viewModel.onPermissionResult(canRequestAgain = false) { callbackCount += 1 }
+            advanceUntilIdle()
+
+            assertEquals(GalleryAccessState.Partial, permissionMonitor.state.value)
+            assertEquals(listOf(GalleryAccessState.Partial), passiveObservations)
+            assertEquals(0, callbackCount)
+            assertEquals(1, onboardingStore.markHandledCalls)
+        } finally {
+            store.clear()
+        }
+    }
+
+    @Test
+    fun `partial reselection invokes explicit selection callback exactly once`() = withTestMain {
         val store = ViewModelStore()
         val onboardingStore = FakeGalleryOnboardingStore()
         val viewModel = createViewModel(
@@ -48,6 +83,32 @@ class GalleryAccessViewModelTest {
 
             assertEquals(1, callbackCount)
             assertEquals(1, onboardingStore.markHandledCalls)
+        } finally {
+            store.clear()
+        }
+    }
+
+    @Test
+    fun `partial to full result invokes explicit selection callback exactly once`() = withTestMain {
+        val store = ViewModelStore()
+        val onboardingStore = FakeGalleryOnboardingStore()
+        val permissionMonitor = FakeGalleryPermissionStateMonitor(
+            initialState = GalleryAccessState.Partial,
+            refreshedState = GalleryAccessState.Full,
+        )
+        val viewModel = createViewModel(
+            store = store,
+            permissionMonitor = permissionMonitor,
+            onboardingStore = onboardingStore,
+        )
+        val callbacks = mutableListOf<GalleryAccessState>()
+
+        try {
+            viewModel.onPermissionResult(canRequestAgain = false, callbacks::add)
+            advanceUntilIdle()
+
+            assertEquals(GalleryAccessState.Full, permissionMonitor.state.value)
+            assertEquals(listOf(GalleryAccessState.Full), callbacks)
         } finally {
             store.clear()
         }
@@ -107,14 +168,16 @@ class GalleryAccessViewModelTest {
 
     private class FakeGalleryPermissionStateMonitor(
         initialState: GalleryAccessState,
+        private val refreshedState: GalleryAccessState = initialState,
     ) : GalleryPermissionStateMonitor {
         private val mutableState = MutableStateFlow(initialState)
         override val state: StateFlow<GalleryAccessState> = mutableState.asStateFlow()
 
         override fun refresh(canRequestAgain: Boolean) {
-            val current = mutableState.value
-            if (current is GalleryAccessState.Denied) {
-                mutableState.value = GalleryAccessState.Denied(canRequestAgain)
+            mutableState.value = if (refreshedState is GalleryAccessState.Denied) {
+                GalleryAccessState.Denied(canRequestAgain)
+            } else {
+                refreshedState
             }
         }
     }

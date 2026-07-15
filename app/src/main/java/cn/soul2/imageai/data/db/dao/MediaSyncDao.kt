@@ -20,8 +20,10 @@ abstract class MediaSyncDao {
 
     @Query(
         """
-        SELECT EXISTS(SELECT 1 FROM media_sync_checkpoint) OR
-               EXISTS(SELECT 1 FROM media_sync_run WHERE state = 'SUCCEEDED')
+        SELECT EXISTS(
+            SELECT 1 FROM media_sync_run
+            WHERE state = 'SUCCEEDED' AND mode IN ('INITIAL', 'RECONCILE')
+        )
         """,
     )
     abstract suspend fun hasPersistedScanBaseline(): Boolean
@@ -74,8 +76,9 @@ abstract class MediaSyncDao {
     @Query(
         """
         SELECT * FROM media_sync_run
-        WHERE state IN ('PAUSED_PERMISSION', 'PAUSED_ERROR')
-        ORDER BY run_id DESC LIMIT 1
+        WHERE state = 'PAUSED_PERMISSION'
+          AND run_id = (SELECT MAX(run_id) FROM media_sync_run)
+        LIMIT 1
         """,
     )
     abstract suspend fun getRecoverableRun(): MediaSyncRunEntity?
@@ -120,6 +123,18 @@ abstract class MediaSyncDao {
             insertRun(requestedRun)
         }
         getOldestRunningRun()?.let { return it }
+        getRecoverableRun()?.let { paused ->
+            check(resumePausedRun(paused.runId, nowEpochMillis) == 1) {
+                "Unable to resume permission-paused media sync run ${paused.runId}"
+            }
+            return paused.copy(
+                state = "RUNNING",
+                errorCode = null,
+                errorMessage = null,
+                updatedAtEpochMillis = nowEpochMillis,
+                completedAtEpochMillis = null,
+            )
+        }
         val queued = getOldestQueuedRun() ?: return null
         check(activateRun(queued.runId, nowEpochMillis) == 1) {
             "Unable to activate queued media sync run ${queued.runId}"

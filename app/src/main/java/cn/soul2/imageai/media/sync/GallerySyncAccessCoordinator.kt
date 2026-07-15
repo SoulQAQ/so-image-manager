@@ -14,8 +14,17 @@ class GallerySyncAccessCoordinator(
 ) {
     suspend fun onAccessAvailable(access: GalleryAccessState) {
         if (access is GalleryAccessState.Denied) return
+        if (store.recoverableRun()?.state == SyncRunState.PAUSED_PERMISSION) {
+            scheduler.resumePermissionPaused()
+            return
+        }
         scheduler.requestForAccess(
             GallerySyncAccessPolicy.mode(store.hasPersistedScanBaseline()),
         )
+    }
+
+    suspend fun onExplicitSelectionChanged(access: GalleryAccessState) {
+        if (access is GalleryAccessState.Denied) return
+        scheduler.requestReconciliation()
     }
 }

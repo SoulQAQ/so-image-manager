@@ -24,8 +24,9 @@ class GallerySyncLifecycleContractTest {
         )
         assertFalse(source.contains(".collectAsState()"))
         assertTrue(source.contains("gallerySyncAccessCoordinator"))
-        assertTrue(source.contains("onAccessAvailable = coordinateAccess"))
-        assertTrue(source.contains("coordinateAccess(access)"))
+        assertTrue(source.contains("onExplicitSelectionChanged = reconcileExplicitSelection"))
+        assertTrue(source.contains("observePassiveAccess(access)"))
+        assertTrue(source.contains("if (!permissionRequestInFlight)"))
         assertFalse(source.contains("container.mediaSyncScheduler.requestInitial()"))
     }
 }

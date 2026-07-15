@@ -63,9 +63,14 @@ class MainActivity : ComponentActivity() {
         val permissionRequestCoordinator = remember { GalleryPermissionRequestCoordinator() }
         val permissionRequestInFlight by
             permissionRequestCoordinator.inFlight.collectAsStateWithLifecycle()
-        val coordinateAccess: (GalleryAccessState) -> Unit = { access ->
+        val observePassiveAccess: (GalleryAccessState) -> Unit = { access ->
             coroutineScope.launch {
                 container.gallerySyncAccessCoordinator.onAccessAvailable(access)
+            }
+        }
+        val reconcileExplicitSelection: (GalleryAccessState) -> Unit = { access ->
+            coroutineScope.launch {
+                container.gallerySyncAccessCoordinator.onExplicitSelectionChanged(access)
             }
         }
         LaunchedEffect(uiState.isLoading, uiState.galleryAccessState) {
@@ -73,16 +78,18 @@ class MainActivity : ComponentActivity() {
                 when (val access = uiState.galleryAccessState) {
                     GalleryAccessState.Full,
                     GalleryAccessState.Partial,
-                    -> coordinateAccess(access)
+                    -> observePassiveAccess(access)
                     is GalleryAccessState.Denied -> Unit
                 }
             }
         }
         LifecycleResumeEffect(uiState.permissionRequested) {
-            uiState.permissionRequested?.let { permissionRequested ->
-                accessViewModel.refresh(
-                    canRequestAgain = canRequestGalleryPermissionAgain(permissionRequested),
-                )
+            if (!permissionRequestInFlight) {
+                uiState.permissionRequested?.let { permissionRequested ->
+                    accessViewModel.refresh(
+                        canRequestAgain = canRequestGalleryPermissionAgain(permissionRequested),
+                    )
+                }
             }
             onPauseOrDispose { }
         }
@@ -92,7 +99,7 @@ class MainActivity : ComponentActivity() {
             permissionRequestCoordinator.complete()
             accessViewModel.onPermissionResult(
                 canRequestAgain = canRequestGalleryPermissionAgain(permissionRequested = true),
-                onAccessAvailable = coordinateAccess,
+                onExplicitSelectionChanged = reconcileExplicitSelection,
             )
         }
         val launchPermissionRequest: () -> Unit = {

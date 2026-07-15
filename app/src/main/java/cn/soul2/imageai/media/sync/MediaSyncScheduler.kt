@@ -38,6 +38,13 @@ class MediaSyncScheduler(
         )
     }
 
+    fun resumePermissionPaused() {
+        backend.enqueueImmediate(
+            ImmediateSyncWork.Coordinator,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+        )
+    }
+
     fun requestIncremental() {
         backend.enqueueImmediate(
             ImmediateSyncWork.RequestedMode(SyncMode.INCREMENTAL),

@@ -53,10 +53,29 @@ class MediaSyncWorkManagerTest {
 
     @Test
     fun duplicateInitialAccessRequestsCoalesceIntoOneWorkChain() {
-        scheduler.requestInitial()
-        scheduler.requestInitial()
+        scheduler.requestForAccess(SyncMode.INITIAL)
+        scheduler.requestForAccess(SyncMode.INITIAL)
 
         assertEquals(1, immediateInfos().size)
+    }
+
+    @Test
+    fun recreationIncrementalAccessRequestsCoalesceIntoOneWorkChain() {
+        scheduler.requestForAccess(SyncMode.INCREMENTAL)
+        scheduler.requestForAccess(SyncMode.INCREMENTAL)
+
+        assertEquals(1, immediateInfos().size)
+    }
+
+    @Test
+    fun explicitSelectionReconciliationAppendsBehindActiveAccessWork() {
+        scheduler.requestForAccess(SyncMode.INITIAL)
+        scheduler.requestReconciliation()
+
+        val infos = immediateInfos()
+        assertEquals(2, infos.size)
+        assertEquals(1, infos.count { it.state == WorkInfo.State.ENQUEUED })
+        assertEquals(1, infos.count { it.state == WorkInfo.State.BLOCKED })
     }
 
     @Test

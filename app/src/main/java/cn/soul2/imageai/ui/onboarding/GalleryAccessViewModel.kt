@@ -103,15 +103,18 @@ class GalleryAccessViewModel(
 
     fun onPermissionResult(
         canRequestAgain: Boolean,
-        onAccessAvailable: (GalleryAccessState) -> Unit = {},
+        onExplicitSelectionChanged: (GalleryAccessState) -> Unit = {},
     ) {
+        val previousAccessState = permissionMonitor.state.value
         refresh(canRequestAgain)
         val accessState = permissionMonitor.state.value
         permissionRecovery.value = accessState is GalleryAccessState.Denied
         handledInSession.value = true
         persistHandled()
-        if (accessState !is GalleryAccessState.Denied) {
-            onAccessAvailable(accessState)
+        if (previousAccessState !is GalleryAccessState.Denied &&
+            accessState !is GalleryAccessState.Denied
+        ) {
+            onExplicitSelectionChanged(accessState)
         }
     }
 
