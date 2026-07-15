@@ -16,8 +16,7 @@ object MediaSyncWorkerPolicy {
     fun directive(
         result: SliceResult,
         runAttemptCount: Int,
-        drainAfterTerminal: Boolean = false,
-        requestedMode: SyncMode? = null,
+        hasQueuedWork: Boolean = false,
     ): WorkerDirective = when (result) {
         is SliceResult.More -> WorkerDirective.CONTINUE
         is SliceResult.Retry -> if (SyncPolicy.shouldRetry(result.error, runAttemptCount)) {
@@ -25,10 +24,7 @@ object MediaSyncWorkerPolicy {
         } else {
             WorkerDirective.PAUSE_ERROR
         }
-        is SliceResult.Completed -> if (
-            drainAfterTerminal ||
-            (requestedMode != null && requestedMode != result.run.mode)
-        ) {
+        is SliceResult.Completed -> if (hasQueuedWork) {
             WorkerDirective.CONTINUE
         } else {
             WorkerDirective.SUCCESS
@@ -63,12 +59,13 @@ class MediaSyncWorker(
             else -> container.mediaSyncEngine.runNextSlice(requireNotNull(requestedMode))
         }
         result ?: return Result.success()
+        val hasQueuedWork = result is SliceResult.Completed &&
+            container.mediaSyncStore.hasQueuedWork()
         return when (
             MediaSyncWorkerPolicy.directive(
                 result,
                 runAttemptCount,
-                drainAfterTerminal = modeValue == MODE_RETRY,
-                requestedMode = requestedMode,
+                hasQueuedWork = hasQueuedWork,
             )
         ) {
             WorkerDirective.SUCCESS -> Result.success()

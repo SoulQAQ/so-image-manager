@@ -75,13 +75,21 @@ abstract class MediaSyncDao {
 
     @Query(
         """
-        SELECT * FROM media_sync_run
-        WHERE state = 'PAUSED_PERMISSION'
-          AND run_id = (SELECT MAX(run_id) FROM media_sync_run)
+        SELECT paused.* FROM media_sync_run AS paused
+        WHERE paused.state = 'PAUSED_PERMISSION'
+          AND NOT EXISTS(
+              SELECT 1 FROM media_sync_run AS newer
+              WHERE newer.run_id > paused.run_id
+                AND newer.state != 'QUEUED'
+          )
+        ORDER BY paused.run_id DESC
         LIMIT 1
         """,
     )
     abstract suspend fun getRecoverableRun(): MediaSyncRunEntity?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM media_sync_run WHERE state = 'QUEUED')")
+    abstract suspend fun hasQueuedWork(): Boolean
 
     @Upsert
     abstract suspend fun upsertCheckpoint(checkpoint: MediaSyncCheckpointEntity)

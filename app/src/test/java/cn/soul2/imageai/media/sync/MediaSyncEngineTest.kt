@@ -676,6 +676,9 @@ class MediaSyncEngineTest {
             return queued.activated(nowEpochMillis).also(::replaceRun)
         }
 
+        override suspend fun hasQueuedWork(): Boolean =
+            runs.any { it.state == SyncRunState.QUEUED }
+
         override suspend fun claimRetryRun(nowEpochMillis: Long): SyncRun? {
             runs.firstOrNull { it.state == SyncRunState.RUNNING }?.let { return it }
             val latest = runs.lastOrNull()

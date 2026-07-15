@@ -15,6 +15,7 @@ interface MediaSyncStore {
 
     suspend fun activeRun(mode: SyncMode): SyncRun?
     suspend fun recoverableRun(): SyncRun? = null
+    suspend fun hasQueuedWork(): Boolean
     suspend fun startRun(mode: SyncMode, nowEpochMillis: Long): SyncRun
     suspend fun checkpoint(volume: String): SyncCheckpoint?
     suspend fun checkpoints(volumes: Set<String>): Map<String, SyncCheckpoint>

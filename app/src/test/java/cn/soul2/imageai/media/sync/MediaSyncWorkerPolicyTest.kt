@@ -53,7 +53,7 @@ class MediaSyncWorkerPolicyTest {
     }
 
     @Test
-    fun onlySuccessfulRetryCompletionEnqueuesCoordinator() {
+    fun retryResultsDrainQueuedWorkOnlyAfterCompletion() {
         val run = run()
         val error = IOException("temporary")
 
@@ -62,7 +62,15 @@ class MediaSyncWorkerPolicyTest {
             MediaSyncWorkerPolicy.directive(
                 SliceResult.Completed(run),
                 runAttemptCount = 0,
-                drainAfterTerminal = true,
+                hasQueuedWork = true,
+            ),
+        )
+        assertEquals(
+            WorkerDirective.SUCCESS,
+            MediaSyncWorkerPolicy.directive(
+                SliceResult.Completed(run),
+                runAttemptCount = 0,
+                hasQueuedWork = false,
             ),
         )
         assertEquals(
@@ -70,7 +78,7 @@ class MediaSyncWorkerPolicyTest {
             MediaSyncWorkerPolicy.directive(
                 SliceResult.PausedPermission(run),
                 runAttemptCount = 0,
-                drainAfterTerminal = true,
+                hasQueuedWork = true,
             ),
         )
         assertEquals(
@@ -78,7 +86,7 @@ class MediaSyncWorkerPolicyTest {
             MediaSyncWorkerPolicy.directive(
                 SliceResult.PausedError(run, error),
                 runAttemptCount = 0,
-                drainAfterTerminal = true,
+                hasQueuedWork = true,
             ),
         )
         assertEquals(
@@ -86,7 +94,7 @@ class MediaSyncWorkerPolicyTest {
             MediaSyncWorkerPolicy.directive(
                 SliceResult.Retry(run, error),
                 runAttemptCount = 0,
-                drainAfterTerminal = true,
+                hasQueuedWork = true,
             ),
         )
         assertEquals(
@@ -94,29 +102,30 @@ class MediaSyncWorkerPolicyTest {
             MediaSyncWorkerPolicy.directive(
                 SliceResult.Retry(run, error),
                 runAttemptCount = 4,
-                drainAfterTerminal = true,
+                hasQueuedWork = true,
             ),
         )
     }
 
     @Test
-    fun completedResumedRunContinuesOnlyWhenRequestedModeDiffers() {
+    fun completedRunsUseDurableQueueStateInsteadOfModeRelationship() {
         val resumedInitial = SyncRun.running(1L, SyncMode.INITIAL, 1_000L)
+        val resumedReconciliation = SyncRun.running(2L, SyncMode.RECONCILE, 1_000L)
 
         assertEquals(
             WorkerDirective.CONTINUE,
             MediaSyncWorkerPolicy.directive(
                 SliceResult.Completed(resumedInitial),
                 runAttemptCount = 0,
-                requestedMode = SyncMode.INCREMENTAL,
+                hasQueuedWork = true,
             ),
         )
         assertEquals(
             WorkerDirective.CONTINUE,
             MediaSyncWorkerPolicy.directive(
-                SliceResult.Completed(resumedInitial),
+                SliceResult.Completed(resumedReconciliation),
                 runAttemptCount = 0,
-                requestedMode = SyncMode.RECONCILE,
+                hasQueuedWork = true,
             ),
         )
         assertEquals(
@@ -124,15 +133,15 @@ class MediaSyncWorkerPolicyTest {
             MediaSyncWorkerPolicy.directive(
                 SliceResult.Completed(resumedInitial),
                 runAttemptCount = 0,
-                requestedMode = SyncMode.INITIAL,
+                hasQueuedWork = false,
             ),
         )
         assertEquals(
             WorkerDirective.SUCCESS,
             MediaSyncWorkerPolicy.directive(
-                SliceResult.PausedPermission(resumedInitial),
+                SliceResult.Completed(resumedReconciliation),
                 runAttemptCount = 0,
-                requestedMode = SyncMode.INCREMENTAL,
+                hasQueuedWork = false,
             ),
         )
     }

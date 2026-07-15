@@ -33,6 +33,8 @@ class RoomMediaSyncStore(
     override suspend fun recoverableRun(): SyncRun? =
         syncDao.getRecoverableRun()?.let(RoomMediaSyncMapper::run)
 
+    override suspend fun hasQueuedWork(): Boolean = syncDao.hasQueuedWork()
+
     override suspend fun startRun(mode: SyncMode, nowEpochMillis: Long): SyncRun {
         val run = SyncRun.running(runId = 0L, mode = mode, nowEpochMillis = nowEpochMillis)
         val runId = syncDao.insertRun(RoomMediaSyncMapper.run(run))
