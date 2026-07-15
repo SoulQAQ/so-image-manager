@@ -15,7 +15,9 @@ object DamerauLevenshtein {
     }
 
     fun withinDistance(left: String, right: String, maximum: Int): Int? {
-        require(maximum >= 0) { "maximum must not be negative" }
+        require(maximum in 0..SearchLimits.QUERY_CODE_POINTS) {
+            "maximum must be between 0 and ${SearchLimits.QUERY_CODE_POINTS}"
+        }
         requireValidSearchUtf16(left, "left")
         requireValidSearchUtf16(right, "right")
 

@@ -13,6 +13,11 @@ class PinyinTransliteratorTest {
     }
 
     @Test
+    fun phraseDictionaryUsesTheLongestOverlappingPhrase() {
+        assertEquals("changdayi", PinyinTransliterator.completeStreams("长大衣").full)
+    }
+
+    @Test
     fun completeStreamsPassThroughNormalizedNonCjkText() {
         val streams = PinyinTransliterator.completeStreams("重庆  Ｐｈｏｔｏ---2026")
 

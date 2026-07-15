@@ -63,6 +63,15 @@ class OverlappingChunkerTest {
     }
 
     @Test
+    fun characterChunksPreservePairsAcrossNominalEndAndNextStartBoundaries() {
+        val pairAcrossEnd = "a".repeat(511) + "😀" + "b".repeat(600)
+        val pairAcrossNextStart = "a".repeat(384) + "😀" + "b".repeat(700)
+
+        assertCharacterChunkContract(pairAcrossEnd)
+        assertCharacterChunkContract(pairAcrossNextStart)
+    }
+
+    @Test
     fun rejectsInvalidConfigurationAndUtf16() {
         listOf(
             -1 to 0,
@@ -85,6 +94,31 @@ class OverlappingChunkerTest {
     private fun reconstruct(chunks: List<SearchTextChunk>): String = buildString {
         chunks.forEachIndexed { index, chunk ->
             if (index == 0) append(chunk.text) else append(chunk.text.drop(SearchLimits.SOURCE_CHUNK_OVERLAP))
+        }
+    }
+
+    private fun assertCharacterChunkContract(source: String) {
+        val chunks = OverlappingChunker.chunkByCharacters(source)
+        chunks.forEach { chunk ->
+            requireValidSearchUtf16(chunk.text, "chunk")
+            assertTrue(chunk.text.length <= SearchLimits.ALIAS_CHUNK_CHARACTERS)
+            assertEquals(
+                chunk.text,
+                source.substring(chunk.startOffset, chunk.startOffset + chunk.text.length),
+            )
+        }
+        chunks.zipWithNext().forEach { (previous, next) ->
+            val previousEnd = previous.startOffset + previous.text.length
+            assertTrue(previousEnd - next.startOffset >= SearchLimits.ALIAS_CHUNK_OVERLAP)
+        }
+        assertEquals(source.length, chunks.last().startOffset + chunks.last().text.length)
+        assertEquals(source, reconstructByOffsets(chunks))
+    }
+
+    private fun reconstructByOffsets(chunks: List<SearchTextChunk>): String = buildString {
+        chunks.forEach { chunk ->
+            val alreadyWritten = length - chunk.startOffset
+            if (alreadyWritten < chunk.text.length) append(chunk.text.drop(alreadyWritten.coerceAtLeast(0)))
         }
     }
 }

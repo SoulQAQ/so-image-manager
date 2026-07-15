@@ -40,9 +40,24 @@ object OverlappingChunker {
     ): List<SearchTextChunk> {
         validate(text, size, overlap)
         if (text.isEmpty()) return emptyList()
-        return chunk(text.length, size, overlap) { ordinal, start, end ->
-            SearchTextChunk(ordinal, start, text.substring(start, end))
+
+        val chunks = mutableListOf<SearchTextChunk>()
+        var start = 0
+        while (start < text.length) {
+            var end = minOf(start + size, text.length)
+            if (splitsSurrogatePair(text, end)) end--
+            require(end > start) { "size is too small to preserve a UTF-16 surrogate pair" }
+            chunks += SearchTextChunk(chunks.size, start, text.substring(start, end))
+            if (end == text.length) break
+
+            var nextStart = end - overlap
+            if (splitsSurrogatePair(text, nextStart)) nextStart--
+            require(nextStart > start) {
+                "size and overlap cannot advance without splitting a UTF-16 surrogate pair"
+            }
+            start = nextStart
         }
+        return chunks
     }
 
     private fun validate(text: String, size: Int, overlap: Int) {
@@ -51,6 +66,12 @@ object OverlappingChunker {
         require(size > overlap) { "size must be greater than overlap" }
         requireValidSearchUtf16(text, "text")
     }
+
+    private fun splitsSurrogatePair(text: String, offset: Int): Boolean =
+        offset > 0 &&
+            offset < text.length &&
+            Character.isHighSurrogate(text[offset - 1]) &&
+            Character.isLowSurrogate(text[offset])
 
     private inline fun chunk(
         length: Int,

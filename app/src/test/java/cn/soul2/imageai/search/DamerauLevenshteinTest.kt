@@ -46,6 +46,9 @@ class DamerauLevenshteinTest {
             DamerauLevenshtein.withinDistance("a", "b", -1)
         }
         assertThrows(IllegalArgumentException::class.java) {
+            DamerauLevenshtein.withinDistance("a", "b", Int.MAX_VALUE)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
             DamerauLevenshtein.maximumDistanceFor(129)
         }
         assertThrows(SearchValidationException::class.java) {
