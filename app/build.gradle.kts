@@ -124,6 +124,7 @@ dependencies {
     // Images
     implementation(libs.coil.compose)
     implementation(libs.pinyin4j)
+    implementation(libs.okhttp)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
@@ -140,6 +141,7 @@ dependencies {
     testImplementation(libs.androidx.paging.testing)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
+    testImplementation(libs.okhttp.mockwebserver)
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
