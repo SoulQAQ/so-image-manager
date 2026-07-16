@@ -11,4 +11,11 @@ enum class SearchField(
     CATEGORY(16, 500.0),
     SEARCH_TOKEN(32, 350.0),
     MEDIA_TEXT(64, 450.0),
+
+    ;
+
+    companion object {
+        fun fromMask(mask: Int): SearchField = entries.firstOrNull { it.mask == mask }
+            ?: throw IllegalArgumentException("unsupported search field mask: $mask")
+    }
 }

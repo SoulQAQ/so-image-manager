@@ -21,6 +21,18 @@ internal data class SearchGramCandidate(
     val sharedGramCount: Int,
 )
 
+internal data class SearchMappingCandidate(
+    val imageLocalId: Long,
+    val termId: Long,
+    val normalizedKey: String,
+    val fieldMask: Int,
+    val ownership: cn.soul2.imageai.data.db.entity.SearchTermOwnership,
+    val weight: Double,
+    val sortTimeEpochMillis: Long,
+    val mediaStoreId: Long,
+    val volumeName: String,
+)
+
 @Dao
 internal interface SearchIndexDao {
     @Query("SELECT * FROM image WHERE local_id = :imageLocalId LIMIT 1")
@@ -126,13 +138,87 @@ internal interface SearchIndexDao {
 
     @Query(
         """
-        SELECT rowid FROM search_document_fts
-        WHERE search_document_fts MATCH :matchQuery
-        ORDER BY rowid ASC
+        SELECT search_document_fts.rowid FROM search_document_fts
+        INNER JOIN image AS i ON i.local_id = search_document_fts.rowid
+        WHERE search_document_fts MATCH :matchQuery AND i.availability = 'AVAILABLE'
+        ORDER BY i.sort_time_epoch_millis DESC, i.media_store_id DESC,
+            i.volume_name DESC, i.local_id DESC
         LIMIT :limit
         """,
     )
     suspend fun findFtsCandidateIds(matchQuery: String, limit: Int): List<Long>
+
+    @Query(
+        """
+        SELECT m.image_local_id AS imageLocalId, m.term_id AS termId,
+            t.normalized_key AS normalizedKey, m.field_mask AS fieldMask,
+            m.ownership AS ownership, m.weight AS weight,
+            i.sort_time_epoch_millis AS sortTimeEpochMillis,
+            i.media_store_id AS mediaStoreId, i.volume_name AS volumeName
+        FROM image_search_term AS m
+        INNER JOIN search_term AS t ON t.term_id = m.term_id
+        INNER JOIN image AS i ON i.local_id = m.image_local_id
+        WHERE t.normalized_key = :normalizedKey AND i.availability = 'AVAILABLE'
+        ORDER BY m.weight DESC, i.sort_time_epoch_millis DESC,
+            i.media_store_id DESC, i.volume_name DESC, i.local_id DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun findExactMappings(
+        normalizedKey: String,
+        limit: Int,
+    ): List<SearchMappingCandidate>
+
+    @Query(
+        """
+        SELECT m.image_local_id AS imageLocalId, m.term_id AS termId,
+            t.normalized_key AS normalizedKey, m.field_mask AS fieldMask,
+            m.ownership AS ownership, m.weight AS weight,
+            i.sort_time_epoch_millis AS sortTimeEpochMillis,
+            i.media_store_id AS mediaStoreId, i.volume_name AS volumeName
+        FROM image_search_term AS m
+        INNER JOIN search_term AS t ON t.term_id = m.term_id
+        INNER JOIN image AS i ON i.local_id = m.image_local_id
+        WHERE m.term_id IN (:termIds) AND i.availability = 'AVAILABLE'
+        ORDER BY m.weight DESC, i.sort_time_epoch_millis DESC,
+            i.media_store_id DESC, i.volume_name DESC, i.local_id DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun findMappingsForTerms(
+        termIds: List<Long>,
+        limit: Int,
+    ): List<SearchMappingCandidate>
+
+    @Query("SELECT * FROM search_document WHERE rowid IN (:imageLocalIds)")
+    suspend fun getDocuments(imageLocalIds: List<Long>): List<SearchDocumentEntity>
+
+    @Query("SELECT * FROM image WHERE local_id IN (:imageLocalIds)")
+    suspend fun getImages(imageLocalIds: List<Long>): List<ImageEntity>
+
+    @Query(
+        """
+        SELECT i.* FROM image AS i
+        LEFT JOIN search_document AS d ON d.rowid = i.local_id
+        WHERE i.availability = 'AVAILABLE' AND d.rowid IS NULL
+        ORDER BY i.sort_time_epoch_millis DESC, i.media_store_id DESC,
+            i.volume_name DESC, i.local_id DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun getUnindexedAvailableImages(limit: Int): List<ImageEntity>
+
+    @Query("SELECT * FROM search_term WHERE term_id IN (:termIds)")
+    suspend fun getTerms(termIds: List<Long>): List<SearchTermEntity>
+
+    @Query("SELECT * FROM search_term_alias WHERE alias_id IN (:aliasIds)")
+    suspend fun getAliases(aliasIds: List<Long>): List<SearchTermAliasEntity>
+
+    @Query("SELECT * FROM search_source_chunk WHERE chunk_id IN (:chunkIds)")
+    suspend fun getSourceChunks(chunkIds: List<Long>): List<SearchSourceChunkEntity>
+
+    @Query("SELECT * FROM search_text_alias_chunk WHERE alias_chunk_id IN (:chunkIds)")
+    suspend fun getTextAliasChunks(chunkIds: List<Long>): List<SearchTextAliasChunkEntity>
 
     @Query(
         """

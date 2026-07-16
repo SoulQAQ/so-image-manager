@@ -269,29 +269,29 @@ data class SearchProgress(
 )
 ```
 
-- [ ] **Step 1: Write ranking tests.** Lock tier order `USER`, `EXACT_STRUCTURED`, `FTS4`, `SUBSTRING`, `TYPO`, `PINYIN`; stable tie-break is field weight descending, match score descending, image sort time descending, MediaStore ID descending, local ID descending.
+- [x] **Step 1: Write ranking tests.** Lock tier order `USER`, `EXACT_STRUCTURED`, `FTS4`, `SUBSTRING`, `TYPO`, `PINYIN`; stable tie-break is field weight descending, match score descending, image sort time descending, MediaStore ID descending, local ID descending.
 
-- [ ] **Step 2: Write repository corpus tests.** Cover exact, FTS prefix, CJK bigram substring, Latin trigram substring, typo distances, full pinyin, initials, polyphonic lexical alias, long-caption boundary aliases, one-character CJK rules, one/two-character Latin rules, empty results, historical-token exclusion, and tombstone restore.
+- [x] **Step 2: Write repository corpus tests.** Cover exact, FTS prefix, CJK bigram substring, Latin trigram substring, typo distances, full pinyin, initials, polyphonic lexical alias, long-caption boundary aliases, one-character CJK rules, one/two-character Latin rules, empty results, historical-token exclusion, and tombstone restore.
 
-- [ ] **Step 3: Write cap and timeout tests with an injected monotonic clock.** Assert 512/64/5000 caps emit the matching partial reason; staged deadlines emit `STRUCTURED_TIMEOUT`, `SUBSTRING_TIMEOUT`, or `FUZZY_TIMEOUT` without an unrestricted fallback scan.
+- [x] **Step 3: Write cap and timeout tests with an injected monotonic clock.** Assert 512/64/5000 caps emit the matching partial reason; staged deadlines emit `STRUCTURED_TIMEOUT`, `SUBSTRING_TIMEOUT`, or `FUZZY_TIMEOUT` without an unrestricted fallback scan.
 
-- [ ] **Step 4: Write replacement-generation cancellation test.** A request with generation N must stop after N+1 starts. Check cancellation after every DAO page and every 256 verification candidates.
+- [x] **Step 4: Write replacement-generation cancellation test.** A request with generation N must stop after N+1 starts. Check cancellation after every DAO page and every 256 verification candidates.
 
-- [ ] **Step 5: Run repository tests and verify RED.**
+- [x] **Step 5: Run repository tests and verify RED.**
 
 Run: `./gradlew testDebugUnitTest --tests "cn.soul2.imageai.search.RoomImageSearchRepositoryTest"`
 
 Expected: compilation failure because repository types do not exist.
 
-- [ ] **Step 6: Implement structured and FTS4 stages.** Escape FTS syntax through an allowlisted tokenizer; never concatenate raw user text into SQL. Query exact terms and FTS MATCH separately, page IDs in batches of 200, and hydrate only the current top 40 plus bounded prefetch candidates.
+- [x] **Step 6: Implement structured and FTS4 stages.** Escape FTS syntax through an allowlisted tokenizer; never concatenate raw user text into SQL. Query exact terms and FTS MATCH separately, page IDs in batches of 200, and hydrate only the current top 40 plus bounded prefetch candidates.
 
-- [ ] **Step 7: Implement substring, typo, and pinyin stages.** Rank gram candidates in SQL by shared gram count, verify actual containment/edit distance in Kotlin, stop at caps, and attach field-specific hit reasons. Long-text alias chunks map directly to image candidates; lexical aliases join through their terms.
+- [x] **Step 7: Implement substring, typo, and pinyin stages.** Rank gram candidates in SQL by shared gram count, verify actual containment/edit distance in Kotlin, stop at caps, and attach field-specific hit reasons. Long-text alias chunks map directly to image candidates; lexical aliases join through their terms.
 
-- [ ] **Step 8: Implement progressive Flow.** Publish structured/FTS immediately, coalesce lower-tier updates to at most once every 200 ms, preserve higher-tier positions, mark `isRefining`, and use `withTimeoutOrNull` only around individual stages plus an outer 5-second deadline.
+- [x] **Step 8: Implement progressive Flow.** Publish structured/FTS immediately, coalesce lower-tier updates to at most once every 200 ms, preserve higher-tier positions, mark `isRefining`, and use `withTimeoutOrNull` only around individual stages plus an outer 5-second deadline.
 
-- [ ] **Step 9: Add degradation tests.** Missing/corrupt fuzzy tables retain exact and healthy FTS stages with `INDEX_DEGRADED`; an FTS failure retains exact structured results and exposes `REBUILD_REQUIRED`.
+- [x] **Step 9: Add degradation tests.** Missing/corrupt fuzzy tables retain exact and healthy FTS stages with `INDEX_DEGRADED`; an FTS failure retains exact structured results and exposes `REBUILD_REQUIRED`.
 
-- [ ] **Step 10: Run Task 4 tests and commit.**
+- [x] **Step 10: Run Task 4 tests and commit.**
 
 Run: `./gradlew testDebugUnitTest --tests "cn.soul2.imageai.search.*"`
 

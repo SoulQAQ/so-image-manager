@@ -28,6 +28,10 @@ class SoImApplication : Application() {
             scope = processIoScope,
             cleanup = { container.canonicalMetadataRepository.enforceRetention() },
         )
+        launchSearchIndexBackfill(
+            scope = processIoScope,
+            backfill = container::backfillSearchIndex,
+        )
     }
 }
 
@@ -63,5 +67,19 @@ internal suspend fun runCanonicalRetentionMaintenance(
         throw error
     } catch (_: Throwable) {
         logWarning("Canonical analysis retention will retry later")
+    }
+}
+
+internal fun launchSearchIndexBackfill(
+    scope: CoroutineScope,
+    backfill: suspend () -> Int,
+    logWarning: (String) -> Unit = { message -> Log.w("SoImMaintenance", message) },
+): Job = scope.launch {
+    try {
+        backfill()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (_: Throwable) {
+        logWarning("Search index backfill failed; will retry after media sync")
     }
 }

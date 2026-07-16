@@ -66,4 +66,25 @@ class SoImApplicationMaintenanceTest {
         assertFalse(warnings.single().contains("database detail"))
         scope.cancel()
     }
+
+    @Test
+    fun searchBackfillFailureIsContainedAndDoesNotLeakDatabaseDetails() = runTest {
+        val warnings = mutableListOf<String>()
+        val supervisor = SupervisorJob()
+        val scope = CoroutineScope(supervisor + StandardTestDispatcher(testScheduler))
+
+        val backfill = launchSearchIndexBackfill(
+            scope = scope,
+            backfill = { error("search table path must not leak") },
+            logWarning = warnings::add,
+        )
+
+        advanceUntilIdle()
+
+        assertTrue(backfill.isCompleted)
+        assertTrue(supervisor.isActive)
+        assertEquals(listOf("Search index backfill failed; will retry after media sync"), warnings)
+        assertFalse(warnings.single().contains("path"))
+        scope.cancel()
+    }
 }

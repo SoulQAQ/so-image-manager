@@ -10,6 +10,7 @@ import cn.soul2.imageai.media.store.MediaStoreImage
 
 class RoomMediaSyncStore(
     private val syncDao: MediaSyncDao,
+    private val afterImageCommit: suspend (List<ImageEntity>) -> Unit = {},
 ) : MediaSyncStore {
     override suspend fun hasPersistedScanBaseline(): Boolean =
         syncDao.hasPersistedScanBaseline()
@@ -56,11 +57,12 @@ class RoomMediaSyncStore(
         checkpoint: SyncCheckpoint,
         run: SyncRun,
     ) {
-        syncDao.commitBatch(
+        val persistedImages = syncDao.commitBatch(
             images = images.map { image -> RoomMediaSyncMapper.image(image, run) },
             checkpoint = RoomMediaSyncMapper.checkpoint(checkpoint),
             run = RoomMediaSyncMapper.run(run),
         )
+        if (persistedImages.isNotEmpty()) afterImageCommit(persistedImages)
     }
 
     override suspend fun updateRun(run: SyncRun) {

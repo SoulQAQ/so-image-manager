@@ -19,6 +19,9 @@ import cn.soul2.imageai.media.sync.MediaSyncStore
 import cn.soul2.imageai.media.sync.RoomMediaSyncStore
 import cn.soul2.imageai.media.sync.WorkManagerSyncWorkBackend
 import cn.soul2.imageai.search.RoomSearchProjectionWriter
+import cn.soul2.imageai.search.RoomImageSearchRepository
+import cn.soul2.imageai.search.ImageSearchRepository
+import cn.soul2.imageai.search.SearchIndexBackfill
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingRepository
 import kotlinx.coroutines.CoroutineScope
 
@@ -30,6 +33,9 @@ class AppContainer(
 
     private val database: AppDatabase = AppDatabaseFactory.create(applicationContext)
     private val searchProjectionWriter = RoomSearchProjectionWriter(database.searchIndexDao())
+    private val searchIndexBackfill = SearchIndexBackfill(database, searchProjectionWriter)
+    val imageSearchRepository: ImageSearchRepository =
+        RoomImageSearchRepository(database.searchIndexDao())
     val canonicalMetadataRepository = CanonicalMetadataRepository(database, searchProjectionWriter)
     val galleryRepository: GalleryRepository = RoomGalleryRepository(
         database.imageDao(),
@@ -41,7 +47,10 @@ class AppContainer(
     val galleryPermissionMonitor = GalleryPermissionMonitor(applicationContext)
     val galleryOnboardingRepository = GalleryOnboardingRepository(database.appSettingDao())
     val mediaStoreGateway: MediaStoreGateway = AndroidMediaStoreGateway(applicationContext)
-    val mediaSyncStore: MediaSyncStore = RoomMediaSyncStore(database.mediaSyncDao())
+    val mediaSyncStore: MediaSyncStore = RoomMediaSyncStore(
+        database.mediaSyncDao(),
+        searchIndexBackfill::reindexCommitted,
+    )
     val mediaSyncEngine = MediaSyncEngine(
         gateway = mediaStoreGateway,
         store = mediaSyncStore,
@@ -63,4 +72,6 @@ class AppContainer(
     internal suspend fun cleanupLegacyDatabaseIfNeeded() {
         AppDatabaseFactory.cleanupLegacyDatabaseIfNeeded(applicationContext, database)
     }
+
+    internal suspend fun backfillSearchIndex(): Int = searchIndexBackfill.backfillMissing()
 }

@@ -26,6 +26,7 @@ class CanonicalStorageBoundaryContractTest {
             "cn/soul2/imageai/AppContainer.kt",
             "cn/soul2/imageai/analysis/CanonicalMetadataRepository.kt",
             "cn/soul2/imageai/data/db/AppDatabase.kt",
+            "cn/soul2/imageai/search/SearchIndexBackfill.kt",
         )
         val offenders = mainSource.walkTopDown()
             .filter { it.isFile && it.extension == "kt" }

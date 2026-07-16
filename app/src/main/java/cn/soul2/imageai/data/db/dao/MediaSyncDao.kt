@@ -213,12 +213,18 @@ abstract class MediaSyncDao {
         images: List<ImageEntity>,
         checkpoint: MediaSyncCheckpointEntity,
         run: MediaSyncRunEntity,
-    ) {
+    ): List<ImageEntity> {
         val resolved = resolveImagesForUpsert(images, ::findExistingIdentities)
+        val existingIds = resolved.map(ImageEntity::localId).filter { it > 0L }
+        if (existingIds.isNotEmpty()) deleteSearchDocuments(existingIds)
         if (resolved.isNotEmpty()) upsertImages(resolved)
         upsertCheckpoint(checkpoint)
         upsertRun(run)
+        return resolveImagesForUpsert(images, ::findExistingIdentities)
     }
+
+    @Query("DELETE FROM search_document WHERE rowid IN (:imageLocalIds)")
+    protected abstract suspend fun deleteSearchDocuments(imageLocalIds: List<Long>): Int
 
     @Transaction
     open suspend fun pauseForPermission(run: MediaSyncRunEntity) {
