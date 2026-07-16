@@ -18,6 +18,7 @@ import cn.soul2.imageai.media.sync.MediaSyncScheduler
 import cn.soul2.imageai.media.sync.MediaSyncStore
 import cn.soul2.imageai.media.sync.RoomMediaSyncStore
 import cn.soul2.imageai.media.sync.WorkManagerSyncWorkBackend
+import cn.soul2.imageai.search.RoomSearchProjectionWriter
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingRepository
 import kotlinx.coroutines.CoroutineScope
 
@@ -28,7 +29,8 @@ class AppContainer(
     private val applicationContext = context.applicationContext
 
     private val database: AppDatabase = AppDatabaseFactory.create(applicationContext)
-    val canonicalMetadataRepository = CanonicalMetadataRepository(database)
+    private val searchProjectionWriter = RoomSearchProjectionWriter(database.searchIndexDao())
+    val canonicalMetadataRepository = CanonicalMetadataRepository(database, searchProjectionWriter)
     val galleryRepository: GalleryRepository = RoomGalleryRepository(
         database.imageDao(),
         canonicalMetadataRepository,

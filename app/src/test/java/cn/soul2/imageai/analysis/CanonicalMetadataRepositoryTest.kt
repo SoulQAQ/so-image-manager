@@ -156,7 +156,7 @@ class CanonicalMetadataRepositoryTest {
         repository.activateAnalysis(draft(ANALYSIS_ONE, "baseline", listOf("baseline")))
         val failingRepository = CanonicalMetadataRepository(
             database,
-            SearchProjectionWriter { _, _ -> error("index failed") },
+            FailingSearchProjectionWriter,
         )
 
         assertThrows(IllegalStateException::class.java) {
@@ -294,7 +294,7 @@ class CanonicalMetadataRepositoryTest {
         repository.activateAnalysis(draft(ANALYSIS_ONE, "AI", emptyList()))
         val failingRepository = CanonicalMetadataRepository(
             database,
-            SearchProjectionWriter { _, _ -> error("index failed") },
+            FailingSearchProjectionWriter,
         )
 
         assertThrows(IllegalStateException::class.java) {
@@ -308,6 +308,46 @@ class CanonicalMetadataRepositoryTest {
         }
 
         assertEquals("AI", repository.getEffectiveSnapshot(IMAGE_ID)?.metadata?.caption)
+        assertNull(database.effectiveMetadataDao().getCorrection(IMAGE_ID))
+    }
+
+    @Test
+    fun searchIndexLimitBlocksActivationBeforePointerAndEffectiveProjectionChange() = runTest {
+        repository.activateAnalysis(draft(ANALYSIS_ONE, "baseline", listOf("baseline")))
+        val blockedRepository = CanonicalMetadataRepository(database, BlockingSearchProjectionWriter)
+
+        val result = blockedRepository.activateAnalysis(
+            draft(ANALYSIS_TWO, "blocked", listOf("new")),
+        )
+        val snapshot = requireNotNull(repository.getEffectiveSnapshot(IMAGE_ID))
+
+        assertEquals(ActivationResult.Blocked("SEARCH_INDEX_LIMIT"), result)
+        assertEquals(ANALYSIS_ONE, snapshot.activeAnalysisId)
+        assertEquals("baseline", snapshot.metadata.caption)
+        assertEquals(1L, snapshot.metadata.projectionGeneration)
+        assertEquals(
+            "SEARCH_INDEX_LIMIT",
+            database.analysisDao().getDiagnostic(ANALYSIS_TWO)?.code,
+        )
+    }
+
+    @Test
+    fun searchIndexLimitRejectsCorrectionWithoutPersistingCorrectionOrGeneration() = runTest {
+        repository.activateAnalysis(draft(ANALYSIS_ONE, "AI", emptyList()))
+        val blockedRepository = CanonicalMetadataRepository(database, BlockingSearchProjectionWriter)
+
+        assertThrows(CanonicalValidationException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                blockedRepository.applyCorrection(
+                    IMAGE_ID,
+                    CorrectionCommand.SetCaption("用户描述"),
+                    30L,
+                )
+            }
+        }
+
+        assertEquals("AI", repository.getEffectiveSnapshot(IMAGE_ID)?.metadata?.caption)
+        assertEquals(1L, repository.getEffectiveSnapshot(IMAGE_ID)?.metadata?.projectionGeneration)
         assertNull(database.effectiveMetadataDao().getCorrection(IMAGE_ID))
     }
 
@@ -491,5 +531,32 @@ class CanonicalMetadataRepositoryTest {
         const val IMAGE_ID = 42L
         const val ANALYSIS_ONE = "123e4567-e89b-12d3-a456-426614174000"
         const val ANALYSIS_TWO = "123e4567-e89b-12d3-a456-426614174001"
+    }
+
+    private data object FailingSearchProjectionWriter : SearchProjectionWriter {
+        private data object Ready : SearchProjectionPreparation.Ready
+
+        override fun prepareForImage(
+            imageLocalId: Long,
+            snapshot: EffectiveProjectionSnapshot,
+        ): SearchProjectionPreparation = Ready
+
+        override fun replaceForImage(preparation: SearchProjectionPreparation.Ready) {
+            error("index failed")
+        }
+    }
+
+    private data object BlockingSearchProjectionWriter : SearchProjectionWriter {
+        override fun prepareForImage(
+            imageLocalId: Long,
+            snapshot: EffectiveProjectionSnapshot,
+        ): SearchProjectionPreparation = SearchProjectionPreparation.Blocked(
+            code = "SEARCH_INDEX_LIMIT",
+            detail = "769 search relationships exceed 768",
+        )
+
+        override fun replaceForImage(preparation: SearchProjectionPreparation.Ready) {
+            error("blocked preparation must never be applied")
+        }
     }
 }

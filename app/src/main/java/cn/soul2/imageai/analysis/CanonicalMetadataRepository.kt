@@ -95,21 +95,44 @@ class CanonicalMetadataRepository(
                     ActivationResult.Blocked(projection.code)
                 }
                 is EffectiveProjectionBuildResult.Ready -> {
-                    analysisDao.upsertActive(
-                        ActiveImageAnalysisEntity(
-                            imageLocalId = validated.imageLocalId,
-                            analysisId = validated.analysisId,
-                        ),
+                    val snapshot = EffectiveProjectionSnapshot(
+                        projection.metadata,
+                        projection.terms,
                     )
-                    effectiveDao.deleteTerms(validated.imageLocalId)
-                    effectiveDao.upsertMetadata(projection.metadata)
-                    if (projection.terms.isNotEmpty()) effectiveDao.upsertTerms(projection.terms)
-                    searchProjectionWriter.replaceForImage(
-                        validated.imageLocalId,
-                        EffectiveProjectionSnapshot(projection.metadata, projection.terms),
-                    )
-                    analysisDao.deleteDiagnostic(validated.analysisId)
-                    ActivationResult.Activated(nextGeneration)
+                    when (
+                        val searchPreparation = searchProjectionWriter.prepareForImage(
+                            validated.imageLocalId,
+                            snapshot,
+                        )
+                    ) {
+                        is SearchProjectionPreparation.Blocked -> {
+                            analysisDao.upsertDiagnostic(
+                                AnalysisActivationDiagnosticEntity(
+                                    analysisId = validated.analysisId,
+                                    code = searchPreparation.code,
+                                    detail = searchPreparation.detail,
+                                    updatedAtEpochMillis = validated.completedAtEpochMillis,
+                                ),
+                            )
+                            ActivationResult.Blocked(searchPreparation.code)
+                        }
+                        is SearchProjectionPreparation.Ready -> {
+                            analysisDao.upsertActive(
+                                ActiveImageAnalysisEntity(
+                                    imageLocalId = validated.imageLocalId,
+                                    analysisId = validated.analysisId,
+                                ),
+                            )
+                            effectiveDao.deleteTerms(validated.imageLocalId)
+                            effectiveDao.upsertMetadata(projection.metadata)
+                            if (projection.terms.isNotEmpty()) {
+                                effectiveDao.upsertTerms(projection.terms)
+                            }
+                            searchProjectionWriter.replaceForImage(searchPreparation)
+                            analysisDao.deleteDiagnostic(validated.analysisId)
+                            ActivationResult.Activated(nextGeneration)
+                        }
+                    }
                 }
             }
         }
@@ -337,6 +360,14 @@ class CanonicalMetadataRepository(
                 invalid(projection.detail)
             }
             projection as EffectiveProjectionBuildResult.Ready
+            val searchPreparation = searchProjectionWriter.prepareForImage(
+                imageLocalId,
+                EffectiveProjectionSnapshot(projection.metadata, projection.terms),
+            )
+            if (searchPreparation is SearchProjectionPreparation.Blocked) {
+                invalid("${searchPreparation.code}: ${searchPreparation.detail}")
+            }
+            searchPreparation as SearchProjectionPreparation.Ready
 
             effectiveDao.deleteCorrection(imageLocalId)
             if (correction != null) effectiveDao.upsertCorrection(correction)
@@ -345,10 +376,7 @@ class CanonicalMetadataRepository(
             effectiveDao.deleteTerms(imageLocalId)
             effectiveDao.upsertMetadata(projection.metadata)
             if (projection.terms.isNotEmpty()) effectiveDao.upsertTerms(projection.terms)
-            searchProjectionWriter.replaceForImage(
-                imageLocalId,
-                EffectiveProjectionSnapshot(projection.metadata, projection.terms),
-            )
+            searchProjectionWriter.replaceForImage(searchPreparation)
             CorrectionResult.Applied(nextGeneration)
         }
     }

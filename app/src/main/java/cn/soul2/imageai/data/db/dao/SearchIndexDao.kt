@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 import cn.soul2.imageai.data.db.entity.ImageSearchTermEntity
+import cn.soul2.imageai.data.db.entity.ImageEntity
 import cn.soul2.imageai.data.db.entity.SearchDocumentEntity
 import cn.soul2.imageai.data.db.entity.SearchGramEntity
 import cn.soul2.imageai.data.db.entity.SearchGramOwnerType
@@ -22,6 +23,9 @@ internal data class SearchGramCandidate(
 
 @Dao
 internal interface SearchIndexDao {
+    @Query("SELECT * FROM image WHERE local_id = :imageLocalId LIMIT 1")
+    fun getImage(imageLocalId: Long): ImageEntity?
+
     @Upsert
     fun upsertDocument(document: SearchDocumentEntity)
 

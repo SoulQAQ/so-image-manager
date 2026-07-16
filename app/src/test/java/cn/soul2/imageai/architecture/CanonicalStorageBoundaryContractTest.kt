@@ -23,6 +23,7 @@ class CanonicalStorageBoundaryContractTest {
     @Test
     fun rawCanonicalAndSearchDaosStayInsideTheirStorageOwners() {
         val allowed = setOf(
+            "cn/soul2/imageai/AppContainer.kt",
             "cn/soul2/imageai/analysis/CanonicalMetadataRepository.kt",
             "cn/soul2/imageai/data/db/AppDatabase.kt",
         )
@@ -38,6 +39,6 @@ class CanonicalStorageBoundaryContractTest {
             .map { it.relativeTo(root).invariantSeparatorsPath }
             .toList()
 
-        assertTrue("Raw canonical DAO access escaped the repository: $offenders", offenders.isEmpty())
+        assertTrue("Raw canonical/search DAO access escaped its owner: $offenders", offenders.isEmpty())
     }
 }

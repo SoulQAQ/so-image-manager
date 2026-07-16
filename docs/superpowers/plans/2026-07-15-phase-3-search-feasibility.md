@@ -206,33 +206,33 @@ interface SearchProjectionWriter {
 
 `RoomSearchProjectionWriter.Prepared(plan: SearchProjectionPlan)` is the opaque immutable `Ready` implementation. `NoOp` prepares a singleton ready token and applies no writes.
 
-- [ ] **Step 1: Write projection truth-table tests.** Cover MediaStore filename/album/dimensions/size/time, effective caption, tags, categories, active-only search tokens, user ownership/weight, tombstone suppression, and historical-token exclusion.
+- [x] **Step 1: Write projection truth-table tests.** Cover MediaStore filename/album/dimensions/size/time, effective caption, tags, categories, active-only search tokens, user ownership/weight, tombstone suppression, and historical-token exclusion.
 
-- [ ] **Step 2: Write complete-field boundary tests.** Use a 4 KiB UTF-8 caption whose source substring, full-pinyin query, and initials query each cross every 512/127 boundary. Assert all suffixes remain indexed and no alias is truncated.
+- [x] **Step 2: Write complete-field boundary tests.** Use a 4 KiB UTF-8 caption whose source substring, full-pinyin query, and initials query each cross every 512/127 boundary. Assert all suffixes remain indexed and no alias is truncated.
 
-- [ ] **Step 3: Write relationship preflight tests.** Exactly 768 image-term/source-chunk/text-alias-chunk relationships is accepted. 769 returns `SearchProjectionPreparation.Blocked(code = "SEARCH_INDEX_LIMIT")` before DAO mutation. Duplicate mappings and chunks do not consume duplicate relationships; shared aliases and grams remain separately deduplicated for storage.
+- [x] **Step 3: Write relationship preflight tests.** Exactly 768 image-term/source-chunk/text-alias-chunk relationships is accepted. 769 returns `SearchProjectionPreparation.Blocked(code = "SEARCH_INDEX_LIMIT")` before DAO mutation. Duplicate mappings and chunks do not consume duplicate relationships; shared aliases and grams remain separately deduplicated for storage.
 
-- [ ] **Step 4: Run planner tests and verify RED.**
+- [x] **Step 4: Run planner tests and verify RED.**
 
 Run: `./gradlew testDebugUnitTest --tests "cn.soul2.imageai.search.SearchProjectionPlannerTest"`
 
 Expected: compilation failure because planner types do not exist.
 
-- [ ] **Step 5: Implement the pure planner.** Field masks are fixed bits: filename `1`, album `2`, caption `4`, tag `8`, category `16`, search token `32`, media text `64`. Ownership is `MEDIA`, `AI`, or `USER`; weight order is user `600`, exact structured `500`, filename/album `450`, caption `300`, token `350`.
+- [x] **Step 5: Implement the pure planner.** Field masks are fixed bits: filename `1`, album `2`, caption `4`, tag `8`, category `16`, search token `32`, media text `64`. Ownership is `MEDIA`, `AI`, or `USER`; weight order is user `600`, exact structured `500`, filename/album `450`, caption `300`, token `350`.
 
-- [ ] **Step 6: Write writer replacement/rollback tests.** Replacement deletes every old image-owned mapping/chunk/alias-chunk/gram, upserts shared terms/aliases, inserts the new document, and removes unreferenced lexical rows. Injected failure rolls back document, FTS, and all fuzzy tables.
+- [x] **Step 6: Write writer replacement/rollback tests.** Replacement deletes every old image-owned mapping/chunk/alias-chunk/gram, upserts shared terms/aliases, inserts the new document, and removes unreferenced lexical rows. Injected failure rolls back document, FTS, and all fuzzy tables.
 
-- [ ] **Step 7: Implement `RoomSearchProjectionWriter`.** `prepareForImage` builds the complete immutable plan and performs the 768 preflight without DAO mutation. `replaceForImage` accepts only that writer's `Prepared` token and performs replacement through the database-bound DAO created by `AppContainer`; neither method may call `withTransaction`, launch a coroutine, perform file/network I/O, or retain mutable plan state after return.
+- [x] **Step 7: Implement `RoomSearchProjectionWriter`.** `prepareForImage` builds the complete immutable plan and performs the 768 preflight without DAO mutation. `replaceForImage` accepts only that writer's `Prepared` token and performs replacement through the database-bound DAO created by `AppContainer`; neither method may call `withTransaction`, launch a coroutine, perform file/network I/O, or retain mutable plan state after return.
 
-- [ ] **Step 8: Extend canonical activation blocking.** Inside the canonical Room transaction, build the effective snapshot and call `prepareForImage` before changing the active pointer or deleting effective rows. `Blocked` stores an inactive `SEARCH_INDEX_LIMIT` diagnostic and leaves active pointer, effective projection, generation, and old search index unchanged. For `Ready`, replace pointer/effective rows and then call `replaceForImage` before commit. Corrections that would exceed the cap fail locally and preserve the current transaction state.
+- [x] **Step 8: Extend canonical activation blocking.** Inside the canonical Room transaction, build the effective snapshot and call `prepareForImage` before changing the active pointer or deleting effective rows. `Blocked` stores an inactive `SEARCH_INDEX_LIMIT` diagnostic and leaves active pointer, effective projection, generation, and old search index unchanged. For `Ready`, replace pointer/effective rows and then call `replaceForImage` before commit. Corrections that would exceed the cap fail locally and preserve the current transaction state.
 
-- [ ] **Step 9: Replace the no-op writer in AppContainer and run canonical/index integration tests.**
+- [x] **Step 9: Replace the no-op writer in AppContainer and run canonical/index integration tests.**
 
 Run: `./gradlew testDebugUnitTest --tests "cn.soul2.imageai.analysis.*" --tests "cn.soul2.imageai.search.*"`
 
 Expected: active analysis, effective projection, document, FTS4, terms, grams, and pinyin aliases always share one generation.
 
-- [ ] **Step 10: Commit.**
+- [x] **Step 10: Commit.**
 
 Commit: `feat: index canonical projections atomically`
 
