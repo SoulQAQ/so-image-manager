@@ -12,13 +12,17 @@ import kotlin.coroutines.coroutineContext
 import kotlin.math.max
 import kotlin.math.roundToInt
 
+fun interface ImagePreprocessor {
+    suspend fun prepare(contentUri: String, maxEdge: Int, maxBytes: Int): PreparedImage
+}
+
 class ContentImagePreprocessor internal constructor(
     private val contentResolver: ContentResolver,
     private val encoder: JpegImageEncoder = JpegImageEncoder(),
-) {
+) : ImagePreprocessor {
     constructor(contentResolver: ContentResolver) : this(contentResolver, JpegImageEncoder())
 
-    suspend fun prepare(
+    override suspend fun prepare(
         contentUri: String,
         maxEdge: Int,
         maxBytes: Int,

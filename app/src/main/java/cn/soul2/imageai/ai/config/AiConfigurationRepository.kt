@@ -8,7 +8,10 @@ import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
 import cn.soul2.imageai.data.db.entity.ProviderAuthMode
 import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
+import cn.soul2.imageai.ai.protocol.CustomJsonProtocolDefinition
 import java.net.URI
+import org.json.JSONArray
+import org.json.JSONObject
 
 class AiConfigurationRepository internal constructor(
     private val dao: AiConfigurationDao,
@@ -33,6 +36,11 @@ class AiConfigurationRepository internal constructor(
             protocol.definitionJson,
             AiConfigurationLimits.PROTOCOL_DEFINITION_JSON_LENGTH,
         )
+        try {
+            CustomJsonProtocolDefinition.parse(protocol.definitionJson)
+        } catch (error: IllegalArgumentException) {
+            invalid("definitionJson is not a valid declarative protocol: ${error.message}")
+        }
         dao.upsertProtocol(protocol)
     }
 
@@ -95,6 +103,8 @@ class AiConfigurationRepository internal constructor(
             provider.allowedRedirectOriginsJson,
             AiConfigurationLimits.REDIRECT_ORIGINS_JSON_LENGTH,
         )
+        validateHeadersJson(provider.headersJson)
+        validateRedirectOriginsJson(provider.allowedRedirectOriginsJson)
         validateTimeout("connectTimeoutMillis", provider.connectTimeoutMillis)
         validateTimeout("readTimeoutMillis", provider.readTimeoutMillis)
         validateTimeout("writeTimeoutMillis", provider.writeTimeoutMillis)
@@ -173,6 +183,43 @@ class AiConfigurationRepository internal constructor(
         }
         if (perDay !in 0..AiConfigurationLimits.MAX_REQUESTS_PER_DAY) {
             invalid("$scope requestsPerDay is outside the supported range")
+        }
+    }
+
+    private fun validateHeadersJson(value: String) {
+        val headers = try {
+            JSONObject(value)
+        } catch (_: Exception) {
+            invalid("headersJson must be a JSON object")
+        }
+        headers.keys().forEach { name ->
+            if (headers.opt(name) !is String) invalid("headersJson values must be strings")
+            validateHeaderName(name)
+        }
+    }
+
+    private fun validateRedirectOriginsJson(value: String) {
+        val origins = try {
+            JSONArray(value)
+        } catch (_: Exception) {
+            invalid("allowedRedirectOriginsJson must be a JSON array")
+        }
+        repeat(origins.length()) { index ->
+            val origin = origins.opt(index) as? String
+                ?: invalid("redirect origins must be strings")
+            val uri = try {
+                URI(origin)
+            } catch (_: Exception) {
+                invalid("redirect origin is not a valid URL")
+            }
+            if (
+                uri.scheme?.lowercase() !in setOf("https", "http") ||
+                uri.host.isNullOrBlank() || uri.rawUserInfo != null ||
+                (uri.rawPath?.let { it.isNotEmpty() && it != "/" } == true) ||
+                uri.rawQuery != null || uri.rawFragment != null
+            ) {
+                invalid("redirect entries must be URL origins without path, query, or fragment")
+            }
         }
     }
 

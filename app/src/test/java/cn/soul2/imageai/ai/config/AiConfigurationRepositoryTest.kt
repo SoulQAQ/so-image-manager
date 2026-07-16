@@ -10,6 +10,7 @@ import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
 import cn.soul2.imageai.data.db.entity.ProviderAuthMode
 import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
+import cn.soul2.imageai.ai.protocol.CustomJsonProtocolDefinitionTest
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -132,6 +133,21 @@ class AiConfigurationRepositoryTest {
         }
     }
 
+    @Test
+    fun malformedProtocolHeadersAndRedirectOriginsNeverReachRoom() = runTest {
+        assertValidationFails {
+            repository.saveProtocol(protocol().copy(definitionJson = "{}"))
+        }
+        assertValidationFails {
+            repository.saveProvider(provider().copy(headersJson = "{\"X-Test\":42}"))
+        }
+        assertValidationFails {
+            repository.saveProvider(
+                provider().copy(allowedRedirectOriginsJson = "[\"https://example.com/path\"]"),
+            )
+        }
+    }
+
     private suspend fun assertValidationFails(block: suspend () -> Unit) {
         assertThrows(AiConfigurationValidationException::class.java) {
             kotlinx.coroutines.runBlocking { block() }
@@ -171,7 +187,7 @@ class AiConfigurationRepositoryTest {
     private fun protocol() = ProtocolDefinitionEntity(
         protocolDefinitionId = PROTOCOL_ID,
         displayName = "自定义协议",
-        definitionJson = "{}",
+        definitionJson = CustomJsonProtocolDefinitionTest.DEFINITION,
         enabled = true,
         createdAtEpochMillis = 1L,
         updatedAtEpochMillis = 1L,
