@@ -9,6 +9,7 @@ import cn.soul2.imageai.data.db.dao.EffectiveMetadataDao
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.dao.MediaSyncDao
 import cn.soul2.imageai.data.db.dao.SearchIndexDao
+import cn.soul2.imageai.data.db.dao.AiConfigurationDao
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 import cn.soul2.imageai.data.db.entity.ActiveImageAnalysisEntity
 import cn.soul2.imageai.data.db.entity.AnalysisActivationDiagnosticEntity
@@ -29,6 +30,10 @@ import cn.soul2.imageai.data.db.entity.SearchSourceChunkEntity
 import cn.soul2.imageai.data.db.entity.SearchTermAliasEntity
 import cn.soul2.imageai.data.db.entity.SearchTermEntity
 import cn.soul2.imageai.data.db.entity.SearchTextAliasChunkEntity
+import cn.soul2.imageai.data.db.entity.AiRuntimeSettingEntity
+import cn.soul2.imageai.data.db.entity.ModelProfileEntity
+import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
+import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
 
 @Database(
     entities = [
@@ -52,8 +57,12 @@ import cn.soul2.imageai.data.db.entity.SearchTextAliasChunkEntity
         SearchSourceChunkEntity::class,
         SearchTextAliasChunkEntity::class,
         SearchGramEntity::class,
+        ProviderProfileEntity::class,
+        ProtocolDefinitionEntity::class,
+        ModelProfileEntity::class,
+        AiRuntimeSettingEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(RoomConverters::class)
@@ -64,4 +73,5 @@ abstract class AppDatabase : RoomDatabase() {
     internal abstract fun analysisDao(): AnalysisDao
     internal abstract fun effectiveMetadataDao(): EffectiveMetadataDao
     internal abstract fun searchIndexDao(): SearchIndexDao
+    internal abstract fun aiConfigurationDao(): AiConfigurationDao
 }

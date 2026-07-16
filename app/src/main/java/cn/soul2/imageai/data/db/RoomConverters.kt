@@ -11,6 +11,8 @@ import cn.soul2.imageai.data.db.entity.SearchGramOwnerType
 import cn.soul2.imageai.data.db.entity.SearchTermOwnership
 import cn.soul2.imageai.data.db.entity.SearchTermUnitType
 import cn.soul2.imageai.search.PinyinAliasType
+import cn.soul2.imageai.data.db.entity.ModelProtocolType
+import cn.soul2.imageai.data.db.entity.ProviderAuthMode
 
 class RoomConverters {
     @TypeConverter
@@ -82,4 +84,18 @@ class RoomConverters {
     @TypeConverter
     fun searchGramOwnerTypeFromStorage(value: String): SearchGramOwnerType =
         SearchGramOwnerType.valueOf(value)
+
+    @TypeConverter
+    fun providerAuthModeToStorage(value: ProviderAuthMode): String = value.name
+
+    @TypeConverter
+    fun providerAuthModeFromStorage(value: String): ProviderAuthMode =
+        ProviderAuthMode.valueOf(value)
+
+    @TypeConverter
+    fun modelProtocolTypeToStorage(value: ModelProtocolType): String = value.name
+
+    @TypeConverter
+    fun modelProtocolTypeFromStorage(value: String): ModelProtocolType =
+        ModelProtocolType.valueOf(value)
 }

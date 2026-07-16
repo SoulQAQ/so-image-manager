@@ -12,6 +12,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_1_2
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_2_3
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_3_4
+import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_4_5
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -235,6 +236,58 @@ class AppDatabaseMigrationTest {
         ).use { database ->
             assertEquals(1, queryCount(database, "app_setting"))
             assertEquals(0, queryCount(database, "search_document"))
+            assertFts4Artifacts(database)
+        }
+    }
+
+    @Test
+    fun migrationFourToFivePreservesExistingRowsAndCreatesAiConfiguration() {
+        migrationHelper.createDatabase(TEST_DATABASE, 4).apply {
+            execSQL(
+                "INSERT INTO app_setting (`key`, value_json, updated_at_epoch_millis) " +
+                    "VALUES ('appearance.theme', '\"system\"', 1720598400000)",
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            5,
+            true,
+            MIGRATION_4_5,
+        ).use { database ->
+            assertEquals(1, queryCount(database, "app_setting"))
+            listOf(
+                "provider_profile",
+                "protocol_definition",
+                "model_profile",
+                "ai_runtime_setting",
+            ).forEach { table -> assertEquals(0, queryCount(database, table)) }
+        }
+    }
+
+    @Test
+    fun migrationOneToFiveRunsEveryRegisteredSequentialMigration() {
+        migrationHelper.createDatabase(TEST_DATABASE, 1).apply {
+            execSQL(
+                "INSERT INTO app_setting (`key`, value_json, updated_at_epoch_millis) " +
+                    "VALUES ('appearance.theme', '\"system\"', 1720598400000)",
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            5,
+            true,
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+        ).use { database ->
+            assertEquals(1, queryCount(database, "app_setting"))
+            assertEquals(0, queryCount(database, "provider_profile"))
+            assertEquals(0, queryCount(database, "model_profile"))
             assertFts4Artifacts(database)
         }
     }

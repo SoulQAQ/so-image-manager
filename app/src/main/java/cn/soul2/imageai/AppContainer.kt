@@ -2,6 +2,7 @@ package cn.soul2.imageai
 
 import android.content.Context
 import androidx.work.WorkManager
+import cn.soul2.imageai.ai.config.AiConfigurationRepository
 import cn.soul2.imageai.analysis.CanonicalMetadataRepository
 import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.data.db.AppDatabaseFactory
@@ -37,6 +38,7 @@ class AppContainer(
     val imageSearchRepository: ImageSearchRepository =
         RoomImageSearchRepository(database.searchIndexDao())
     val canonicalMetadataRepository = CanonicalMetadataRepository(database, searchProjectionWriter)
+    val aiConfigurationRepository = AiConfigurationRepository(database)
     val galleryRepository: GalleryRepository = RoomGalleryRepository(
         database.imageDao(),
         canonicalMetadataRepository,

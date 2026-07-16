@@ -249,4 +249,94 @@ object AppDatabaseMigrations {
             ).forEach(database::execSQL)
         }
     }
+
+    val MIGRATION_4_5: Migration = object : Migration(4, 5) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            listOf(
+                """
+                CREATE TABLE IF NOT EXISTS `provider_profile` (
+                    `provider_id` TEXT NOT NULL,
+                    `display_name` TEXT NOT NULL,
+                    `base_url` TEXT NOT NULL,
+                    `auth_mode` TEXT NOT NULL,
+                    `auth_header_name` TEXT,
+                    `auth_prefix` TEXT,
+                    `credential_id` TEXT,
+                    `headers_json` TEXT NOT NULL,
+                    `allowed_redirect_origins_json` TEXT NOT NULL,
+                    `cleartext_approved` INTEGER NOT NULL,
+                    `connect_timeout_millis` INTEGER NOT NULL,
+                    `read_timeout_millis` INTEGER NOT NULL,
+                    `write_timeout_millis` INTEGER NOT NULL,
+                    `max_concurrency` INTEGER NOT NULL,
+                    `requests_per_minute` INTEGER NOT NULL,
+                    `requests_per_day` INTEGER NOT NULL,
+                    `enabled` INTEGER NOT NULL,
+                    `created_at_epoch_millis` INTEGER NOT NULL,
+                    `updated_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`provider_id`)
+                )
+                """.trimIndent(),
+                """
+                CREATE TABLE IF NOT EXISTS `protocol_definition` (
+                    `protocol_definition_id` TEXT NOT NULL,
+                    `display_name` TEXT NOT NULL,
+                    `definition_json` TEXT NOT NULL,
+                    `enabled` INTEGER NOT NULL,
+                    `created_at_epoch_millis` INTEGER NOT NULL,
+                    `updated_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`protocol_definition_id`)
+                )
+                """.trimIndent(),
+                """
+                CREATE TABLE IF NOT EXISTS `model_profile` (
+                    `model_profile_id` TEXT NOT NULL,
+                    `provider_id` TEXT NOT NULL,
+                    `display_name` TEXT NOT NULL,
+                    `model_id` TEXT NOT NULL,
+                    `protocol_type` TEXT NOT NULL,
+                    `protocol_definition_id` TEXT,
+                    `supports_vision` INTEGER NOT NULL,
+                    `max_output_tokens` INTEGER,
+                    `temperature` REAL,
+                    `max_image_edge` INTEGER NOT NULL,
+                    `max_image_bytes` INTEGER NOT NULL,
+                    `max_concurrency` INTEGER NOT NULL,
+                    `requests_per_minute` INTEGER NOT NULL,
+                    `requests_per_day` INTEGER NOT NULL,
+                    `enabled` INTEGER NOT NULL,
+                    `created_at_epoch_millis` INTEGER NOT NULL,
+                    `updated_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`model_profile_id`),
+                    FOREIGN KEY(`provider_id`) REFERENCES `provider_profile`(`provider_id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE,
+                    FOREIGN KEY(`protocol_definition_id`)
+                        REFERENCES `protocol_definition`(`protocol_definition_id`)
+                        ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS `index_model_profile_provider_id` " +
+                    "ON `model_profile` (`provider_id`)",
+                "CREATE INDEX IF NOT EXISTS `index_model_profile_protocol_definition_id` " +
+                    "ON `model_profile` (`protocol_definition_id`)",
+                """
+                CREATE TABLE IF NOT EXISTS `ai_runtime_setting` (
+                    `singleton_id` INTEGER NOT NULL,
+                    `default_model_profile_id` TEXT,
+                    `global_max_concurrency` INTEGER NOT NULL,
+                    `global_requests_per_minute` INTEGER NOT NULL,
+                    `global_requests_per_day` INTEGER NOT NULL,
+                    `prompt_text` TEXT NOT NULL,
+                    `updated_at_epoch_millis` INTEGER NOT NULL,
+                    PRIMARY KEY(`singleton_id`),
+                    FOREIGN KEY(`default_model_profile_id`)
+                        REFERENCES `model_profile`(`model_profile_id`)
+                        ON UPDATE NO ACTION ON DELETE SET NULL
+                )
+                """.trimIndent(),
+                "CREATE INDEX IF NOT EXISTS `index_ai_runtime_setting_default_model_profile_id` " +
+                    "ON `ai_runtime_setting` (`default_model_profile_id`)",
+            ).forEach(database::execSQL)
+        }
+    }
 }

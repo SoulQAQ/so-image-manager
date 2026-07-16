@@ -321,7 +321,11 @@ class MediaSchemaContractTest {
             "CREATE UNIQUE INDEX IF NOT EXISTS `index_search_text_alias_chunk_image_local_id_field_alias_type_ordinal`",
             "CREATE INDEX IF NOT EXISTS `index_search_gram_gram_owner_type`",
         ).forEach { sql -> assertTrue("MIGRATION_3_4 is missing: $sql", migration.contains(sql)) }
-        assertTrue(factory.contains("addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)"))
+        assertTrue(
+            factory.contains(
+                "addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)",
+            ),
+        )
         assertFalse(factory.contains("fallbackToDestructiveMigration"))
     }
 
