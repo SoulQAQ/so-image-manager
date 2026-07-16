@@ -5,6 +5,7 @@ import androidx.work.WorkManager
 import cn.soul2.imageai.ai.config.AiConfigurationRepository
 import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.ai.credential.AndroidKeystoreCredentialStore
+import cn.soul2.imageai.ai.quota.AiQuotaCoordinator
 import cn.soul2.imageai.analysis.CanonicalMetadataRepository
 import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.data.db.AppDatabaseFactory
@@ -42,6 +43,7 @@ class AppContainer(
     val canonicalMetadataRepository = CanonicalMetadataRepository(database, searchProjectionWriter)
     val aiConfigurationRepository = AiConfigurationRepository(database)
     val aiCredentialStore: AiCredentialStore = AndroidKeystoreCredentialStore(applicationContext)
+    val aiQuotaCoordinator = AiQuotaCoordinator(applicationContext)
     val galleryRepository: GalleryRepository = RoomGalleryRepository(
         database.imageDao(),
         canonicalMetadataRepository,
