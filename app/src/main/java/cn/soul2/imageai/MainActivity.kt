@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
         } else {
             SoImageManagerApp(
                 galleryRepository = container.galleryRepository,
+                imageSearchRepository = container.imageSearchRepository,
                 syncRuns = container.gallerySyncRuns,
                 lastSyncCompletedAt = container.galleryLastSyncCompletedAt,
                 galleryUnavailableCounts = container.galleryUnavailableCounts,

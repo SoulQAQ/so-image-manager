@@ -50,10 +50,12 @@ internal fun GalleryScreen(
     onRequestGalleryPermission: () -> Unit,
     onOpenAppSettings: () -> Unit,
     onImageClick: (Long) -> Unit,
+    topBarAction: @Composable (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().testTag(screenTag)) {
         TopAppBar(
             title = { Text(stringResource(titleRes)) },
+            actions = { topBarAction?.invoke() },
             windowInsets = WindowInsets(0, 0, 0, 0),
         )
         when (val contentState = uiState.contentState(galleryAccessState)) {

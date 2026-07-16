@@ -69,6 +69,28 @@ class GalleryNavigationTest {
         composeRule.onNodeWithText("41.jpg").assertIsDisplayed()
     }
 
+    @Test
+    fun searchRouteHidesBottomNavigationAndBackReturnsHome() {
+        val repository = OneImageRepository(image())
+        composeRule.setContent {
+            SoImageManagerTheme {
+                SoImageManagerApp(
+                    galleryRepository = repository,
+                    syncRuns = flowOf(null),
+                    galleryAccessState = GalleryAccessState.Full,
+                )
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("搜索图片").performClick()
+        composeRule.onNodeWithTag("screen_search").assertIsDisplayed()
+        composeRule.onNodeWithTag("bottom_navigation").assertDoesNotExist()
+
+        composeRule.onNodeWithContentDescription("返回").performClick()
+        composeRule.onNodeWithTag("screen_home").assertIsDisplayed()
+        composeRule.onNodeWithTag("bottom_navigation").assertIsDisplayed()
+    }
+
     private class OneImageRepository(private val image: GalleryImage) : GalleryRepository {
         override fun observe(query: GalleryQuery): Flow<PagingData<GalleryImage>> =
             flowOf(PagingData.from(listOf(image)))

@@ -319,17 +319,17 @@ Commit: `feat: add progressive local image search`
 - Consumes: `ImageSearchRepository.search(SearchRequest)` and `GalleryRepository.observeImage` hydration.
 - Produces: a top-app-bar search icon, focused Chinese search field, stable 3-column result grid, progressive indicator, hit reasons, partial-result message, clear/back controls, and image-detail navigation.
 
-- [ ] **Step 1: Write ViewModel debounce/cancellation tests.** Empty text shows recent-search idle state, non-empty text waits 250 ms, each edit increments generation, obsolete emissions are discarded, clear cancels the query, and process recreation restores the query through `SavedStateHandle`.
+- [x] **Step 1: Write ViewModel debounce/cancellation tests.** Empty text shows recent-search idle state, non-empty text waits 250 ms, each edit increments generation, obsolete emissions are discarded, clear cancels the query, and process recreation restores the query through `SavedStateHandle`.
 
-- [ ] **Step 2: Implement SearchViewModel.** Do not expose raw DAO entities. UI state contains query, results, refining flag, partial reasons, empty state, and fatal/rebuild action only.
+- [x] **Step 2: Implement SearchViewModel.** Do not expose raw DAO entities. UI state contains query, results, refining flag, partial reasons, empty state, and fatal/rebuild action only.
 
-- [ ] **Step 3: Write Compose tests.** Verify all visible strings are Chinese, IME search action, clear icon semantics, refining progress does not resize the grid, empty state, partial reason, result click, and back navigation. Ensure text and icons do not overlap at 360x640 and 1280x800 dp test constraints.
+- [x] **Step 3: Write Compose tests.** Verify all visible strings are Chinese, IME search action, clear icon semantics, refining progress does not resize the grid, empty state, partial reason, result click, and back navigation. Ensure text and icons do not overlap at 360x640 and 1280x800 dp test constraints.
 
-- [ ] **Step 4: Implement the search UI.** Home top bar uses a search icon with content description `搜索图片`; opening it navigates to `search`. The result grid reuses `GalleryImageTile`, uses three phone columns/five large-screen columns, and never displays an inactive search box before the repository exists.
+- [x] **Step 4: Implement the search UI.** Home top bar uses a search icon with content description `搜索图片`; opening it navigates to `search`. The result grid reuses `GalleryImageTile`, uses three phone columns/five large-screen columns, and never displays an inactive search box before the repository exists.
 
-- [ ] **Step 5: Wire AppContainer and navigation.** Construct `RoomImageSearchRepository` from the private database and expose only `ImageSearchRepository`. Pass it through `MainActivity` to `SoImageManagerApp`.
+- [x] **Step 5: Wire AppContainer and navigation.** Construct `RoomImageSearchRepository` from the private database and expose only `ImageSearchRepository`. Pass it through `MainActivity` to `SoImageManagerApp`.
 
-- [ ] **Step 6: Run ViewModel and Compose compilation tests; commit.**
+- [x] **Step 6: Run ViewModel and Compose compilation tests; commit.**
 
 Run: `./gradlew testDebugUnitTest compileDebugAndroidTestKotlin`
 

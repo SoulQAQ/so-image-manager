@@ -25,6 +25,7 @@ import androidx.navigation.navArgument
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.media.permission.GalleryAccessState
+import cn.soul2.imageai.search.ImageSearchRepository
 import cn.soul2.imageai.ui.gallery.ImageDetailDestination
 import cn.soul2.imageai.ui.gallery.ImageDetailScreen
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingScreen
@@ -33,6 +34,8 @@ import cn.soul2.imageai.ui.screens.HomeScreen
 import cn.soul2.imageai.ui.screens.LibraryScreen
 import cn.soul2.imageai.ui.screens.SettingsScreen
 import cn.soul2.imageai.ui.screens.TasksScreen
+import cn.soul2.imageai.ui.search.SearchDestination
+import cn.soul2.imageai.ui.search.SearchScreen
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -40,6 +43,7 @@ import kotlinx.coroutines.flow.flowOf
 fun SoImageManagerApp(
     galleryRepository: GalleryRepository,
     syncRuns: Flow<MediaSyncRunEntity?>,
+    imageSearchRepository: ImageSearchRepository = ImageSearchRepository.Empty,
     lastSyncCompletedAt: Flow<Long?> = flowOf(null),
     galleryUnavailableCounts: Flow<Int> = flowOf(0),
     navController: NavHostController = rememberNavController(),
@@ -71,6 +75,8 @@ fun SoImageManagerApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: AppDestination.start.route
     val isImageDetail = currentRoute == ImageDetailDestination.route
+    val isSearch = currentRoute == SearchDestination.route
+    val showBottomNavigation = !isImageDetail && !isSearch
 
     Scaffold(
         contentWindowInsets = if (isImageDetail) {
@@ -79,7 +85,7 @@ fun SoImageManagerApp(
             ScaffoldDefaults.contentWindowInsets
         },
         bottomBar = {
-            if (!isImageDetail) {
+            if (showBottomNavigation) {
                 NavigationBar(Modifier.testTag("bottom_navigation")) {
                     AppDestination.entries.forEach { destination ->
                         NavigationBarItem(
@@ -133,6 +139,7 @@ fun SoImageManagerApp(
                         isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
                         onRequestGalleryPermission = onRequestGalleryPermission,
                         onOpenAppSettings = onOpenAppSettings,
+                        onSearchClick = { navController.navigate(SearchDestination.route) },
                     )
                 }
                 composable(AppDestination.LIBRARY.route) {
@@ -163,6 +170,17 @@ fun SoImageManagerApp(
                         onReselectPhotos = onRequestGalleryReselection,
                         onRescan = onRequestGalleryReconciliation,
                         onOpenSystemSettings = onOpenAppSettings,
+                    )
+                }
+                composable(SearchDestination.route) {
+                    SearchScreen(
+                        searchRepository = imageSearchRepository,
+                        galleryRepository = galleryRepository,
+                        onBack = navController::navigateUp,
+                        onImageClick = { localId ->
+                            navController.navigate(ImageDetailDestination.createRoute(localId))
+                        },
+                        onRebuildIndex = onRequestGalleryReconciliation,
                     )
                 }
                 composable(
