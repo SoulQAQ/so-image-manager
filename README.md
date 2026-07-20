@@ -1,162 +1,102 @@
-# Image AI - 本地智能图片管理系统
+# SoIM
 
-一个**本地优先**的 Android 图片管理 App，支持 AI 自动标注与智能检索。
+SoIM 是一个本地优先的 Android 图片管理应用。它扫描设备图库并在本机保存索引；用户可以按时间浏览和搜索图片，也可以为单张图片调用自定义 AI 模型生成结构化描述、标签、分类和搜索关键词。
 
-## 技术栈
+当前已发布版本：`v0.5.0`。`v0.6.0` 正在改进图片详情的沉浸式浏览体验。
 
-### Android
-- Kotlin 2.0.21
-- Jetpack Compose + Material3
-- Navigation Compose
-- Room (SQLite + FTS5)
-- WebView + JSBridge
+## 当前能力
 
-### H5
-- Vue 3.5+
-- Vite 6.x
-- Vant 4.9+
-- TypeScript
-- Pinia
+- Android 10（API 29）及以上的 MediaStore 图片索引、增量同步与周期校准。
+- 首页瀑布流、图库时间网格、任务状态和权限管理。
+- 图片详情支持左右切图、双指缩放、双击缩放以及单击显示或隐藏信息与操作层。
+- 本地搜索覆盖文件名、图集、AI 描述、标签、分类和搜索关键词，支持全文、包含、拼音和有限近似匹配。
+- 单图 AI 分析：结果以 canonical 数据保存，写入后立即可被搜索。
+- `openai-responses` 预设协议，以及受限、无脚本的声明式自定义 JSON 协议。
+- 全局、供应方、模型三级并发、每分钟请求数和每日请求数配置。
+- API Key 使用 Android Keystore 加密保存；不会写入 Room 数据库、日志或 APK。
 
-## 项目结构
+## 使用 AI 分析
 
-```
-so-image-manager/
-├── app/                        # Android 主模块
-│   ├── src/main/
-│   │   ├── java/com/soul2/imageai/
-│   │   │   ├── MainActivity.kt
-│   │   │   ├── AppNavigation.kt
-│   │   │   ├── ui/
-│   │   │   │   ├── theme/
-│   │   │   │   ├── navigation/
-│   │   │   │   └── screens/
-│   │   │   └── webview/
-│   │   │       └── JsBridge.kt
-│   │   └── assets/h5/          # H5 构建产物
-│   └── build.gradle.kts
-├── h5/                         # H5 独立工程
-│   ├── src/
-│   │   ├── App.vue
-│   │   └── main.ts
-│   ├── vite.config.ts
-│   └── package.json
-├── gradle/
-│   ├── libs.versions.toml
-│   └── wrapper/
-└── README.md
-```
+1. 首次启动时授权照片访问，等待图库建立索引。
+2. 打开“设置”中的“模型、协议与并发”。
+3. 配置供应方名称、Base URL、认证方式、API Key 和模型 ID；OpenAI 使用默认的 `https://api.openai.com/v1` 与 `OpenAI Responses` 协议。
+4. 根据账号额度设置全局、供应方和模型的并发、RPM 与每日上限。
+5. 打开图片，点击一次屏幕显示操作层，再点击“AI 分析”。分析完成后，描述和标签会显示在操作层并加入搜索。
 
-## 环境要求
+本项目不在 APK 中提供 API Key。请使用自己拥有且允许调用的服务商凭据，并先以少量图片验证模型、账单和额度设置。
 
-### Android 开发
-- JDK 17+
-- Android SDK Platform 36
-- Android Build Tools 36.0.0
-- Android Gradle Plugin 8.7.3
-- Gradle 8.9+
+## 照片权限
 
-### H5 开发
-- Node.js 20+ (LTS)
-- pnpm 9+
+- API 29–32：请求 `READ_EXTERNAL_STORAGE`。
+- API 33：请求 `READ_MEDIA_IMAGES`。
+- API 34+：支持完整访问或系统提供的已选照片访问。
+- SoIM 不申请写入权限，不复制、移动、重命名或删除原始图片。
 
-## 快速开始
+部分照片的选择界面由 Android 系统或 OEM 提供。ColorOS 等系统上的选择体验不能由应用重绘；未来会单独实现基于 `ACTION_OPEN_DOCUMENT` 的持久 URI 导入，作为不依赖图库权限选择页的替代入口。
 
-### 1. 克隆项目
+## 架构
 
-```bash
-git clone https://github.com/your-repo/so-image-manager.git
-cd so-image-manager
-```
+- UI：Kotlin、Jetpack Compose、Material 3、Navigation Compose。
+- 本地数据：Room、SQLite FTS4、ngram/pinyin 索引和 Paging。
+- 图库：MediaStore、ContentObserver、WorkManager 分片同步。
+- 网络：OkHttp，显式限制重定向、请求/响应大小与请求额度。
+- 图片：Coil 显示；AI 请求前使用本地预处理限制尺寸和字节数。
 
-### 2. H5 开发
+H5 目录仍保留历史管理界面，但当前主流程使用原生 Compose。
 
-```bash
-cd h5
+## 开发环境
 
-# 安装依赖
-pnpm install
+- JDK 17。
+- Android SDK Platform 36、Build Tools 36.0.0。
+- Android Gradle Plugin 8.7.3、Gradle 8.9。
+- 最低运行版本：Android 10（API 29）。
 
-# 开发模式
-pnpm dev
-
-# 构建（输出到 Android assets）
-pnpm build:android
-```
-
-### 3. Android 开发
-
-```bash
-# 在项目根目录
-
-# 构建 Debug APK
-./gradlew assembleDebug
-
-# 构建 Release APK
-./gradlew assembleRelease
-
-# 清理构建
-./gradlew clean
-```
-
-### 4. 使用 Android Studio
-
-1. 用 Android Studio 打开项目根目录
-2. 等待 Gradle Sync 完成
-3. 运行 `app` 模块到模拟器或真机
-
-## JSBridge API
-
-Native 暴露给 H5 的接口：
-
-```javascript
-// 测试连接
-window.AppBridge.ping(message)
-// 返回: { code: 0, message: "Pong: xxx", data: {...} }
-
-// 获取设备信息
-window.AppBridge.getDeviceInfo()
-// 返回: { code: 0, message: "ok", data: { appName, versionName, ... } }
-```
-
-## 开发优先级
-
-### Phase 1（当前）
-- [x] Android 工程骨架
-- [x] Compose 导航框架
-- [x] WebView 容器 + 安全配置
-- [x] H5 工程（Vue3 + Vant4）
-- [x] 最小 JSBridge
-
-### Phase 2（下一步）
-- [ ] SQLite Schema + Room DAO
-- [ ] 图片扫描与索引
-- [ ] AI 调用与结构化落库
-- [ ] FTS5 全文搜索
-
-### Phase 3（远期）
-- [ ] Embedding 语义检索
-- [ ] 多模态重排
-- [ ] 人脸聚类
-- [ ] 去重与近重复治理
-
-## 常见问题
-
-### Q: Gradle 构建失败，提示 SDK not found?
-A: 确保 `ANDROID_HOME` 或 `ANDROID_SDK_ROOT` 环境变量指向正确的 Android SDK 目录。或在项目根目录创建 `local.properties`：
+在项目根目录创建 `local.properties`，至少包含 Android SDK 路径：
 
 ```properties
 sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
 ```
 
-### Q: WebView 显示空白页?
-A: 
-1. 确保 H5 已构建：`cd h5 && pnpm build:android`
-2. 检查 `app/src/main/assets/h5/index.html` 是否存在
-3. 查看 Logcat 中的 WebView 错误信息
+## 构建与测试
 
-### Q: Windows 路径包含中文导致构建失败?
-A: 项目已添加 `android.overridePathCheck=true` 到 `gradle.properties`。如仍有问题，建议将项目移动到纯 ASCII 路径。
+Windows PowerShell：
+
+```powershell
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat lintDebug
+.\gradlew.bat compileDebugAndroidTestKotlin
+.\gradlew.bat assembleDebug
+```
+
+Debug APK 输出到：`app/build/outputs/apk/debug/app-debug.apk`。
+
+发布 Debug 测试包使用：
+
+```powershell
+.\scripts\publish-test-apk.ps1 -Bump patch -Notes path\to\release-notes.md
+```
+
+该脚本会先执行 clean、Debug/Release 单元测试、Lint、AndroidTest 编译、Debug/Release 构建与 APK 元数据、签名和敏感内容检查；全部通过后才会推进 `version.properties`、`apk/current_version_is_*`、`apk/ver_change_log.md` 和版本化 APK。
+
+## 目录
+
+```text
+app/                         Android 应用
+  src/main/java/cn/soul2/imageai/
+    ai/                      模型协议、额度、凭据、图片预处理
+    analysis/                canonical AI 结果与用户修正投影
+    gallery/                 图库读取模型
+    media/                   MediaStore 权限与同步
+    search/                  本地搜索索引与查询
+    ui/                      Compose 页面与主题
+apk/                         版本化测试 APK 与变更日志
+docs/                        设计、计划和安全说明
+scripts/publish-test-apk.ps1 测试包发布门禁
+```
+
+## 发布说明
+
+`apk/` 下的 SoIM 安装包均为 Debug 测试包，使用 Android Debug 签名。正式生产发布必须使用独立发布证书重新签名。
 
 ## License
 

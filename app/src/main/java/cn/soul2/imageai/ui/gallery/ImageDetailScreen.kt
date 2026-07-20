@@ -1,12 +1,12 @@
 package cn.soul2.imageai.ui.gallery
 
 import android.net.Uri
-import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
@@ -21,16 +21,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -71,6 +68,7 @@ import cn.soul2.imageai.gallery.GalleryRepository
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 object ImageDetailDestination {
     const val localIdArgument = "localId"
@@ -96,7 +94,7 @@ fun ImageDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     val metadata by viewModel.effectiveMetadata.collectAsState()
     val analysisState by viewModel.analysisState.collectAsState()
-    var showDetails by remember { mutableStateOf(false) }
+    var controlsVisible by remember { mutableStateOf(true) }
 
     Box(
         modifier = Modifier
@@ -116,41 +114,37 @@ fun ImageDetailScreen(
                 style = MaterialTheme.typography.bodyLarge,
             )
             is ImageDetailUiState.Ready -> {
+                LaunchedEffect(state.image.localId) {
+                    controlsVisible = true
+                }
+                LaunchedEffect(controlsVisible, state.image.localId) {
+                    if (controlsVisible) {
+                        delay(CONTROLS_AUTO_HIDE_MILLIS)
+                        controlsVisible = false
+                    }
+                }
                 ImageDetailPager(
                     window = state.window,
                     onSelectImage = viewModel::showImage,
+                    onToggleControls = { controlsVisible = !controlsVisible },
+                    onDoubleTapZoom = { controlsVisible = false },
                 )
-                DetailActionBar(
-                    image = state.image,
-                    metadata = metadata,
-                    analysisState = analysisState,
-                    onShowDetails = { showDetails = true },
-                    onAnalyze = viewModel::analyzeCurrentImage,
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                )
+                if (controlsVisible) {
+                    DetailTopBar(
+                        image = state.image,
+                        onBack = onBack,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    )
+                    DetailActionBar(
+                        image = state.image,
+                        metadata = metadata,
+                        analysisState = analysisState,
+                        onAnalyze = viewModel::analyzeCurrentImage,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
             }
         }
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .statusBarsPadding()
-                .padding(4.dp),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
-                contentDescription = stringResource(R.string.image_detail_back),
-                tint = Color.White,
-            )
-        }
-    }
-    val ready = uiState as? ImageDetailUiState.Ready
-    if (showDetails && ready != null) {
-        ImageDetailsSheet(
-            image = ready.image,
-            metadata = metadata,
-            onDismiss = { showDetails = false },
-        )
     }
 }
 
@@ -158,6 +152,8 @@ fun ImageDetailScreen(
 private fun ImageDetailPager(
     window: GalleryImageWindow,
     onSelectImage: (Long) -> Unit,
+    onToggleControls: () -> Unit,
+    onDoubleTapZoom: () -> Unit,
 ) {
     val model = detailPagerModel(window)
 
@@ -179,7 +175,11 @@ private fun ImageDetailPager(
         ) { page ->
             val image = model.images[page]
             Box(Modifier.fillMaxSize()) {
-                ZoomableImage(image)
+                ZoomableImage(
+                    image = image,
+                    onToggleControls = onToggleControls,
+                    onDoubleTapZoom = onDoubleTapZoom,
+                )
             }
         }
     }
@@ -205,7 +205,11 @@ internal fun detailPagerModel(window: GalleryImageWindow): ImageDetailPagerModel
 }
 
 @Composable
-private fun ZoomableImage(image: GalleryImage) {
+private fun ZoomableImage(
+    image: GalleryImage,
+    onToggleControls: () -> Unit,
+    onDoubleTapZoom: () -> Unit,
+) {
     val context = LocalContext.current
     var scale by remember(image.localId) { mutableFloatStateOf(1f) }
     var offset by remember(image.localId) { mutableStateOf(Offset.Zero) }
@@ -226,6 +230,20 @@ private fun ZoomableImage(image: GalleryImage) {
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { viewport = it }
+            .pointerInput(image.localId) {
+                detectTapGestures(
+                    onTap = { onToggleControls() },
+                    onDoubleTap = {
+                        if (scale > 1f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = DOUBLE_TAP_SCALE
+                        }
+                        onDoubleTapZoom()
+                    },
+                )
+            }
             .pointerInput(image.localId, viewport) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -266,7 +284,6 @@ private fun DetailActionBar(
     image: GalleryImage,
     metadata: EffectiveImageMetadata?,
     analysisState: ImageAnalysisUiState,
-    onShowDetails: () -> Unit,
     onAnalyze: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -278,22 +295,15 @@ private fun DetailActionBar(
             is ImageAnalysisUiState.Failure -> it.imageLocalId == image.localId
         }
     } ?: ImageAnalysisUiState.Idle
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .background(Color.Black.copy(alpha = 0.62f))
             .navigationBarsPadding()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .testTag("image_detail_controls"),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        IconButton(onClick = onShowDetails) {
-            Icon(
-                Icons.Outlined.Info,
-                contentDescription = stringResource(R.string.image_detail_info),
-                tint = Color.White,
-            )
-        }
         val failure = currentAnalysis as? ImageAnalysisUiState.Failure
         if (failure != null) {
             Text(
@@ -301,65 +311,71 @@ private fun DetailActionBar(
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 2,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
         } else {
             Text(
                 text = metadata?.caption.orEmpty(),
                 color = Color.White.copy(alpha = 0.86f),
                 style = MaterialTheme.typography.bodySmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        MetadataTermLine(
+            label = stringResource(R.string.image_analysis_tags),
+            values = metadata?.terms
+                ?.filter { it.kind == AnalysisTermKind.TAG }
+                ?.map { it.displayValue }
+                .orEmpty(),
+            color = Color.White.copy(alpha = 0.76f),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = imageDetailSummary(image),
+                color = Color.White.copy(alpha = 0.76f),
+                style = MaterialTheme.typography.labelSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-        }
-        FilledTonalButton(
-            onClick = if (currentAnalysis is ImageAnalysisUiState.Success) {
-                onShowDetails
-            } else {
-                onAnalyze
-            },
-            enabled = currentAnalysis !is ImageAnalysisUiState.Running,
-            modifier = Modifier.testTag("image_detail_analyze"),
-        ) {
-            if (currentAnalysis is ImageAnalysisUiState.Running) {
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(18.dp),
-                )
-            } else {
-                Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
-                Text(
-                    stringResource(
-                        if (currentAnalysis is ImageAnalysisUiState.Success) {
-                            R.string.image_analysis_view_result
-                        } else if (metadata?.activeAnalysis != null) {
-                            R.string.image_analysis_again
-                        } else {
-                            R.string.image_analysis_start
-                        },
-                    ),
-                )
+            FilledTonalButton(
+                onClick = onAnalyze,
+                enabled = currentAnalysis !is ImageAnalysisUiState.Running,
+                modifier = Modifier.testTag("image_detail_analyze"),
+            ) {
+                if (currentAnalysis is ImageAnalysisUiState.Running) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(18.dp),
+                    )
+                } else {
+                    Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
+                    Text(
+                        stringResource(
+                            if (metadata?.activeAnalysis != null) {
+                                R.string.image_analysis_again
+                            } else {
+                                R.string.image_analysis_start
+                            },
+                        ),
+                    )
+                }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ImageDetailsSheet(
+private fun DetailTopBar(
     image: GalleryImage,
-    metadata: EffectiveImageMetadata?,
-    onDismiss: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        ImageInfoContent(image, metadata)
-    }
-}
-
-@Composable
-private fun ImageInfoContent(image: GalleryImage, metadata: EffectiveImageMetadata?) {
-    val context = LocalContext.current
     val timestamp = image.capturedAtEpochMillis ?: image.modifiedAtEpochMillis
     val formattedDate = remember(timestamp) {
         DateFormat.getDateTimeInstance(
@@ -368,118 +384,58 @@ private fun ImageInfoContent(image: GalleryImage, metadata: EffectiveImageMetada
             Locale.SIMPLIFIED_CHINESE,
         ).format(Date(timestamp))
     }
-    val formattedSize = remember(image.sizeBytes) {
-        Formatter.formatShortFileSize(context, image.sizeBytes)
-    }
-
-    Column(
-        modifier = Modifier
+    Row(
+        modifier = modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .background(Color.Black.copy(alpha = 0.62f))
+            .statusBarsPadding()
+            .padding(horizontal = 6.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = stringResource(R.string.image_detail_info),
-            fontWeight = FontWeight.SemiBold,
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = image.displayName,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.image_detail_dimensions, image.width, image.height),
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                text = image.mimeType,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                text = formattedSize,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = stringResource(R.string.image_detail_back),
+                tint = Color.White,
             )
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = image.bucketName ?: stringResource(R.string.image_detail_unknown_album),
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                text = image.displayName,
+                color = Color.White,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.titleSmall,
             )
             Text(
                 text = formattedDate,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color.White.copy(alpha = 0.76f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        if (metadata?.activeAnalysis != null) {
-            Text(
-                text = stringResource(R.string.image_analysis_result_title),
-                fontWeight = FontWeight.SemiBold,
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-            metadata.caption?.let {
-                Text(it, style = MaterialTheme.typography.bodyMedium)
-            }
-            MetadataTermLine(
-                label = stringResource(R.string.image_analysis_tags),
-                values = metadata.terms
-                    .filter { it.kind == AnalysisTermKind.TAG }
-                    .map { it.displayValue },
-            )
-            MetadataTermLine(
-                label = stringResource(R.string.image_analysis_categories),
-                values = metadata.terms
-                    .filter { it.kind == AnalysisTermKind.CATEGORY }
-                    .map { it.displayValue },
-            )
-        } else {
-            Text(
-                text = stringResource(R.string.image_analysis_no_result),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 8.dp, bottom = 12.dp),
             )
         }
     }
 }
 
+private fun imageDetailSummary(image: GalleryImage): String = buildString {
+    append(image.width)
+    append('×')
+    append(image.height)
+    append(" · ")
+    append(image.mimeType)
+}
+
 @Composable
-private fun MetadataTermLine(label: String, values: List<String>) {
+private fun MetadataTermLine(label: String, values: List<String>, color: Color) {
     if (values.isNotEmpty()) {
         Text(
             text = "$label：${values.joinToString("、")}",
-            style = MaterialTheme.typography.bodySmall,
+            color = color,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -499,3 +455,6 @@ private fun analysisFailureMessage(failure: SingleImageAnalysisFailure): Int = w
     SingleImageAnalysisFailure.INDEX_PROJECTION_BLOCKED -> R.string.image_analysis_error_index
     SingleImageAnalysisFailure.INTERNAL_ERROR -> R.string.image_analysis_error_internal
 }
+
+private const val CONTROLS_AUTO_HIDE_MILLIS = 3_000L
+private const val DOUBLE_TAP_SCALE = 2.5f

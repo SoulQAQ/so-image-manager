@@ -1,10 +1,13 @@
 package cn.soul2.imageai.ui.gallery
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -67,6 +70,29 @@ class GalleryNavigationTest {
         composeRule.onNodeWithTag("image_detail_pager").performTouchInput { swipeLeft() }
 
         composeRule.onNodeWithText("41.jpg").assertIsDisplayed()
+    }
+
+    @Test
+    fun detailTapTogglesTheImmersiveControls() {
+        val repository = OneImageRepository(image())
+        composeRule.setContent {
+            SoImageManagerTheme {
+                SoImageManagerApp(
+                    galleryRepository = repository,
+                    syncRuns = flowOf(null),
+                    galleryAccessState = GalleryAccessState.Full,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("gallery_image_42").performClick()
+        composeRule.onNodeWithTag("image_detail_controls").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("image_detail_zoomable").performTouchInput { click() }
+        composeRule.onAllNodesWithTag("image_detail_controls").assertCountEquals(0)
+
+        composeRule.onNodeWithTag("image_detail_zoomable").performTouchInput { click() }
+        composeRule.onNodeWithTag("image_detail_controls").assertIsDisplayed()
     }
 
     @Test
