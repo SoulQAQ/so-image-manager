@@ -3,14 +3,20 @@ package cn.soul2.imageai
 import android.content.Context
 import androidx.work.WorkManager
 import cn.soul2.imageai.ai.config.AiConfigurationRepository
+import cn.soul2.imageai.ai.analysis.AiModelClientRegistry
+import cn.soul2.imageai.ai.analysis.RepositoryAiAnalysisConfigurationResolver
+import cn.soul2.imageai.ai.analysis.SingleImageAnalysisService
 import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.ai.credential.AndroidKeystoreCredentialStore
 import cn.soul2.imageai.ai.image.ContentImagePreprocessor
+import cn.soul2.imageai.ai.protocol.CustomJsonAiModelClient
+import cn.soul2.imageai.ai.protocol.OpenAiResponsesAiModelClient
 import cn.soul2.imageai.ai.quota.AiQuotaCoordinator
 import cn.soul2.imageai.ai.transport.SecureAiHttpTransport
 import cn.soul2.imageai.analysis.CanonicalMetadataRepository
 import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.data.db.AppDatabaseFactory
+import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.gallery.RoomGalleryRepository
 import cn.soul2.imageai.media.permission.GalleryPermissionMonitor
@@ -48,6 +54,20 @@ class AppContainer(
     val aiQuotaCoordinator = AiQuotaCoordinator(applicationContext)
     val aiHttpTransport = SecureAiHttpTransport(aiCredentialStore, aiQuotaCoordinator)
     val imagePreprocessor = ContentImagePreprocessor(applicationContext.contentResolver)
+    private val aiModelClients = AiModelClientRegistry(
+        mapOf(
+            ModelProtocolType.OPENAI_RESPONSES to OpenAiResponsesAiModelClient(aiHttpTransport),
+            ModelProtocolType.CUSTOM_JSON to CustomJsonAiModelClient(aiHttpTransport),
+        ),
+    )
+    val singleImageAnalysisService = SingleImageAnalysisService(
+        configurationResolver = RepositoryAiAnalysisConfigurationResolver(
+            aiConfigurationRepository,
+        ),
+        imagePreprocessor = imagePreprocessor,
+        clients = aiModelClients,
+        canonicalRepository = canonicalMetadataRepository,
+    )
     val galleryRepository: GalleryRepository = RoomGalleryRepository(
         database.imageDao(),
         canonicalMetadataRepository,

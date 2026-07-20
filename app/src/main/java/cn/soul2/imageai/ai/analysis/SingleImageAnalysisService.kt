@@ -43,6 +43,10 @@ enum class SingleImageAnalysisFailure {
     INTERNAL_ERROR,
 }
 
+fun interface SingleImageAnalyzer {
+    suspend fun analyze(target: ImageAnalysisTarget): SingleImageAnalysisResult
+}
+
 class SingleImageAnalysisService(
     private val configurationResolver: AiAnalysisConfigurationResolver,
     private val imagePreprocessor: ImagePreprocessor,
@@ -50,8 +54,8 @@ class SingleImageAnalysisService(
     private val canonicalRepository: CanonicalMetadataRepository,
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
     private val newAnalysisId: () -> String = { UUID.randomUUID().toString() },
-) {
-    suspend fun analyze(target: ImageAnalysisTarget): SingleImageAnalysisResult {
+) : SingleImageAnalyzer {
+    override suspend fun analyze(target: ImageAnalysisTarget): SingleImageAnalysisResult {
         if (target.imageLocalId <= 0L || target.contentUri.isBlank()) {
             return SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.IMAGE_UNAVAILABLE)
         }

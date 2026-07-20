@@ -3,6 +3,9 @@ package cn.soul2.imageai.ui.gallery
 import androidx.paging.PagingData
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import cn.soul2.imageai.ai.analysis.ImageAnalysisTarget
+import cn.soul2.imageai.ai.analysis.SingleImageAnalysisResult
+import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
 import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.gallery.GalleryQuery
@@ -135,6 +138,29 @@ class GalleryViewModelTest {
             ImageDetailUiState.Ready(requireNotNull(repository.windows[2L])),
             viewModel.uiState.value,
         )
+        store.clear()
+    }
+
+    @Test
+    fun detailAnalyzesTheCurrentlySelectedImage() = withTestMain {
+        val image = galleryImage(42L)
+        val repository = FakeGalleryRepository(detail = MutableStateFlow(image))
+        var receivedTarget: ImageAnalysisTarget? = null
+        val analyzer = SingleImageAnalyzer { target ->
+            receivedTarget = target
+            SingleImageAnalysisResult.Success("analysis-1", 1L)
+        }
+        val store = ViewModelStore()
+        val viewModel = ViewModelProvider(
+            store,
+            ImageDetailViewModel.factory(repository, image.localId, analyzer),
+        )[ImageDetailViewModel::class.java]
+
+        viewModel.analyzeCurrentImage()
+        runCurrent()
+
+        assertEquals(ImageAnalysisTarget(image.localId, image.contentUri), receivedTarget)
+        assertEquals(ImageAnalysisUiState.Success(image.localId), viewModel.analysisState.value)
         store.clear()
     }
 

@@ -1,5 +1,6 @@
 package cn.soul2.imageai.ai.config
 
+import androidx.room.withTransaction
 import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.data.db.dao.AiConfigurationDao
 import cn.soul2.imageai.data.db.entity.AiRuntimeSettingEntity
@@ -13,10 +14,10 @@ import java.net.URI
 import org.json.JSONArray
 import org.json.JSONObject
 
-class AiConfigurationRepository internal constructor(
-    private val dao: AiConfigurationDao,
+class AiConfigurationRepository(
+    private val database: AppDatabase,
 ) {
-    constructor(database: AppDatabase) : this(database.aiConfigurationDao())
+    private val dao: AiConfigurationDao = database.aiConfigurationDao()
 
     val providers = dao.observeProviders()
     val models = dao.observeModels()
@@ -29,6 +30,58 @@ class AiConfigurationRepository internal constructor(
     }
 
     suspend fun saveProtocol(protocol: ProtocolDefinitionEntity) {
+        validateProtocol(protocol)
+        dao.upsertProtocol(protocol)
+    }
+
+    suspend fun saveBundle(
+        provider: ProviderProfileEntity,
+        model: ModelProfileEntity,
+        runtime: AiRuntimeSettingEntity,
+        protocol: ProtocolDefinitionEntity?,
+    ) {
+        validateBundle(provider, model, runtime, protocol)
+        database.withTransaction {
+            dao.upsertProvider(provider)
+            if (protocol != null) dao.upsertProtocol(protocol)
+            dao.upsertModel(model)
+            dao.upsertRuntimeSetting(runtime)
+        }
+    }
+
+    fun validateBundle(
+        provider: ProviderProfileEntity,
+        model: ModelProfileEntity,
+        runtime: AiRuntimeSettingEntity,
+        protocol: ProtocolDefinitionEntity?,
+    ) {
+        validateProvider(provider)
+        validateModel(model)
+        validateRuntime(runtime)
+        if (model.providerId != provider.providerId) {
+            invalid("model providerId must match the saved provider")
+        }
+        if (runtime.defaultModelProfileId != model.modelProfileId) {
+            invalid("runtime default model must match the saved model")
+        }
+        when (model.protocolType) {
+            ModelProtocolType.OPENAI_RESPONSES -> if (
+                model.protocolDefinitionId != null || protocol != null
+            ) {
+                invalid("OPENAI_RESPONSES must not include a custom protocol definition")
+            }
+            ModelProtocolType.CUSTOM_JSON -> {
+                val definition = protocol
+                    ?: invalid("CUSTOM_JSON requires a protocol definition")
+                validateProtocol(definition)
+                if (model.protocolDefinitionId != definition.protocolDefinitionId) {
+                    invalid("model protocolDefinitionId must match the saved definition")
+                }
+            }
+        }
+    }
+
+    private fun validateProtocol(protocol: ProtocolDefinitionEntity) {
         validateId("protocolDefinitionId", protocol.protocolDefinitionId)
         validateDisplayName(protocol.displayName)
         requireTextLength(
@@ -41,7 +94,6 @@ class AiConfigurationRepository internal constructor(
         } catch (error: IllegalArgumentException) {
             invalid("definitionJson is not a valid declarative protocol: ${error.message}")
         }
-        dao.upsertProtocol(protocol)
     }
 
     suspend fun saveModel(model: ModelProfileEntity) {
@@ -66,16 +118,25 @@ class AiConfigurationRepository internal constructor(
     }
 
     suspend fun saveRuntimeSetting(setting: AiRuntimeSettingEntity) {
-        if (setting.singletonId != AiRuntimeSettingEntity.SINGLETON_ID) {
-            invalid("singletonId must be ${AiRuntimeSettingEntity.SINGLETON_ID}")
-        }
-        validateQuota("global", setting.globalMaxConcurrency, setting.globalRequestsPerMinute, setting.globalRequestsPerDay)
-        requireTextLength("promptText", setting.promptText, AiConfigurationLimits.PROMPT_LENGTH)
+        validateRuntime(setting)
         val defaultModelId = setting.defaultModelProfileId
         if (defaultModelId != null && dao.getModel(defaultModelId) == null) {
             invalid("defaultModelProfileId does not reference an existing model")
         }
         dao.upsertRuntimeSetting(setting)
+    }
+
+    private fun validateRuntime(setting: AiRuntimeSettingEntity) {
+        if (setting.singletonId != AiRuntimeSettingEntity.SINGLETON_ID) {
+            invalid("singletonId must be ${AiRuntimeSettingEntity.SINGLETON_ID}")
+        }
+        validateQuota(
+            "global",
+            setting.globalMaxConcurrency,
+            setting.globalRequestsPerMinute,
+            setting.globalRequestsPerDay,
+        )
+        requireTextLength("promptText", setting.promptText, AiConfigurationLimits.PROMPT_LENGTH)
     }
 
     suspend fun getProvider(providerId: String) = dao.getProvider(providerId)

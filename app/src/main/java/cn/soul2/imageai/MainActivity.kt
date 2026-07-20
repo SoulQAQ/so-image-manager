@@ -138,6 +138,9 @@ class MainActivity : ComponentActivity() {
             SoImageManagerApp(
                 galleryRepository = container.galleryRepository,
                 imageSearchRepository = container.imageSearchRepository,
+                aiConfigurationRepository = container.aiConfigurationRepository,
+                aiCredentialStore = container.aiCredentialStore,
+                singleImageAnalyzer = container.singleImageAnalysisService,
                 syncRuns = container.gallerySyncRuns,
                 lastSyncCompletedAt = container.galleryLastSyncCompletedAt,
                 galleryUnavailableCounts = container.galleryUnavailableCounts,

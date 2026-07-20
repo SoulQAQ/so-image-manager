@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Settings
@@ -56,6 +57,7 @@ fun SettingsScreen(
     onReselectPhotos: () -> Unit,
     onRescan: () -> Unit,
     onOpenSystemSettings: () -> Unit,
+    onOpenAiSettings: () -> Unit,
 ) {
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.factory(
@@ -92,6 +94,7 @@ fun SettingsScreen(
             onReselectPhotos = settingsViewModel::reselectPhotos,
             onRescan = settingsViewModel::rescan,
             onOpenSystemSettings = settingsViewModel::openSystemSettings,
+            onOpenAiSettings = onOpenAiSettings,
         )
         SnackbarHost(
             hostState = snackbarHostState,
@@ -107,6 +110,7 @@ private fun SettingsContent(
     onReselectPhotos: () -> Unit,
     onRescan: () -> Unit,
     onOpenSystemSettings: () -> Unit,
+    onOpenAiSettings: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().testTag("screen_settings")) {
         TopAppBar(
@@ -120,6 +124,22 @@ private fun SettingsContent(
                 vertical = 8.dp,
             ),
         ) {
+            item {
+                Text(
+                    text = stringResource(R.string.settings_section_ai),
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            item {
+                SettingsAction(
+                    labelRes = R.string.settings_ai_models,
+                    icon = Icons.Outlined.SmartToy,
+                    onClick = onOpenAiSettings,
+                )
+                HorizontalDivider()
+            }
             item {
                 Text(
                     text = stringResource(R.string.settings_section_access),

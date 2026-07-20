@@ -23,11 +23,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
+import cn.soul2.imageai.ai.config.AiConfigurationRepository
+import cn.soul2.imageai.ai.credential.AiCredentialStore
+import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.search.ImageSearchRepository
 import cn.soul2.imageai.ui.gallery.ImageDetailDestination
 import cn.soul2.imageai.ui.gallery.ImageDetailScreen
+import cn.soul2.imageai.ui.ai.AiSettingsDestination
+import cn.soul2.imageai.ui.ai.AiSettingsScreen
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingScreen
 import cn.soul2.imageai.ui.onboarding.GalleryPartialAccessBanner
 import cn.soul2.imageai.ui.screens.HomeScreen
@@ -44,6 +49,9 @@ fun SoImageManagerApp(
     galleryRepository: GalleryRepository,
     syncRuns: Flow<MediaSyncRunEntity?>,
     imageSearchRepository: ImageSearchRepository = ImageSearchRepository.Empty,
+    aiConfigurationRepository: AiConfigurationRepository? = null,
+    aiCredentialStore: AiCredentialStore? = null,
+    singleImageAnalyzer: SingleImageAnalyzer? = null,
     lastSyncCompletedAt: Flow<Long?> = flowOf(null),
     galleryUnavailableCounts: Flow<Int> = flowOf(0),
     navController: NavHostController = rememberNavController(),
@@ -76,7 +84,8 @@ fun SoImageManagerApp(
     val currentRoute = backStackEntry?.destination?.route ?: AppDestination.start.route
     val isImageDetail = currentRoute == ImageDetailDestination.route
     val isSearch = currentRoute == SearchDestination.route
-    val showBottomNavigation = !isImageDetail && !isSearch
+    val isAiSettings = currentRoute == AiSettingsDestination.route
+    val showBottomNavigation = !isImageDetail && !isSearch && !isAiSettings
 
     Scaffold(
         contentWindowInsets = if (isImageDetail) {
@@ -170,7 +179,25 @@ fun SoImageManagerApp(
                         onReselectPhotos = onRequestGalleryReselection,
                         onRescan = onRequestGalleryReconciliation,
                         onOpenSystemSettings = onOpenAppSettings,
+                        onOpenAiSettings = { navController.navigate(AiSettingsDestination.route) },
                     )
+                }
+                composable(AiSettingsDestination.route) {
+                    val repository = aiConfigurationRepository
+                    val credentials = aiCredentialStore
+                    if (repository != null && credentials != null) {
+                        AiSettingsScreen(
+                            repository = repository,
+                            credentialStore = credentials,
+                            onBack = navController::navigateUp,
+                        )
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            Text(stringResource(cn.soul2.imageai.R.string.ai_settings_error_save))
+                        }
+                    }
                 }
                 composable(SearchDestination.route) {
                     SearchScreen(
@@ -196,6 +223,7 @@ fun SoImageManagerApp(
                     )
                     ImageDetailScreen(
                         repository = galleryRepository,
+                        singleImageAnalyzer = singleImageAnalyzer,
                         localId = localId,
                         onBack = navController::navigateUp,
                     )
