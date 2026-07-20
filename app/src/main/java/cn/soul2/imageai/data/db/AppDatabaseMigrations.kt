@@ -339,4 +339,12 @@ object AppDatabaseMigrations {
             ).forEach(database::execSQL)
         }
     }
+
+    val MIGRATION_5_6: Migration = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "ALTER TABLE `image` ADD COLUMN `source` TEXT NOT NULL DEFAULT 'MEDIA_STORE'",
+            )
+        }
+    }
 }

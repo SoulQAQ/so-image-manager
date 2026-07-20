@@ -26,6 +26,7 @@ import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
 import cn.soul2.imageai.ai.config.AiConfigurationRepository
 import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
+import cn.soul2.imageai.analysis.CanonicalMetadataRepository
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.search.ImageSearchRepository
@@ -52,6 +53,7 @@ fun SoImageManagerApp(
     aiConfigurationRepository: AiConfigurationRepository? = null,
     aiCredentialStore: AiCredentialStore? = null,
     singleImageAnalyzer: SingleImageAnalyzer? = null,
+    canonicalMetadataRepository: CanonicalMetadataRepository? = null,
     lastSyncCompletedAt: Flow<Long?> = flowOf(null),
     galleryUnavailableCounts: Flow<Int> = flowOf(0),
     navController: NavHostController = rememberNavController(),
@@ -64,6 +66,9 @@ fun SoImageManagerApp(
     onOpenAppSettings: () -> Unit = {},
     onDismissGalleryOnboarding: () -> Unit = {},
     onRequestGalleryReselection: () -> Unit = {},
+    onSelectDocumentImages: () -> Unit = {},
+    documentImportNotice: String? = null,
+    onDocumentImportNoticeConsumed: () -> Unit = {},
     onRetryGallerySync: () -> Unit = {},
     onRequestGalleryReconciliation: () -> Unit = {},
 ) {
@@ -177,6 +182,9 @@ fun SoImageManagerApp(
                         repository = galleryRepository,
                         unavailableCounts = galleryUnavailableCounts,
                         onReselectPhotos = onRequestGalleryReselection,
+                        onSelectDocumentImages = onSelectDocumentImages,
+                        documentImportNotice = documentImportNotice,
+                        onDocumentImportNoticeConsumed = onDocumentImportNoticeConsumed,
                         onRescan = onRequestGalleryReconciliation,
                         onOpenSystemSettings = onOpenAppSettings,
                         onOpenAiSettings = { navController.navigate(AiSettingsDestination.route) },
@@ -224,6 +232,7 @@ fun SoImageManagerApp(
                     ImageDetailScreen(
                         repository = galleryRepository,
                         singleImageAnalyzer = singleImageAnalyzer,
+                        canonicalMetadataRepository = canonicalMetadataRepository,
                         localId = localId,
                         onBack = navController::navigateUp,
                     )

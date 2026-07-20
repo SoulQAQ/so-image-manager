@@ -14,6 +14,11 @@ enum class ImageAvailability {
     TRANSIENT_IO,
 }
 
+enum class ImageSource {
+    MEDIA_STORE,
+    DOCUMENT,
+}
+
 @Entity(
     tableName = "image",
     indices = [
@@ -70,4 +75,5 @@ data class ImageEntity(
     val missingCandidateSinceEpochMillis: Long?,
     @ColumnInfo(name = "missing_observation_count")
     val missingObservationCount: Int,
+    val source: ImageSource = ImageSource.MEDIA_STORE,
 )

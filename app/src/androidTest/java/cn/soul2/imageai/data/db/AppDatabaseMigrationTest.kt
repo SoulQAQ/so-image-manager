@@ -13,6 +13,7 @@ import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_1_2
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_2_3
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_3_4
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_4_5
+import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_5_6
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -267,7 +268,28 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
-    fun migrationOneToFiveRunsEveryRegisteredSequentialMigration() {
+    fun migrationFiveToSixAddsDocumentSourceWithoutLosingRows() {
+        migrationHelper.createDatabase(TEST_DATABASE, 5).apply {
+            execSQL(
+                "INSERT INTO app_setting (`key`, value_json, updated_at_epoch_millis) " +
+                    "VALUES ('appearance.theme', '\"system\"', 1720598400000)",
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            6,
+            true,
+            MIGRATION_5_6,
+        ).use { database ->
+            database.query("SELECT `source` FROM image LIMIT 1").close()
+            assertEquals(1, queryCount(database, "app_setting"))
+        }
+    }
+
+    @Test
+    fun migrationOneToSixRunsEveryRegisteredSequentialMigration() {
         migrationHelper.createDatabase(TEST_DATABASE, 1).apply {
             execSQL(
                 "INSERT INTO app_setting (`key`, value_json, updated_at_epoch_millis) " +
@@ -278,12 +300,13 @@ class AppDatabaseMigrationTest {
 
         migrationHelper.runMigrationsAndValidate(
             TEST_DATABASE,
-            5,
+            6,
             true,
             MIGRATION_1_2,
             MIGRATION_2_3,
             MIGRATION_3_4,
             MIGRATION_4_5,
+            MIGRATION_5_6,
         ).use { database ->
             assertEquals(1, queryCount(database, "app_setting"))
             assertEquals(0, queryCount(database, "provider_profile"))

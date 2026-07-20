@@ -323,10 +323,19 @@ class MediaSchemaContractTest {
         ).forEach { sql -> assertTrue("MIGRATION_3_4 is missing: $sql", migration.contains(sql)) }
         assertTrue(
             factory.contains(
-                "addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)",
+                "MIGRATION_5_6",
             ),
         )
         assertFalse(factory.contains("fallbackToDestructiveMigration"))
+    }
+
+    @Test
+    fun mediaSyncReconciliationDoesNotRevokePersistedDocumentImports() {
+        val source = projectFile(
+            "app/src/main/java/cn/soul2/imageai/data/db/dao/MediaSyncDao.kt",
+        ).readText()
+
+        assertTrue(source.contains("source = 'MEDIA_STORE'"))
     }
 
     private fun schemaFile(version: Int): File {

@@ -6,6 +6,7 @@ import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_1_2
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_2_3
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_3_4
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_4_5
+import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_5_6
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 
 object AppDatabaseFactory {
@@ -17,7 +18,13 @@ object AppDatabaseFactory {
         context.applicationContext,
         AppDatabase::class.java,
         DATABASE_NAME,
-    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build()
+    ).addMigrations(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+    ).build()
 
     suspend fun cleanupLegacyDatabaseIfNeeded(
         context: Context,

@@ -18,8 +18,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -62,6 +64,7 @@ class MainActivity : ComponentActivity() {
         )
         val uiState by accessViewModel.uiState.collectAsStateWithLifecycle()
         val coroutineScope = rememberCoroutineScope()
+        var documentImportNotice by remember { mutableStateOf<String?>(null) }
         val permissionRequestCoordinator = remember { GalleryPermissionRequestCoordinator() }
         val permissionRequestInFlight by
             permissionRequestCoordinator.inFlight.collectAsStateWithLifecycle()
@@ -104,6 +107,21 @@ class MainActivity : ComponentActivity() {
                 onExplicitSelectionChanged = reconcileExplicitSelection,
             )
         }
+        val documentPickerLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) { result ->
+            val uris = result.data?.let(::documentUris).orEmpty()
+            if (uris.isNotEmpty()) {
+                coroutineScope.launch {
+                    val imported = container.documentImageImporter.import(uris)
+                    documentImportNotice = getString(
+                        R.string.settings_document_import_result,
+                        imported.importedCount,
+                        imported.rejectedCount,
+                    )
+                }
+            }
+        }
         val launchPermissionRequest: () -> Unit = {
             coroutineScope.launch {
                 permissionRequestCoordinator.persistThenLaunch(
@@ -129,6 +147,17 @@ class MainActivity : ComponentActivity() {
                 GalleryReselectionDestination.AppSettings -> openAppSettings()
             }
         }
+        val launchDocumentPicker: () -> Unit = {
+            documentPickerLauncher.launch(
+                Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "image/*"
+                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                },
+            )
+        }
 
         if (uiState.isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -141,6 +170,7 @@ class MainActivity : ComponentActivity() {
                 aiConfigurationRepository = container.aiConfigurationRepository,
                 aiCredentialStore = container.aiCredentialStore,
                 singleImageAnalyzer = container.singleImageAnalysisService,
+                canonicalMetadataRepository = container.canonicalMetadataRepository,
                 syncRuns = container.gallerySyncRuns,
                 lastSyncCompletedAt = container.galleryLastSyncCompletedAt,
                 galleryUnavailableCounts = container.galleryUnavailableCounts,
@@ -153,6 +183,9 @@ class MainActivity : ComponentActivity() {
                 onOpenAppSettings = ::openAppSettings,
                 onDismissGalleryOnboarding = accessViewModel::dismissOnboarding,
                 onRequestGalleryReselection = launchGalleryReselection,
+                onSelectDocumentImages = launchDocumentPicker,
+                documentImportNotice = documentImportNotice,
+                onDocumentImportNoticeConsumed = { documentImportNotice = null },
                 onRetryGallerySync = container.mediaSyncScheduler::retry,
                 onRequestGalleryReconciliation =
                     container.mediaSyncScheduler::requestReconciliation,
@@ -178,4 +211,11 @@ class MainActivity : ComponentActivity() {
             ),
         )
     }
+
+    private fun documentUris(intent: Intent): List<Uri> = buildList {
+        intent.data?.let(::add)
+        intent.clipData?.let { clipData ->
+            repeat(clipData.itemCount) { index -> add(clipData.getItemAt(index).uri) }
+        }
+    }.distinct()
 }

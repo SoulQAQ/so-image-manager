@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Security
@@ -55,6 +56,9 @@ fun SettingsScreen(
     repository: GalleryRepository,
     unavailableCounts: Flow<Int>,
     onReselectPhotos: () -> Unit,
+    onSelectDocumentImages: () -> Unit = {},
+    documentImportNotice: String? = null,
+    onDocumentImportNoticeConsumed: () -> Unit = {},
     onRescan: () -> Unit,
     onOpenSystemSettings: () -> Unit,
     onOpenAiSettings: () -> Unit,
@@ -77,6 +81,7 @@ fun SettingsScreen(
         settingsViewModel.commands.collect { command ->
             when (command) {
                 SettingsCommand.ReselectPhotos -> currentReselectPhotos()
+                SettingsCommand.SelectDocumentImages -> onSelectDocumentImages()
                 SettingsCommand.Rescan -> {
                     currentRescan()
                     launch {
@@ -88,10 +93,17 @@ fun SettingsScreen(
             }
         }
     }
+    LaunchedEffect(documentImportNotice) {
+        documentImportNotice?.let { notice ->
+            snackbarHostState.showSnackbar(notice)
+            onDocumentImportNoticeConsumed()
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         SettingsContent(
             uiState = uiState,
             onReselectPhotos = settingsViewModel::reselectPhotos,
+            onSelectDocumentImages = settingsViewModel::selectDocumentImages,
             onRescan = settingsViewModel::rescan,
             onOpenSystemSettings = settingsViewModel::openSystemSettings,
             onOpenAiSettings = onOpenAiSettings,
@@ -108,6 +120,7 @@ fun SettingsScreen(
 private fun SettingsContent(
     uiState: SettingsUiState,
     onReselectPhotos: () -> Unit,
+    onSelectDocumentImages: () -> Unit,
     onRescan: () -> Unit,
     onOpenSystemSettings: () -> Unit,
     onOpenAiSettings: () -> Unit,
@@ -137,6 +150,22 @@ private fun SettingsContent(
                     labelRes = R.string.settings_ai_models,
                     icon = Icons.Outlined.SmartToy,
                     onClick = onOpenAiSettings,
+                )
+                HorizontalDivider()
+            }
+            item {
+                Text(
+                    text = stringResource(R.string.settings_section_import),
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            item {
+                SettingsAction(
+                    labelRes = R.string.settings_import_documents,
+                    icon = Icons.Outlined.FolderOpen,
+                    onClick = onSelectDocumentImages,
                 )
                 HorizontalDivider()
             }

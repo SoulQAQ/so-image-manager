@@ -3,6 +3,7 @@ package cn.soul2.imageai.media.sync
 import cn.soul2.imageai.data.db.dao.MediaSyncDao
 import cn.soul2.imageai.data.db.entity.ImageAvailability
 import cn.soul2.imageai.data.db.entity.ImageEntity
+import cn.soul2.imageai.data.db.entity.ImageSource
 import cn.soul2.imageai.data.db.entity.MediaSyncCheckpointEntity
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
 import cn.soul2.imageai.media.permission.GalleryAccessState
@@ -128,6 +129,7 @@ internal object RoomMediaSyncMapper {
             lastSeenSyncRunId = run.runId.takeIf { run.mode == SyncMode.RECONCILE },
             missingCandidateSinceEpochMillis = null,
             missingObservationCount = 0,
+            source = ImageSource.MEDIA_STORE,
         )
     }
 

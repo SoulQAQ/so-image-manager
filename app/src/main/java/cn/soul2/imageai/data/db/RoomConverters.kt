@@ -2,6 +2,7 @@ package cn.soul2.imageai.data.db
 
 import androidx.room.TypeConverter
 import cn.soul2.imageai.data.db.entity.ImageAvailability
+import cn.soul2.imageai.data.db.entity.ImageSource
 import cn.soul2.imageai.data.db.entity.AnalysisTermKind
 import cn.soul2.imageai.data.db.entity.CaptionCorrectionMode
 import cn.soul2.imageai.data.db.entity.EffectiveCaptionSource
@@ -21,6 +22,12 @@ class RoomConverters {
     @TypeConverter
     fun imageAvailabilityFromStorage(value: String): ImageAvailability =
         ImageAvailability.valueOf(value)
+
+    @TypeConverter
+    fun imageSourceToStorage(value: ImageSource): String = value.name
+
+    @TypeConverter
+    fun imageSourceFromStorage(value: String): ImageSource = ImageSource.valueOf(value)
 
     @TypeConverter
     fun analysisTermKindToStorage(value: AnalysisTermKind): String = value.name

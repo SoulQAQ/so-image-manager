@@ -258,17 +258,17 @@ abstract class MediaSyncDao {
         upsertRun(run.copy(unavailableCount = countUnavailable()))
     }
 
-    @Query("UPDATE image SET availability = 'PERMISSION_REVOKED'")
+    @Query("UPDATE image SET availability = 'PERMISSION_REVOKED' WHERE source = 'MEDIA_STORE'")
     protected abstract suspend fun markAllPermissionRevoked(): Int
 
-    @Query("UPDATE image SET availability = 'VOLUME_UNMOUNTED'")
+    @Query("UPDATE image SET availability = 'VOLUME_UNMOUNTED' WHERE source = 'MEDIA_STORE'")
     protected abstract suspend fun markAllVolumesUnmounted(): Int
 
     @Query(
         """
         UPDATE image
         SET availability = 'VOLUME_UNMOUNTED'
-        WHERE volume_name NOT IN (:mountedVolumes)
+        WHERE source = 'MEDIA_STORE' AND volume_name NOT IN (:mountedVolumes)
         """,
     )
     protected abstract suspend fun markUnmountedVolumes(mountedVolumes: Set<String>): Int
@@ -279,7 +279,7 @@ abstract class MediaSyncDao {
         SET availability = 'SELECTION_REMOVED',
             missing_candidate_since_epoch_millis = NULL,
             missing_observation_count = 0
-        WHERE volume_name IN (:mountedVolumes)
+        WHERE source = 'MEDIA_STORE' AND volume_name IN (:mountedVolumes)
           AND (last_seen_sync_run_id IS NULL OR last_seen_sync_run_id != :runId)
         """,
     )
@@ -306,7 +306,7 @@ abstract class MediaSyncDao {
                 THEN missing_observation_count + 1
                 ELSE missing_observation_count
             END
-        WHERE volume_name IN (:mountedVolumes)
+        WHERE source = 'MEDIA_STORE' AND volume_name IN (:mountedVolumes)
           AND (last_seen_sync_run_id IS NULL OR last_seen_sync_run_id != :runId)
         """,
     )

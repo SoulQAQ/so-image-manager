@@ -96,6 +96,25 @@ class GalleryNavigationTest {
     }
 
     @Test
+    fun detailMenuTapDoesNotHideTheControls() {
+        val repository = OneImageRepository(image())
+        composeRule.setContent {
+            SoImageManagerTheme {
+                SoImageManagerApp(
+                    galleryRepository = repository,
+                    syncRuns = flowOf(null),
+                    galleryAccessState = GalleryAccessState.Full,
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("gallery_image_42").performClick()
+        composeRule.onNodeWithTag("image_detail_analyze").performClick()
+
+        composeRule.onNodeWithTag("image_detail_controls").assertIsDisplayed()
+    }
+
+    @Test
     fun searchRouteHidesBottomNavigationAndBackReturnsHome() {
         val repository = OneImageRepository(image())
         composeRule.setContent {

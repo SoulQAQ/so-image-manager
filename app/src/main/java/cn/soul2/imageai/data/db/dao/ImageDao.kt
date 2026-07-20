@@ -111,6 +111,14 @@ abstract class ImageDao {
         if (resolved.isNotEmpty()) upsertResolved(resolved)
     }
 
+    @Transaction
+    open suspend fun upsertAndResolve(images: List<ImageEntity>): List<ImageEntity> {
+        val resolved = resolveImagesForUpsert(images, ::findExistingIdentities)
+        if (resolved.isEmpty()) return emptyList()
+        upsertResolved(resolved)
+        return resolveImagesForUpsert(resolved, ::findExistingIdentities)
+    }
+
     @Query(
         """
         SELECT volume_name, media_store_id, local_id

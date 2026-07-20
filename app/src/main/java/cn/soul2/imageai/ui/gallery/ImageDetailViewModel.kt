@@ -9,6 +9,8 @@ import cn.soul2.imageai.ai.analysis.ImageAnalysisTarget
 import cn.soul2.imageai.ai.analysis.SingleImageAnalysisFailure
 import cn.soul2.imageai.ai.analysis.SingleImageAnalysisResult
 import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
+import cn.soul2.imageai.analysis.CanonicalMetadataRepository
+import cn.soul2.imageai.analysis.CorrectionCommand
 import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.gallery.GalleryImageWindow
 import cn.soul2.imageai.gallery.GalleryRepository
@@ -40,11 +42,18 @@ sealed interface ImageAnalysisUiState {
     ) : ImageAnalysisUiState
 }
 
+sealed interface ImageCorrectionUiState {
+    data object Idle : ImageCorrectionUiState
+    data object Saving : ImageCorrectionUiState
+    data object Failed : ImageCorrectionUiState
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImageDetailViewModel(
     private val repository: GalleryRepository,
     localId: Long,
     private val singleImageAnalyzer: SingleImageAnalyzer? = null,
+    private val metadataRepository: CanonicalMetadataRepository? = null,
 ) : ViewModel() {
     private val selectedLocalId = MutableStateFlow(localId)
 
@@ -69,6 +78,10 @@ class ImageDetailViewModel(
         ImageAnalysisUiState.Idle,
     )
     val analysisState = mutableAnalysisState.asStateFlow()
+    private val mutableCorrectionState = MutableStateFlow<ImageCorrectionUiState>(
+        ImageCorrectionUiState.Idle,
+    )
+    val correctionState = mutableCorrectionState.asStateFlow()
 
     fun showImage(localId: Long) {
         require(localId > 0L) { "localId must be positive" }
@@ -109,13 +122,41 @@ class ImageDetailViewModel(
         }
     }
 
+    fun applyCorrection(command: CorrectionCommand) {
+        val corrections = metadataRepository ?: run {
+            mutableCorrectionState.value = ImageCorrectionUiState.Failed
+            return
+        }
+        if (mutableCorrectionState.value is ImageCorrectionUiState.Saving) return
+        val imageLocalId = selectedLocalId.value
+        mutableCorrectionState.value = ImageCorrectionUiState.Saving
+        viewModelScope.launch {
+            mutableCorrectionState.value = try {
+                corrections.applyCorrection(imageLocalId, command, System.currentTimeMillis())
+                ImageCorrectionUiState.Idle
+            } catch (_: IllegalArgumentException) {
+                ImageCorrectionUiState.Failed
+            } catch (_: IllegalStateException) {
+                ImageCorrectionUiState.Failed
+            }
+        }
+    }
+
     companion object {
         fun factory(
             repository: GalleryRepository,
             localId: Long,
             singleImageAnalyzer: SingleImageAnalyzer? = null,
+            metadataRepository: CanonicalMetadataRepository? = null,
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { ImageDetailViewModel(repository, localId, singleImageAnalyzer) }
+            initializer {
+                ImageDetailViewModel(
+                    repository,
+                    localId,
+                    singleImageAnalyzer,
+                    metadataRepository,
+                )
+            }
         }
     }
 }

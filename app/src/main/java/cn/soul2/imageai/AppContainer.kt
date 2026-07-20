@@ -20,6 +20,7 @@ import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.gallery.RoomGalleryRepository
 import cn.soul2.imageai.media.permission.GalleryPermissionMonitor
+import cn.soul2.imageai.media.document.DocumentImageImporter
 import cn.soul2.imageai.media.store.AndroidMediaStoreGateway
 import cn.soul2.imageai.media.store.MediaStoreGateway
 import cn.soul2.imageai.media.sync.MediaStoreObserver
@@ -54,6 +55,11 @@ class AppContainer(
     val aiQuotaCoordinator = AiQuotaCoordinator(applicationContext)
     val aiHttpTransport = SecureAiHttpTransport(aiCredentialStore, aiQuotaCoordinator)
     val imagePreprocessor = ContentImagePreprocessor(applicationContext.contentResolver)
+    val documentImageImporter = DocumentImageImporter(
+        contentResolver = applicationContext.contentResolver,
+        imageDao = database.imageDao(),
+        afterCommit = searchIndexBackfill::reindexCommitted,
+    )
     private val aiModelClients = AiModelClientRegistry(
         mapOf(
             ModelProtocolType.OPENAI_RESPONSES to OpenAiResponsesAiModelClient(aiHttpTransport),

@@ -22,6 +22,7 @@ enum class SettingsPermissionLabel {
 
 enum class SettingsCommand {
     ReselectPhotos,
+    SelectDocumentImages,
     Rescan,
     OpenSystemSettings,
 }
@@ -62,6 +63,10 @@ class SettingsViewModel(
 
     fun reselectPhotos() {
         commandChannel.trySend(SettingsCommand.ReselectPhotos)
+    }
+
+    fun selectDocumentImages() {
+        commandChannel.trySend(SettingsCommand.SelectDocumentImages)
     }
 
     fun rescan() {

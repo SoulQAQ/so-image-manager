@@ -2,6 +2,9 @@ package cn.soul2.imageai.ui.gallery
 
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -19,16 +22,24 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,6 +63,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -61,14 +73,16 @@ import cn.soul2.imageai.R
 import cn.soul2.imageai.ai.analysis.SingleImageAnalysisFailure
 import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
 import cn.soul2.imageai.analysis.EffectiveImageMetadata
+import cn.soul2.imageai.analysis.CanonicalMetadataRepository
+import cn.soul2.imageai.analysis.CorrectionCommand
 import cn.soul2.imageai.data.db.entity.AnalysisTermKind
+import cn.soul2.imageai.data.db.entity.UserTermOverrideAction
 import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.gallery.GalleryImageWindow
 import cn.soul2.imageai.gallery.GalleryRepository
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
-import kotlinx.coroutines.delay
 
 object ImageDetailDestination {
     const val localIdArgument = "localId"
@@ -84,17 +98,25 @@ object ImageDetailDestination {
 fun ImageDetailScreen(
     repository: GalleryRepository,
     singleImageAnalyzer: SingleImageAnalyzer? = null,
+    canonicalMetadataRepository: CanonicalMetadataRepository? = null,
     localId: Long,
     onBack: () -> Unit,
 ) {
     val viewModel: ImageDetailViewModel = viewModel(
         key = "image_detail_$localId",
-        factory = ImageDetailViewModel.factory(repository, localId, singleImageAnalyzer),
+        factory = ImageDetailViewModel.factory(
+            repository,
+            localId,
+            singleImageAnalyzer,
+            canonicalMetadataRepository,
+        ),
     )
     val uiState by viewModel.uiState.collectAsState()
     val metadata by viewModel.effectiveMetadata.collectAsState()
     val analysisState by viewModel.analysisState.collectAsState()
+    val correctionState by viewModel.correctionState.collectAsState()
     var controlsVisible by remember { mutableStateOf(true) }
+    var showFullAiResult by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -117,17 +139,10 @@ fun ImageDetailScreen(
                 LaunchedEffect(state.image.localId) {
                     controlsVisible = true
                 }
-                LaunchedEffect(controlsVisible, state.image.localId) {
-                    if (controlsVisible) {
-                        delay(CONTROLS_AUTO_HIDE_MILLIS)
-                        controlsVisible = false
-                    }
-                }
                 ImageDetailPager(
                     window = state.window,
                     onSelectImage = viewModel::showImage,
                     onToggleControls = { controlsVisible = !controlsVisible },
-                    onDoubleTapZoom = { controlsVisible = false },
                 )
                 if (controlsVisible) {
                     DetailTopBar(
@@ -140,11 +155,20 @@ fun ImageDetailScreen(
                         metadata = metadata,
                         analysisState = analysisState,
                         onAnalyze = viewModel::analyzeCurrentImage,
+                        onShowFullResult = { showFullAiResult = true },
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )
                 }
             }
         }
+    }
+    if (showFullAiResult && metadata?.activeAnalysis != null) {
+        FullAiResultSheet(
+            metadata = requireNotNull(metadata),
+            correctionState = correctionState,
+            onCorrection = viewModel::applyCorrection,
+            onDismiss = { showFullAiResult = false },
+        )
     }
 }
 
@@ -153,7 +177,6 @@ private fun ImageDetailPager(
     window: GalleryImageWindow,
     onSelectImage: (Long) -> Unit,
     onToggleControls: () -> Unit,
-    onDoubleTapZoom: () -> Unit,
 ) {
     val model = detailPagerModel(window)
 
@@ -178,7 +201,6 @@ private fun ImageDetailPager(
                 ZoomableImage(
                     image = image,
                     onToggleControls = onToggleControls,
-                    onDoubleTapZoom = onDoubleTapZoom,
                 )
             }
         }
@@ -208,7 +230,6 @@ internal fun detailPagerModel(window: GalleryImageWindow): ImageDetailPagerModel
 private fun ZoomableImage(
     image: GalleryImage,
     onToggleControls: () -> Unit,
-    onDoubleTapZoom: () -> Unit,
 ) {
     val context = LocalContext.current
     var scale by remember(image.localId) { mutableFloatStateOf(1f) }
@@ -240,7 +261,6 @@ private fun ZoomableImage(
                         } else {
                             scale = DOUBLE_TAP_SCALE
                         }
-                        onDoubleTapZoom()
                     },
                 )
             }
@@ -285,6 +305,7 @@ private fun DetailActionBar(
     metadata: EffectiveImageMetadata?,
     analysisState: ImageAnalysisUiState,
     onAnalyze: () -> Unit,
+    onShowFullResult: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val currentAnalysis = analysisState.takeIf {
@@ -299,6 +320,7 @@ private fun DetailActionBar(
         modifier = modifier
             .fillMaxWidth()
             .background(Color.Black.copy(alpha = 0.62f))
+            .clickable { }
             .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 8.dp)
             .testTag("image_detail_controls"),
@@ -330,6 +352,14 @@ private fun DetailActionBar(
                 .orEmpty(),
             color = Color.White.copy(alpha = 0.76f),
         )
+        if (metadata?.activeAnalysis != null) {
+            TextButton(
+                onClick = onShowFullResult,
+                modifier = Modifier.testTag("image_detail_full_ai_result"),
+            ) {
+                Text(stringResource(R.string.image_analysis_view_full_result))
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -370,6 +400,211 @@ private fun DetailActionBar(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FullAiResultSheet(
+    metadata: EffectiveImageMetadata,
+    correctionState: ImageCorrectionUiState,
+    onCorrection: (CorrectionCommand) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.image_analysis_full_result_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            metadata.caption?.let { caption ->
+                SelectionContainer {
+                    Text(caption, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+            EditableCaption(
+                metadata = metadata,
+                saving = correctionState is ImageCorrectionUiState.Saving,
+                onCorrection = onCorrection,
+            )
+            FullAiTermSection(
+                title = R.string.image_analysis_tags,
+                values = metadata.terms
+                    .filter { it.kind == AnalysisTermKind.TAG }
+                    .map { it.displayValue },
+                kind = AnalysisTermKind.TAG,
+                saving = correctionState is ImageCorrectionUiState.Saving,
+                onCorrection = onCorrection,
+            )
+            FullAiTermSection(
+                title = R.string.image_analysis_categories,
+                values = metadata.terms
+                    .filter { it.kind == AnalysisTermKind.CATEGORY }
+                    .map { it.displayValue },
+                kind = AnalysisTermKind.CATEGORY,
+                saving = correctionState is ImageCorrectionUiState.Saving,
+                onCorrection = onCorrection,
+            )
+            EditableTermAdd(
+                saving = correctionState is ImageCorrectionUiState.Saving,
+                onCorrection = onCorrection,
+            )
+            metadata.termOverrides
+                .filter { it.action == UserTermOverrideAction.TOMBSTONE }
+                .forEach { override ->
+                    TextButton(
+                        onClick = {
+                            onCorrection(
+                                CorrectionCommand.RestoreTerm(
+                                    override.kind,
+                                    override.normalizedKey,
+                                ),
+                            )
+                        },
+                        enabled = correctionState !is ImageCorrectionUiState.Saving,
+                    ) {
+                        Text(
+                            stringResource(
+                                R.string.image_analysis_restore_term,
+                                override.normalizedKey,
+                            ),
+                        )
+                    }
+                }
+            if (correctionState is ImageCorrectionUiState.Failed) {
+                Text(
+                    text = stringResource(R.string.image_analysis_correction_failed),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun FullAiTermSection(
+    @androidx.annotation.StringRes title: Int,
+    values: List<String>,
+    kind: AnalysisTermKind,
+    saving: Boolean,
+    onCorrection: (CorrectionCommand) -> Unit,
+) {
+    if (values.isNotEmpty()) {
+        Text(
+            text = stringResource(title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Medium,
+        )
+        values.forEach { value ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(value, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                IconButton(
+                    onClick = { onCorrection(CorrectionCommand.DeleteTerm(kind, value)) },
+                    enabled = !saving,
+                ) {
+                    Icon(
+                        Icons.Outlined.Close,
+                        contentDescription = stringResource(R.string.image_analysis_delete_term, value),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditableCaption(
+    metadata: EffectiveImageMetadata,
+    saving: Boolean,
+    onCorrection: (CorrectionCommand) -> Unit,
+) {
+    var draft by remember(metadata.projectionGeneration) { mutableStateOf(metadata.caption.orEmpty()) }
+    OutlinedTextField(
+        value = draft,
+        onValueChange = { draft = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(stringResource(R.string.image_analysis_edit_caption)) },
+        minLines = 3,
+        enabled = !saving,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TextButton(
+            onClick = {
+                onCorrection(
+                    if (draft.isBlank()) CorrectionCommand.ClearCaption
+                    else CorrectionCommand.SetCaption(draft),
+                )
+            },
+            enabled = !saving,
+        ) { Text(stringResource(R.string.image_analysis_save_caption)) }
+        TextButton(
+            onClick = { onCorrection(CorrectionCommand.ClearCaption) },
+            enabled = !saving && metadata.caption != null,
+        ) { Text(stringResource(R.string.image_analysis_clear_caption)) }
+        if (metadata.captionCorrection != null) {
+            TextButton(
+                onClick = { onCorrection(CorrectionCommand.InheritCaption) },
+                enabled = !saving,
+            ) { Text(stringResource(R.string.image_analysis_restore_caption)) }
+        }
+    }
+}
+
+@Composable
+private fun EditableTermAdd(
+    saving: Boolean,
+    onCorrection: (CorrectionCommand) -> Unit,
+) {
+    var value by remember { mutableStateOf("") }
+    var kind by remember { mutableStateOf(AnalysisTermKind.TAG) }
+    Text(
+        text = stringResource(R.string.image_analysis_add_term),
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = kind == AnalysisTermKind.TAG,
+            onClick = { kind = AnalysisTermKind.TAG },
+            label = { Text(stringResource(R.string.image_analysis_tags)) },
+            enabled = !saving,
+        )
+        FilterChip(
+            selected = kind == AnalysisTermKind.CATEGORY,
+            onClick = { kind = AnalysisTermKind.CATEGORY },
+            label = { Text(stringResource(R.string.image_analysis_categories)) },
+            enabled = !saving,
+        )
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = { value = it },
+            modifier = Modifier.weight(1f),
+            label = { Text(stringResource(R.string.image_analysis_term_value)) },
+            singleLine = true,
+            enabled = !saving,
+        )
+        TextButton(
+            onClick = {
+                onCorrection(CorrectionCommand.AddTerm(kind, value))
+                value = ""
+            },
+            enabled = !saving && value.isNotBlank(),
+        ) { Text(stringResource(R.string.image_analysis_add_term_action)) }
+    }
+}
+
 @Composable
 private fun DetailTopBar(
     image: GalleryImage,
@@ -388,6 +623,7 @@ private fun DetailTopBar(
         modifier = modifier
             .fillMaxWidth()
             .background(Color.Black.copy(alpha = 0.62f))
+            .clickable { }
             .statusBarsPadding()
             .padding(horizontal = 6.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -456,5 +692,4 @@ private fun analysisFailureMessage(failure: SingleImageAnalysisFailure): Int = w
     SingleImageAnalysisFailure.INTERNAL_ERROR -> R.string.image_analysis_error_internal
 }
 
-private const val CONTROLS_AUTO_HIDE_MILLIS = 3_000L
 private const val DOUBLE_TAP_SCALE = 2.5f

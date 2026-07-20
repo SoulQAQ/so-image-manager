@@ -62,7 +62,7 @@ import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
         ModelProfileEntity::class,
         AiRuntimeSettingEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(RoomConverters::class)
