@@ -39,7 +39,6 @@ import cn.soul2.imageai.ui.gallery.ImageDetailScreen
 import cn.soul2.imageai.ui.ai.AiSettingsDestination
 import cn.soul2.imageai.ui.ai.AiSettingsScreen
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingScreen
-import cn.soul2.imageai.ui.onboarding.GalleryPartialAccessBanner
 import cn.soul2.imageai.ui.screens.HomeScreen
 import cn.soul2.imageai.ui.screens.LibraryScreen
 import cn.soul2.imageai.ui.screens.SettingsScreen
@@ -142,12 +141,6 @@ fun SoImageManagerApp(
             Modifier.fillMaxSize().padding(contentPadding)
         }
         Column(contentModifier) {
-            if (!isImageDetail && galleryAccessState is GalleryAccessState.Partial) {
-                GalleryPartialAccessBanner(
-                    isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
-                    onRequestReselection = onRequestGalleryReselection,
-                )
-            }
             NavHost(
                 navController = navController,
                 startDestination = AppDestination.start.route,
@@ -165,6 +158,18 @@ fun SoImageManagerApp(
                         onRequestGalleryPermission = onRequestGalleryPermission,
                         onOpenAppSettings = onOpenAppSettings,
                         onSearchClick = { navController.navigate(SearchDestination.route) },
+                        onShareImages = onShareImages,
+                        onDeleteImages = onDeleteImages,
+                        onRemoveImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
+                            }
+                        },
+                        onAnalyzeImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
+                            }
+                        },
                     )
                 }
                 composable(AppDestination.LIBRARY.route) {

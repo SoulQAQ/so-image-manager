@@ -63,6 +63,7 @@
     <string name="gallery_load_failed">图片加载失败</string>
     <string name="gallery_retry">重试</string>
     <string name="gallery_selection_count">已选择 %1$d 项</string>
+    <string name="gallery_selection_count_compact">已选 %1$d</string>
     <string name="gallery_selection_cancel">取消选择</string>
     <string name="gallery_selection_analyze">分析 / 重新分析</string>
     <string name="gallery_selection_share">分享</string>

@@ -14,6 +14,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -102,6 +103,7 @@ fun ImageDetailScreen(
     localId: Long,
     onBack: () -> Unit,
 ) {
+    key(localId) {
     val viewModel: ImageDetailViewModel = viewModel(
         key = "image_detail_$localId",
         factory = ImageDetailViewModel.factory(
@@ -170,6 +172,7 @@ fun ImageDetailScreen(
             onDismiss = { showFullAiResult = false },
         )
     }
+    }
 }
 
 @Composable
@@ -235,9 +238,13 @@ private fun ZoomableImage(
     var scale by remember(image.localId) { mutableFloatStateOf(1f) }
     var offset by remember(image.localId) { mutableStateOf(Offset.Zero) }
     var viewport by remember(image.localId) { mutableStateOf(IntSize.Zero) }
-    val request = remember(image.contentUri) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val requestWidth = constraints.maxWidth.coerceAtLeast(1)
+    val requestHeight = constraints.maxHeight.coerceAtLeast(1)
+    val request = remember(image.contentUri, requestWidth, requestHeight) {
         ImageRequest.Builder(context)
             .data(Uri.parse(image.contentUri))
+            .size(requestWidth, requestHeight)
             .crossfade(false)
             .build()
     }
@@ -297,6 +304,7 @@ private fun ZoomableImage(
             }
             .testTag("image_detail_zoomable"),
     )
+    }
 }
 
 @Composable

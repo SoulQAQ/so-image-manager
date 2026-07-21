@@ -2,12 +2,14 @@ package cn.soul2.imageai.ui.gallery
 
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material3.MaterialTheme
@@ -17,13 +19,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import cn.soul2.imageai.gallery.GalleryImage
@@ -83,12 +88,22 @@ fun GalleryImageTile(
             colorFilter = null,
         )
         if (selected) {
-            Icon(
-                imageVector = Icons.Outlined.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd),
-            )
+            Box(
+                modifier = Modifier
+                    .align(androidx.compose.ui.Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = androidx.compose.ui.Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
         }
     }
 }

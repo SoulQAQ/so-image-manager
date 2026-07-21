@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
@@ -24,12 +27,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.runtime.Composable
@@ -71,7 +75,11 @@ internal fun GalleryScreen(
         TopAppBar(
             title = {
                 if (selectedImages.isEmpty()) Text(stringResource(titleRes))
-                else Text(stringResource(R.string.gallery_selection_count, selectedImages.size))
+                else Text(
+                    text = stringResource(R.string.gallery_selection_count_compact, selectedImages.size),
+                    maxLines = 1,
+                    style = MaterialTheme.typography.titleMedium,
+                )
             },
             navigationIcon = {
                 if (selectedImages.isNotEmpty()) {
@@ -80,15 +88,7 @@ internal fun GalleryScreen(
                     }
                 }
             },
-            actions = {
-                if (selectedImages.isEmpty()) topBarAction?.invoke() else {
-                    val selected = selectedImages.values.toList()
-                    IconButton(onClick = { onAnalyzeSelection(selected) }) { Icon(Icons.Outlined.AutoAwesome, stringResource(R.string.gallery_selection_analyze)) }
-                    IconButton(onClick = { onShareSelection(selected) }) { Icon(Icons.Outlined.Share, stringResource(R.string.gallery_selection_share)) }
-                    IconButton(onClick = { onRemoveSelection(selected) }) { Icon(Icons.Outlined.DeleteOutline, stringResource(R.string.gallery_selection_remove)) }
-                    IconButton(onClick = { onDeleteSelection(selected) }) { Icon(Icons.Outlined.Delete, stringResource(R.string.gallery_selection_delete)) }
-                }
-            },
+            actions = { if (selectedImages.isEmpty()) topBarAction?.invoke() },
             windowInsets = WindowInsets(0, 0, 0, 0),
         )
         when (val contentState = uiState.contentState(galleryAccessState)) {
@@ -121,6 +121,63 @@ internal fun GalleryScreen(
                 )
             }
         }
+        if (selectedImages.isNotEmpty()) {
+            SelectionActionBar(
+                selected = selectedImages.values.toList(),
+                onAnalyze = onAnalyzeSelection,
+                onShare = onShareSelection,
+                onRemove = onRemoveSelection,
+                onDelete = onDeleteSelection,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SelectionActionBar(
+    selected: List<GalleryImage>,
+    onAnalyze: (List<GalleryImage>) -> Unit,
+    onShare: (List<GalleryImage>) -> Unit,
+    onRemove: (List<GalleryImage>) -> Unit,
+    onDelete: (List<GalleryImage>) -> Unit,
+) {
+    Surface(tonalElevation = 2.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth().height(70.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SelectionAction(Icons.Outlined.AutoAwesome, R.string.gallery_selection_analyze) {
+                onAnalyze(selected)
+            }
+            SelectionAction(Icons.Outlined.Share, R.string.gallery_selection_share) {
+                onShare(selected)
+            }
+            SelectionAction(Icons.Outlined.VisibilityOff, R.string.gallery_selection_remove) {
+                onRemove(selected)
+            }
+            SelectionAction(Icons.Outlined.Delete, R.string.gallery_selection_delete) {
+                onDelete(selected)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectionAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    @StringRes label: Int,
+    onClick: () -> Unit,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
+            Icon(icon, contentDescription = stringResource(label))
+        }
+        Text(
+            text = stringResource(label),
+            style = MaterialTheme.typography.labelMedium,
+            maxLines = 1,
+        )
     }
 }
 

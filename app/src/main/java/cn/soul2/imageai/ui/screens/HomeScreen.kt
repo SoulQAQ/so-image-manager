@@ -13,10 +13,12 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import cn.soul2.imageai.R
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
 import cn.soul2.imageai.gallery.GalleryRepository
+import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.ui.gallery.GalleryLayout
 import cn.soul2.imageai.ui.gallery.GalleryScreen
 import cn.soul2.imageai.ui.gallery.HomeViewModel
+import cn.soul2.imageai.ui.gallery.GallerySelectionViewModel
 import kotlinx.coroutines.flow.Flow
 
 @Composable
@@ -29,6 +31,10 @@ fun HomeScreen(
     onRequestGalleryPermission: () -> Unit = {},
     onOpenAppSettings: () -> Unit = {},
     onSearchClick: () -> Unit = {},
+    onShareImages: (List<GalleryImage>) -> Unit = {},
+    onDeleteImages: (List<GalleryImage>) -> Unit = {},
+    onRemoveImages: (List<GalleryImage>) -> Unit = {},
+    onAnalyzeImages: (List<GalleryImage>) -> Unit = {},
 ) {
     val viewModel: HomeViewModel = viewModel(
         key = "home_gallery",
@@ -36,6 +42,8 @@ fun HomeScreen(
     )
     val uiState by viewModel.uiState.collectAsState()
     val images = viewModel.images.collectAsLazyPagingItems()
+    val selectionViewModel: GallerySelectionViewModel = viewModel(key = "home_selection")
+    val selected by selectionViewModel.selected.collectAsState()
 
     GalleryScreen(
         titleRes = R.string.nav_home,
@@ -49,6 +57,22 @@ fun HomeScreen(
         onRequestGalleryPermission = onRequestGalleryPermission,
         onOpenAppSettings = onOpenAppSettings,
         onImageClick = onImageClick,
+        selectedImages = selected,
+        onToggleSelection = selectionViewModel::toggle,
+        onClearSelection = selectionViewModel::clear,
+        onShareSelection = onShareImages,
+        onDeleteSelection = { selectedImages ->
+            onDeleteImages(selectedImages)
+            selectionViewModel.clear()
+        },
+        onRemoveSelection = { selectedImages ->
+            onRemoveImages(selectedImages)
+            selectionViewModel.clear()
+        },
+        onAnalyzeSelection = { selectedImages ->
+            onAnalyzeImages(selectedImages)
+            selectionViewModel.clear()
+        },
         topBarAction = {
             IconButton(onClick = onSearchClick) {
                 Icon(
