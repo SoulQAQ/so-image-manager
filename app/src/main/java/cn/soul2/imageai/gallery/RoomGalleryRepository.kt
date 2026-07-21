@@ -89,4 +89,5 @@ private fun ImageEntity.toGalleryImage() = GalleryImage(
     modifiedAtEpochMillis = modifiedAtEpochMillis,
     bucketName = bucketName,
     isFavorite = isFavorite,
+    source = source,
 )

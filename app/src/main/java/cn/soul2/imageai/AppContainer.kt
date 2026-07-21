@@ -6,6 +6,8 @@ import cn.soul2.imageai.ai.config.AiConfigurationRepository
 import cn.soul2.imageai.ai.analysis.AiModelClientRegistry
 import cn.soul2.imageai.ai.analysis.RepositoryAiAnalysisConfigurationResolver
 import cn.soul2.imageai.ai.analysis.SingleImageAnalysisService
+import cn.soul2.imageai.ai.batch.BatchAnalysisRepository
+import cn.soul2.imageai.ai.batch.BatchAnalysisScheduler
 import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.ai.credential.AndroidKeystoreCredentialStore
 import cn.soul2.imageai.ai.image.ContentImagePreprocessor
@@ -19,6 +21,7 @@ import cn.soul2.imageai.data.db.AppDatabaseFactory
 import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.gallery.RoomGalleryRepository
+import cn.soul2.imageai.gallery.GallerySelectionActions
 import cn.soul2.imageai.media.permission.GalleryPermissionMonitor
 import cn.soul2.imageai.media.document.DocumentImageImporter
 import cn.soul2.imageai.media.store.AndroidMediaStoreGateway
@@ -73,6 +76,15 @@ class AppContainer(
         imagePreprocessor = imagePreprocessor,
         clients = aiModelClients,
         canonicalRepository = canonicalMetadataRepository,
+    )
+    val batchAnalysisRepository = BatchAnalysisRepository(
+        database.batchAnalysisDao(),
+        database.imageDao(),
+        singleImageAnalysisService,
+    )
+    val batchAnalysisScheduler = BatchAnalysisScheduler(WorkManager.getInstance(applicationContext))
+    val gallerySelectionActions = GallerySelectionActions(
+        database.imageDao(), batchAnalysisRepository, batchAnalysisScheduler,
     )
     val galleryRepository: GalleryRepository = RoomGalleryRepository(
         database.imageDao(),

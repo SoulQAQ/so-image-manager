@@ -22,8 +22,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import cn.soul2.imageai.data.db.entity.BatchAnalysisRunEntity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -42,12 +48,15 @@ fun TasksScreen(
     syncRuns: Flow<MediaSyncRunEntity?>,
     lastCompletedAt: Flow<Long?>,
     onRetry: () -> Unit,
+    batchAnalysisRuns: Flow<BatchAnalysisRunEntity?>,
+    onAnalyzeAll: () -> Unit,
 ) {
     val tasksViewModel: TasksViewModel = viewModel(
         factory = TasksViewModel.factory(syncRuns, lastCompletedAt, onRetry),
     )
     val uiState by tasksViewModel.uiState.collectAsStateWithLifecycle()
-    TasksContent(uiState = uiState, onRetry = tasksViewModel::retry)
+    val batchRun by batchAnalysisRuns.collectAsStateWithLifecycle(initialValue = null)
+    TasksContent(uiState, tasksViewModel::retry, batchRun, onAnalyzeAll)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,7 +64,19 @@ fun TasksScreen(
 private fun TasksContent(
     uiState: TasksUiState,
     onRetry: () -> Unit,
+    batchRun: BatchAnalysisRunEntity?,
+    onAnalyzeAll: () -> Unit,
 ) {
+    var confirmBatchAnalysis by remember { mutableStateOf(false) }
+    if (confirmBatchAnalysis) {
+        AlertDialog(
+            onDismissRequest = { confirmBatchAnalysis = false },
+            title = { Text(stringResource(R.string.batch_analysis_confirm_title)) },
+            text = { Text(stringResource(R.string.batch_analysis_confirm_message)) },
+            confirmButton = { TextButton(onClick = { confirmBatchAnalysis = false; onAnalyzeAll() }) { Text(stringResource(R.string.batch_analysis_confirm_action)) } },
+            dismissButton = { TextButton(onClick = { confirmBatchAnalysis = false }) { Text(stringResource(R.string.batch_analysis_cancel)) } },
+        )
+    }
     Column(Modifier.fillMaxSize().testTag("screen_tasks")) {
         TopAppBar(
             title = { Text(stringResource(R.string.nav_tasks)) },
@@ -74,6 +95,25 @@ private fun TasksContent(
                 KeyValueRow(R.string.tasks_mode, stringResource(taskModeRes(uiState.mode)))
                 HorizontalDivider()
                 KeyValueRow(R.string.tasks_status, stringResource(taskStatusRes(uiState.status)))
+            }
+            item {
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                SectionLabel(R.string.batch_analysis_section)
+                val active = batchRun?.state == "QUEUED" || batchRun?.state == "RUNNING"
+                if (batchRun != null) {
+                    KeyValueRow(
+                        R.string.batch_analysis_progress,
+                        stringResource(
+                            R.string.batch_analysis_progress_value,
+                            batchRun.completedCount + batchRun.failedCount,
+                            batchRun.totalCount,
+                            batchRun.failedCount,
+                        ),
+                    )
+                }
+                FilledTonalButton(onClick = { confirmBatchAnalysis = true }, enabled = !active) {
+                    Text(stringResource(R.string.batch_analysis_all))
+                }
             }
             item {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))

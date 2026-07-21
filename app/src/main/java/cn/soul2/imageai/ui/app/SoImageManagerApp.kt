@@ -12,6 +12,7 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -27,6 +28,9 @@ import cn.soul2.imageai.ai.config.AiConfigurationRepository
 import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
 import cn.soul2.imageai.analysis.CanonicalMetadataRepository
+import cn.soul2.imageai.gallery.GalleryImage
+import cn.soul2.imageai.gallery.GallerySelectionActions
+import cn.soul2.imageai.ai.batch.BatchAnalysisRepository
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.search.ImageSearchRepository
@@ -44,6 +48,8 @@ import cn.soul2.imageai.ui.search.SearchDestination
 import cn.soul2.imageai.ui.search.SearchScreen
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Composable
 fun SoImageManagerApp(
@@ -71,7 +77,12 @@ fun SoImageManagerApp(
     onDocumentImportNoticeConsumed: () -> Unit = {},
     onRetryGallerySync: () -> Unit = {},
     onRequestGalleryReconciliation: () -> Unit = {},
+    gallerySelectionActions: GallerySelectionActions? = null,
+    batchAnalysisRepository: BatchAnalysisRepository? = null,
+    onShareImages: (List<GalleryImage>) -> Unit = {},
+    onDeleteImages: (List<GalleryImage>) -> Unit = {},
 ) {
+    val coroutineScope = rememberCoroutineScope()
     val deniedState = galleryAccessState as? GalleryAccessState.Denied
     if (showGalleryOnboarding && deniedState != null) {
         GalleryOnboardingScreen(
@@ -167,6 +178,18 @@ fun SoImageManagerApp(
                         isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
                         onRequestGalleryPermission = onRequestGalleryPermission,
                         onOpenAppSettings = onOpenAppSettings,
+                        onShareImages = onShareImages,
+                        onDeleteImages = onDeleteImages,
+                        onRemoveImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
+                            }
+                        },
+                        onAnalyzeImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
+                            }
+                        },
                     )
                 }
                 composable(AppDestination.TASKS.route) {
@@ -174,6 +197,12 @@ fun SoImageManagerApp(
                         syncRuns = syncRuns,
                         lastCompletedAt = lastSyncCompletedAt,
                         onRetry = onRetryGallerySync,
+                        batchAnalysisRuns = batchAnalysisRepository?.observeLatest() ?: flowOf(null),
+                        onAnalyzeAll = {
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.analyzeAll()
+                            }
+                        },
                     )
                 }
                 composable(AppDestination.SETTINGS.route) {

@@ -14,6 +14,7 @@ import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_2_3
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_3_4
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_4_5
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_5_6
+import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_6_7
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -268,7 +269,7 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
-    fun migrationFiveToSixAddsDocumentSourceWithoutLosingRows() {
+    fun migrationFiveToSevenAddsDocumentSourceAndBatchTablesWithoutLosingRows() {
         migrationHelper.createDatabase(TEST_DATABASE, 5).apply {
             execSQL(
                 "INSERT INTO app_setting (`key`, value_json, updated_at_epoch_millis) " +
@@ -279,17 +280,19 @@ class AppDatabaseMigrationTest {
 
         migrationHelper.runMigrationsAndValidate(
             TEST_DATABASE,
-            6,
+            7,
             true,
             MIGRATION_5_6,
+            MIGRATION_6_7,
         ).use { database ->
             database.query("SELECT `source` FROM image LIMIT 1").close()
+            database.query("SELECT * FROM batch_analysis_run").close()
             assertEquals(1, queryCount(database, "app_setting"))
         }
     }
 
     @Test
-    fun migrationOneToSixRunsEveryRegisteredSequentialMigration() {
+    fun migrationOneToSevenRunsEveryRegisteredSequentialMigration() {
         migrationHelper.createDatabase(TEST_DATABASE, 1).apply {
             execSQL(
                 "INSERT INTO app_setting (`key`, value_json, updated_at_epoch_millis) " +
@@ -300,13 +303,14 @@ class AppDatabaseMigrationTest {
 
         migrationHelper.runMigrationsAndValidate(
             TEST_DATABASE,
-            6,
+            7,
             true,
             MIGRATION_1_2,
             MIGRATION_2_3,
             MIGRATION_3_4,
             MIGRATION_4_5,
             MIGRATION_5_6,
+            MIGRATION_6_7,
         ).use { database ->
             assertEquals(1, queryCount(database, "app_setting"))
             assertEquals(0, queryCount(database, "provider_profile"))

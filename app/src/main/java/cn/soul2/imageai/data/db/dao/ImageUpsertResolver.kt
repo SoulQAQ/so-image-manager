@@ -2,6 +2,7 @@ package cn.soul2.imageai.data.db.dao
 
 import androidx.room.ColumnInfo
 import cn.soul2.imageai.data.db.entity.ImageEntity
+import cn.soul2.imageai.data.db.entity.ImageAvailability
 
 data class ExistingImageIdentity(
     @ColumnInfo(name = "volume_name")
@@ -10,6 +11,7 @@ data class ExistingImageIdentity(
     val mediaStoreId: Long,
     @ColumnInfo(name = "local_id")
     val localId: Long,
+    val availability: ImageAvailability = ImageAvailability.AVAILABLE,
 )
 
 internal data class ImageIdentityQueryBatch(
@@ -41,12 +43,19 @@ internal object ImageUpsertResolver {
         images: List<ImageEntity>,
         existing: List<ExistingImageIdentity>,
     ): List<ImageEntity> {
-        val localIds = existing.associate { identity ->
-            ExternalIdentity(identity.volumeName, identity.mediaStoreId) to identity.localId
+        val existingByIdentity = existing.associateBy { identity ->
+            ExternalIdentity(identity.volumeName, identity.mediaStoreId)
         }
         return deduplicateLastWins(images).map { image ->
-            val localId = localIds[ExternalIdentity(image.volumeName, image.mediaStoreId)]
-            if (localId == null) image else image.copy(localId = localId)
+            val existingImage = existingByIdentity[
+                ExternalIdentity(image.volumeName, image.mediaStoreId)
+            ]
+            if (existingImage == null) image else image.copy(
+                localId = existingImage.localId,
+                availability = existingImage.availability.takeIf {
+                    it == ImageAvailability.REMOVED_FROM_SOIM
+                } ?: image.availability,
+            )
         }
     }
 

@@ -7,14 +7,14 @@ import org.junit.Test
 
 class AiConfigurationSchemaContractTest {
     @Test
-    fun versionSixRetainsProviderModelProtocolAndRuntimeConfiguration() {
+    fun versionSevenRetainsProviderModelProtocolAndRuntimeConfiguration() {
         val schema = projectFile(
-            "app/schemas/cn.soul2.imageai.data.db.AppDatabase/6.json",
+            "app/schemas/cn.soul2.imageai.data.db.AppDatabase/7.json",
         )
-        assertTrue("Room schema v6 must be exported", schema.isFile)
+        assertTrue("Room schema v7 must be exported", schema.isFile)
         val text = schema.readText()
 
-        assertTrue(Regex("\\\"version\\\"\\s*:\\s*6").containsMatchIn(text))
+        assertTrue(Regex("\\\"version\\\"\\s*:\\s*7").containsMatchIn(text))
         listOf(
             "provider_profile",
             "model_profile",
@@ -33,13 +33,14 @@ class AiConfigurationSchemaContractTest {
     }
 
     @Test
-    fun everyDatabaseFactoryRegistersMigrationFiveToSixWithoutDestructiveFallback() {
+    fun everyDatabaseFactoryRegistersMigrationSixToSevenWithoutDestructiveFallback() {
         val factory = projectFile(
             "app/src/main/java/cn/soul2/imageai/data/db/AppDatabaseFactory.kt",
         ).readText()
 
         assertTrue(factory.contains("MIGRATION_4_5"))
         assertTrue(factory.contains("MIGRATION_5_6"))
+        assertTrue(factory.contains("MIGRATION_6_7"))
         assertFalse(factory.contains("fallbackToDestructiveMigration"))
     }
 

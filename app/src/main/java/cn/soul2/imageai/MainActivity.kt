@@ -1,9 +1,13 @@
 package cn.soul2.imageai
 
 import android.content.Intent
+import android.content.ClipData
+import android.app.RecoverableSecurityException
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.provider.MediaStore
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
@@ -36,6 +40,8 @@ import cn.soul2.imageai.ui.app.SoImageManagerApp
 import cn.soul2.imageai.ui.onboarding.GalleryAccessViewModel
 import cn.soul2.imageai.ui.onboarding.GalleryPermissionRequestCoordinator
 import cn.soul2.imageai.ui.theme.SoImageManagerTheme
+import cn.soul2.imageai.gallery.GalleryImage
+import cn.soul2.imageai.data.db.entity.ImageSource
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -122,6 +128,26 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        var pendingDeleteImages by remember { mutableStateOf<List<GalleryImage>>(emptyList()) }
+        var deleteNeedsRetry by remember { mutableStateOf(false) }
+        val deleteLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartIntentSenderForResult(),
+        ) { result ->
+            if (result.resultCode == RESULT_OK && pendingDeleteImages.isNotEmpty()) {
+                if (deleteNeedsRetry) {
+                    pendingDeleteImages.forEach { image ->
+                        contentResolver.delete(Uri.parse(image.contentUri), null, null)
+                    }
+                }
+                coroutineScope.launch {
+                    container.gallerySelectionActions.removeFromSoim(
+                        pendingDeleteImages.map(GalleryImage::localId),
+                    )
+                }
+            }
+            pendingDeleteImages = emptyList()
+            deleteNeedsRetry = false
+        }
         val launchPermissionRequest: () -> Unit = {
             coroutineScope.launch {
                 permissionRequestCoordinator.persistThenLaunch(
@@ -189,6 +215,44 @@ class MainActivity : ComponentActivity() {
                 onRetryGallerySync = container.mediaSyncScheduler::retry,
                 onRequestGalleryReconciliation =
                     container.mediaSyncScheduler::requestReconciliation,
+                gallerySelectionActions = container.gallerySelectionActions,
+                batchAnalysisRepository = container.batchAnalysisRepository,
+                onShareImages = ::shareImages,
+                onDeleteImages = { images ->
+                    val deletable = images.filter { it.source == ImageSource.MEDIA_STORE }
+                    if (deletable.isEmpty()) return@SoImageManagerApp
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        pendingDeleteImages = deletable
+                        val request = MediaStore.createDeleteRequest(
+                            contentResolver,
+                            deletable.map { Uri.parse(it.contentUri) },
+                        )
+                        deleteLauncher.launch(
+                            androidx.activity.result.IntentSenderRequest.Builder(
+                                request.intentSender,
+                            ).build(),
+                        )
+                    } else {
+                        try {
+                            deletable.forEach { image ->
+                                contentResolver.delete(Uri.parse(image.contentUri), null, null)
+                            }
+                            coroutineScope.launch {
+                                container.gallerySelectionActions.removeFromSoim(
+                                    deletable.map(GalleryImage::localId),
+                                )
+                            }
+                        } catch (error: RecoverableSecurityException) {
+                            pendingDeleteImages = deletable
+                            deleteNeedsRetry = true
+                            deleteLauncher.launch(
+                                androidx.activity.result.IntentSenderRequest.Builder(
+                                    error.userAction.actionIntent.intentSender,
+                                ).build(),
+                            )
+                        }
+                    }
+                },
             )
         }
     }
@@ -218,4 +282,22 @@ class MainActivity : ComponentActivity() {
             repeat(clipData.itemCount) { index -> add(clipData.getItemAt(index).uri) }
         }
     }.distinct()
+
+    private fun shareImages(images: List<GalleryImage>) {
+        if (images.isEmpty()) return
+        val uris = ArrayList(images.map { Uri.parse(it.contentUri) })
+        startActivity(
+            Intent.createChooser(
+                Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "image/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+                    clipData = ClipData.newRawUri("images", uris.first()).also { clip ->
+                        uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+                    }
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+                getString(cn.soul2.imageai.R.string.gallery_selection_share),
+            ),
+        )
+    }
 }

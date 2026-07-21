@@ -18,8 +18,28 @@ abstract class ImageDao {
     )
     abstract fun observeAvailableCount(): Flow<Int>
 
-    @Query("SELECT COUNT(*) FROM image WHERE availability != 'AVAILABLE'")
+    @Query("SELECT COUNT(*) FROM image WHERE availability != 'AVAILABLE' AND availability != 'REMOVED_FROM_SOIM'")
     abstract fun observeUnavailableCount(): Flow<Int>
+
+    @Query("UPDATE image SET availability = 'REMOVED_FROM_SOIM' WHERE local_id IN (:localIds)")
+    protected abstract suspend fun markRemovedFromSoim(localIds: List<Long>): Int
+
+    @Query("DELETE FROM search_document WHERE rowid IN (:localIds)")
+    protected abstract suspend fun deleteSearchDocuments(localIds: List<Long>): Int
+
+    @Transaction
+    open suspend fun removeFromSoim(localIds: List<Long>): Int {
+        val ids = localIds.distinct().filter { it > 0L }
+        if (ids.isEmpty()) return 0
+        deleteSearchDocuments(ids)
+        return markRemovedFromSoim(ids)
+    }
+
+    @Query("SELECT * FROM image WHERE local_id IN (:localIds) AND availability = 'AVAILABLE'")
+    abstract suspend fun availableByIds(localIds: List<Long>): List<ImageEntity>
+
+    @Query("SELECT local_id FROM image WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL")
+    abstract suspend fun allAvailableIds(): List<Long>
 
     @Query(
         """
@@ -121,7 +141,7 @@ abstract class ImageDao {
 
     @Query(
         """
-        SELECT volume_name, media_store_id, local_id
+        SELECT volume_name, media_store_id, local_id, availability
         FROM image
         WHERE volume_name = :volumeName AND media_store_id IN (:mediaStoreIds)
         """,

@@ -347,4 +347,15 @@ object AppDatabaseMigrations {
             )
         }
     }
+
+    val MIGRATION_6_7: Migration = object : Migration(6, 7) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            listOf(
+                "CREATE TABLE IF NOT EXISTS `batch_analysis_run` (`run_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `state` TEXT NOT NULL, `total_count` INTEGER NOT NULL, `completed_count` INTEGER NOT NULL, `failed_count` INTEGER NOT NULL, `created_at_epoch_millis` INTEGER NOT NULL, `updated_at_epoch_millis` INTEGER NOT NULL, `completed_at_epoch_millis` INTEGER)",
+                "CREATE TABLE IF NOT EXISTS `batch_analysis_item` (`run_id` INTEGER NOT NULL, `image_local_id` INTEGER NOT NULL, `state` TEXT NOT NULL, `failure_code` TEXT, PRIMARY KEY(`run_id`, `image_local_id`), FOREIGN KEY(`run_id`) REFERENCES `batch_analysis_run`(`run_id`) ON UPDATE NO ACTION ON DELETE CASCADE, FOREIGN KEY(`image_local_id`) REFERENCES `image`(`local_id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+                "CREATE INDEX IF NOT EXISTS `index_batch_analysis_item_state_run_id` ON `batch_analysis_item` (`state`, `run_id`)",
+                "CREATE INDEX IF NOT EXISTS `index_batch_analysis_item_image_local_id` ON `batch_analysis_item` (`image_local_id`)",
+            ).forEach(database::execSQL)
+        }
+    }
 }

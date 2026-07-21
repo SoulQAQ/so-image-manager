@@ -3,12 +3,16 @@ package cn.soul2.imageai.ui.gallery
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -30,10 +34,13 @@ enum class GalleryTileLayout {
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun GalleryImageTile(
     image: GalleryImage,
     layout: GalleryTileLayout,
     onClick: (Long) -> Unit,
+    onLongClick: ((GalleryImage) -> Unit)? = null,
+    selected: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val aspectRatio = galleryTileAspectRatio(image, layout)
@@ -46,7 +53,11 @@ fun GalleryImageTile(
             .aspectRatio(aspectRatio)
             .clip(RectangleShape)
             .background(background)
-            .clickable(role = Role.Button) { onClick(image.localId) }
+            .combinedClickable(
+                role = Role.Button,
+                onClick = { onClick(image.localId) },
+                onLongClick = { onLongClick?.invoke(image) },
+            )
             .testTag("gallery_image_${image.localId}"),
     ) {
         val requestWidth = constraints.maxWidth.coerceAtLeast(1)
@@ -71,6 +82,14 @@ fun GalleryImageTile(
             },
             colorFilter = null,
         )
+        if (selected) {
+            Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd),
+            )
+        }
     }
 }
 

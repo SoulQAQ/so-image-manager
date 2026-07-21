@@ -1,5 +1,7 @@
 package cn.soul2.imageai.gallery
 
+import cn.soul2.imageai.data.db.entity.ImageSource
+
 data class GalleryImage(
     val localId: Long,
     val contentUri: String,
@@ -13,6 +15,7 @@ data class GalleryImage(
     val modifiedAtEpochMillis: Long,
     val bucketName: String?,
     val isFavorite: Boolean,
+    val source: ImageSource = ImageSource.MEDIA_STORE,
 ) {
     val originalAspectRatio: Float
         get() = if (width > 0 && height > 0) width.toFloat() / height else 1f

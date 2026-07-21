@@ -353,20 +353,22 @@ function Test-LatestRoomSchema {
         throw "No exported Room schema found"
     }
     $latest = $schemaFiles | Sort-Object { [int] $_.BaseName } -Descending | Select-Object -First 1
-    if ($latest.BaseName -cne "6") {
-        throw "Latest Room schema filename must be 6.json"
+    if ($latest.BaseName -cne "7") {
+        throw "Latest Room schema filename must be 7.json"
     }
     $schemaBytes = [IO.File]::ReadAllBytes($latest.FullName)
     $schemaText = [Text.Encoding]::UTF8.GetString($schemaBytes)
     $schema = $schemaText | ConvertFrom-Json
-    if ([int] $schema.database.version -ne 6) {
-        throw "Latest Room schema database version must be 6"
+    if ([int] $schema.database.version -ne 7) {
+        throw "Latest Room schema database version must be 7"
     }
     $tables = @($schema.database.entities | ForEach-Object { $_.tableName } | Sort-Object)
     $expected = @(
         "active_image_analysis",
         "ai_runtime_setting",
         "analysis_activation_diagnostic",
+        "batch_analysis_item",
+        "batch_analysis_run",
         "analysis_term",
         "app_setting",
         "effective_image_metadata",

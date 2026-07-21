@@ -24,6 +24,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,12 +58,37 @@ internal fun GalleryScreen(
     onRequestGalleryPermission: () -> Unit,
     onOpenAppSettings: () -> Unit,
     onImageClick: (Long) -> Unit,
+    selectedImages: Map<Long, GalleryImage> = emptyMap(),
+    onToggleSelection: ((GalleryImage) -> Unit)? = null,
+    onClearSelection: () -> Unit = {},
+    onShareSelection: (List<GalleryImage>) -> Unit = {},
+    onDeleteSelection: (List<GalleryImage>) -> Unit = {},
+    onRemoveSelection: (List<GalleryImage>) -> Unit = {},
+    onAnalyzeSelection: (List<GalleryImage>) -> Unit = {},
     topBarAction: @Composable (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().testTag(screenTag)) {
         TopAppBar(
-            title = { Text(stringResource(titleRes)) },
-            actions = { topBarAction?.invoke() },
+            title = {
+                if (selectedImages.isEmpty()) Text(stringResource(titleRes))
+                else Text(stringResource(R.string.gallery_selection_count, selectedImages.size))
+            },
+            navigationIcon = {
+                if (selectedImages.isNotEmpty()) {
+                    IconButton(onClick = onClearSelection) {
+                        Icon(Icons.Outlined.Close, stringResource(R.string.gallery_selection_cancel))
+                    }
+                }
+            },
+            actions = {
+                if (selectedImages.isEmpty()) topBarAction?.invoke() else {
+                    val selected = selectedImages.values.toList()
+                    IconButton(onClick = { onAnalyzeSelection(selected) }) { Icon(Icons.Outlined.AutoAwesome, stringResource(R.string.gallery_selection_analyze)) }
+                    IconButton(onClick = { onShareSelection(selected) }) { Icon(Icons.Outlined.Share, stringResource(R.string.gallery_selection_share)) }
+                    IconButton(onClick = { onRemoveSelection(selected) }) { Icon(Icons.Outlined.DeleteOutline, stringResource(R.string.gallery_selection_remove)) }
+                    IconButton(onClick = { onDeleteSelection(selected) }) { Icon(Icons.Outlined.Delete, stringResource(R.string.gallery_selection_delete)) }
+                }
+            },
             windowInsets = WindowInsets(0, 0, 0, 0),
         )
         when (val contentState = uiState.contentState(galleryAccessState)) {
@@ -82,6 +115,8 @@ internal fun GalleryScreen(
                     layout = layout,
                     collectionTag = collectionTag,
                     onImageClick = onImageClick,
+                    selectedImages = selectedImages,
+                    onToggleSelection = onToggleSelection,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -155,6 +190,8 @@ private fun GalleryCollection(
     layout: GalleryLayout,
     collectionTag: String,
     onImageClick: (Long) -> Unit,
+    selectedImages: Map<Long, GalleryImage>,
+    onToggleSelection: ((GalleryImage) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier.fillMaxWidth()) {
@@ -191,7 +228,12 @@ private fun GalleryCollection(
                         GalleryImageTile(
                             image = image,
                             layout = GalleryTileLayout.OriginalAspect,
-                            onClick = onImageClick,
+                            onClick = { id ->
+                                if (selectedImages.isEmpty()) onImageClick(id)
+                                else onToggleSelection?.invoke(image)
+                            },
+                            onLongClick = onToggleSelection,
+                            selected = selectedImages.containsKey(image.localId),
                         )
                     }
                 }
@@ -211,7 +253,12 @@ private fun GalleryCollection(
                         GalleryImageTile(
                             image = image,
                             layout = GalleryTileLayout.Square,
-                            onClick = onImageClick,
+                            onClick = { id ->
+                                if (selectedImages.isEmpty()) onImageClick(id)
+                                else onToggleSelection?.invoke(image)
+                            },
+                            onLongClick = onToggleSelection,
+                            selected = selectedImages.containsKey(image.localId),
                         )
                     }
                 }
