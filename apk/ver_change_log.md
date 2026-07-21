@@ -1,3 +1,25 @@
+## v0.8.1 (2026-07-21)
+
+### 功能
+# SoIM v0.8.1 测试说明
+
+- 修复 Android 10 删除 MediaStore 图片时的系统确认流程：确认后会实际重试删除原图，再从 SoIM 移除索引。
+- `v0.8.0` 的全图库批量 AI 分析与图库长按多选功能保持不变。
+
+本包用于真机测试，不创建 GitHub Release，测试确认后再公开发布。
+
+### 修复
+- 新增原子 Debug 测试 APK 发布流程，失败时回滚版本元数据与制品。
+
+### 测试
+- clean、全量单元测试、lintDebug、AndroidTest 编译、Debug/Release 构建均通过。
+- 设备测试：无可用设备或 AVD，已跳过（SKIPPED_NO_DEVICE）
+
+### 签名与校验
+- Debug 签名：CN=Android Debug
+- SHA-256：B7427E6F2925816B16D42CCAED7BAA4079391DCC79330C25C028A7536F1023BC
+
+---
 ## v0.8.0 (2026-07-21)
 
 ### 功能
