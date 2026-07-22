@@ -40,6 +40,9 @@ internal interface AiConfigurationDao {
     @Query("SELECT * FROM model_profile WHERE provider_id = :providerId AND supports_vision = 1 ORDER BY model_profile_id ASC LIMIT 1")
     suspend fun getVisionModelForProvider(providerId: String): ModelProfileEntity?
 
+    @Query("SELECT * FROM model_profile WHERE provider_id = :providerId ORDER BY model_profile_id ASC")
+    suspend fun getModelsForProvider(providerId: String): List<ModelProfileEntity>
+
     @Query("SELECT * FROM model_profile WHERE enabled = 1 AND supports_vision = 1 ORDER BY model_profile_id ASC")
     suspend fun getEnabledVisionModels(): List<ModelProfileEntity>
 
@@ -57,6 +60,12 @@ internal interface AiConfigurationDao {
 
     @Query("DELETE FROM provider_route WHERE partition = :partition")
     suspend fun deleteRoutes(partition: ImagePartition): Int
+
+    @Query("SELECT COUNT(*) FROM provider_route WHERE provider_id = :providerId AND partition != :partition")
+    suspend fun countOtherPartitionRoutes(providerId: String, partition: ImagePartition): Int
+
+    @Query("DELETE FROM model_profile WHERE provider_id = :providerId AND model_profile_id != :keepModelId")
+    suspend fun deleteOtherModels(providerId: String, keepModelId: String): Int
 
     @Upsert
     suspend fun upsertModel(model: ModelProfileEntity)

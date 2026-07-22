@@ -15,7 +15,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -35,6 +37,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -48,17 +52,19 @@ import cn.soul2.imageai.ai.config.AiConfigurationRepository
 import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProviderAuthMode
+import cn.soul2.imageai.data.db.entity.ImagePartition
 
 object AiSettingsDestination {
     const val providerIdArgument = "providerId"
-    const val route = "ai_settings?providerId={providerId}"
+    const val partitionArgument = "partition"
+    const val route = "ai_settings?providerId={providerId}&partition={partition}"
     const val baseRoute = "ai_settings"
 
-    fun createRoute(providerId: String? = null): String = providerId?.let {
-        "ai_settings?providerId=$it"
-    } ?: baseRoute
+    fun createRoute(providerId: String, partition: ImagePartition): String =
+        "ai_settings?providerId=$providerId&partition=${partition.name}"
 
-    fun createNewRoute(): String = "ai_settings?providerId=new"
+    fun createNewRoute(partition: ImagePartition): String =
+        "ai_settings?providerId=new&partition=${partition.name}"
 }
 
 @Composable
@@ -66,10 +72,11 @@ fun AiSettingsScreen(
     repository: AiConfigurationRepository,
     credentialStore: AiCredentialStore,
     providerId: String? = null,
+    partition: ImagePartition = ImagePartition.MAIN,
     onBack: () -> Unit,
 ) {
     val viewModel: AiSettingsViewModel = viewModel(
-        factory = AiSettingsViewModel.factory(repository, credentialStore, providerId),
+        factory = AiSettingsViewModel.factory(repository, credentialStore, providerId, partition),
     )
     val state by viewModel.uiState.collectAsState()
     val snackbar = remember { SnackbarHostState() }
@@ -77,12 +84,18 @@ fun AiSettingsScreen(
     LaunchedEffect(state.saveGeneration) {
         if (state.saveGeneration > 0) snackbar.showSnackbar(savedMessage)
     }
+    LaunchedEffect(state.deleteGeneration) {
+        if (state.deleteGeneration > 0) onBack()
+    }
     AiSettingsContent(
         state = state,
         snackbarHostState = snackbar,
         onFormChange = viewModel::updateForm,
         onSave = viewModel::save,
+        onDelete = viewModel::delete,
         onBack = onBack,
+        isNew = providerId == null || providerId == "new",
+        partitionLabel = if (partition == ImagePartition.MAIN) "主分区" else "隐私分区",
     )
 }
 
@@ -93,14 +106,18 @@ internal fun AiSettingsContent(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     onFormChange: (AiSettingsForm) -> Unit,
     onSave: () -> Unit,
+    onDelete: () -> Unit = {},
     onBack: () -> Unit,
+    isNew: Boolean = false,
+    partitionLabel: String? = null,
 ) {
+    var confirmDelete by remember { mutableStateOf(false) }
     Scaffold(
         modifier = Modifier.testTag("screen_ai_settings"),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.ai_settings_title)) },
+                title = { Text(if (isNew) "新增模型" else "编辑模型") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -110,12 +127,11 @@ internal fun AiSettingsContent(
                     }
                 },
                 actions = {
-                    TextButton(
+                    IconButton(
                         onClick = onSave,
                         enabled = !state.loading && !state.saving,
                     ) {
-                        Icon(Icons.Outlined.Save, contentDescription = null)
-                        Text(stringResource(R.string.ai_settings_save))
+                        Icon(Icons.Outlined.Save, contentDescription = "保存")
                     }
                 },
                 windowInsets = WindowInsets(0, 0, 0, 0),
@@ -136,9 +152,27 @@ internal fun AiSettingsContent(
                 state = state,
                 onFormChange = onFormChange,
                 onSave = onSave,
+                onDelete = { confirmDelete = true },
+                partitionLabel = partitionLabel,
                 modifier = Modifier.padding(padding),
             )
         }
+    }
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("删除此模型？") },
+            text = { Text("该模型会从当前分区的顺延列表中移除，操作无法撤销。") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete()
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("取消") }
+            },
+        )
     }
 }
 
@@ -147,9 +181,12 @@ private fun AiSettingsFormContent(
     state: AiSettingsUiState,
     onFormChange: (AiSettingsForm) -> Unit,
     onSave: () -> Unit,
+    onDelete: () -> Unit,
+    partitionLabel: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val form = state.form
+    var advancedExpanded by remember { mutableStateOf(false) }
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
@@ -162,6 +199,15 @@ private fun AiSettingsFormContent(
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth().testTag("ai_settings_error"),
+                )
+            }
+        }
+        partitionLabel?.let { label ->
+            item {
+                Text(
+                    text = "用于$label",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
@@ -227,13 +273,6 @@ private fun AiSettingsFormContent(
         item { SectionTitle(R.string.ai_settings_section_model) }
         item {
             TextField(
-                value = form.modelName,
-                label = R.string.ai_settings_model_name,
-                onValueChange = { onFormChange(form.copy(modelName = it)) },
-            )
-        }
-        item {
-            TextField(
                 value = form.modelId,
                 label = R.string.ai_settings_model_id,
                 onValueChange = { onFormChange(form.copy(modelId = it)) },
@@ -247,15 +286,6 @@ private fun AiSettingsFormContent(
                 ),
                 selected = form.protocolType,
                 onSelected = { onFormChange(form.copy(protocolType = it)) },
-            )
-        }
-        item {
-            TextField(
-                value = form.prompt,
-                label = R.string.ai_settings_prompt,
-                onValueChange = { onFormChange(form.copy(prompt = it)) },
-                singleLine = false,
-                minLines = 3,
             )
         }
         if (form.protocolType == ModelProtocolType.CUSTOM_JSON) {
@@ -282,52 +312,36 @@ private fun AiSettingsFormContent(
         item { NumericField(form.maxImageEdge, R.string.ai_settings_max_image_edge) { onFormChange(form.copy(maxImageEdge = it)) } }
         item { NumericField(form.maxImageBytes, R.string.ai_settings_max_image_bytes) { onFormChange(form.copy(maxImageBytes = it)) } }
         item { SectionTitle(R.string.ai_settings_section_quota) }
-        item { QuotaTitle(R.string.ai_settings_quota_global) }
-        item { NumericField(form.globalConcurrency, R.string.ai_settings_concurrency) { onFormChange(form.copy(globalConcurrency = it)) } }
-        item { NumericField(form.globalRequestsPerMinute, R.string.ai_settings_rpm) { onFormChange(form.copy(globalRequestsPerMinute = it)) } }
-        item { NumericField(form.globalRequestsPerDay, R.string.ai_settings_daily) { onFormChange(form.copy(globalRequestsPerDay = it)) } }
-        item { NumericField(form.dailyImageLimit, R.string.ai_settings_daily_image_limit) { onFormChange(form.copy(dailyImageLimit = it)) } }
-        item {
-            ToggleRow(
-                label = R.string.ai_settings_automatic_failover,
-                checked = form.automaticFailoverEnabled,
-                onCheckedChange = { onFormChange(form.copy(automaticFailoverEnabled = it)) },
-            )
-        }
-        item {
-            ToggleRow(
-                label = R.string.ai_settings_only_show_analyzed,
-                checked = form.onlyShowAnalyzed,
-                onCheckedChange = { onFormChange(form.copy(onlyShowAnalyzed = it)) },
-            )
-        }
         item { QuotaTitle(R.string.ai_settings_quota_provider) }
         item { NumericField(form.providerConcurrency, R.string.ai_settings_concurrency) { onFormChange(form.copy(providerConcurrency = it)) } }
         item { NumericField(form.providerRequestsPerMinute, R.string.ai_settings_rpm) { onFormChange(form.copy(providerRequestsPerMinute = it)) } }
         item { NumericField(form.providerRequestsPerDay, R.string.ai_settings_daily) { onFormChange(form.copy(providerRequestsPerDay = it)) } }
-        item { QuotaTitle(R.string.ai_settings_quota_model) }
-        item { NumericField(form.modelConcurrency, R.string.ai_settings_concurrency) { onFormChange(form.copy(modelConcurrency = it)) } }
-        item { NumericField(form.modelRequestsPerMinute, R.string.ai_settings_rpm) { onFormChange(form.copy(modelRequestsPerMinute = it)) } }
-        item { NumericField(form.modelRequestsPerDay, R.string.ai_settings_daily) { onFormChange(form.copy(modelRequestsPerDay = it)) } }
-        item { SectionTitle(R.string.ai_settings_section_advanced) }
-        item { NumericField(form.connectTimeoutMillis, R.string.ai_settings_connect_timeout) { onFormChange(form.copy(connectTimeoutMillis = it)) } }
-        item { NumericField(form.readTimeoutMillis, R.string.ai_settings_read_timeout) { onFormChange(form.copy(readTimeoutMillis = it)) } }
-        item { NumericField(form.writeTimeoutMillis, R.string.ai_settings_write_timeout) { onFormChange(form.copy(writeTimeoutMillis = it)) } }
         item {
+            TextButton(onClick = { advancedExpanded = !advancedExpanded }) {
+                Text(if (advancedExpanded) "收起高级设置" else "展开高级设置")
+            }
+        }
+        if (advancedExpanded) {
+            item { SectionTitle(R.string.ai_settings_section_advanced) }
+            item { NumericField(form.connectTimeoutMillis, R.string.ai_settings_connect_timeout) { onFormChange(form.copy(connectTimeoutMillis = it)) } }
+            item { NumericField(form.readTimeoutMillis, R.string.ai_settings_read_timeout) { onFormChange(form.copy(readTimeoutMillis = it)) } }
+            item { NumericField(form.writeTimeoutMillis, R.string.ai_settings_write_timeout) { onFormChange(form.copy(writeTimeoutMillis = it)) } }
+            item {
             TextField(
                 value = form.headersJson,
                 label = R.string.ai_settings_headers_json,
                 onValueChange = { onFormChange(form.copy(headersJson = it)) },
                 singleLine = false,
             )
-        }
-        item {
+            }
+            item {
             TextField(
                 value = form.redirectOriginsJson,
                 label = R.string.ai_settings_redirect_json,
                 onValueChange = { onFormChange(form.copy(redirectOriginsJson = it)) },
                 singleLine = false,
             )
+            }
         }
         item {
             Spacer(Modifier.height(4.dp))
@@ -346,6 +360,18 @@ private fun AiSettingsFormContent(
                 }
             }
             Spacer(Modifier.height(16.dp))
+        }
+        if (state.existingProvider) {
+            item {
+                TextButton(
+                    onClick = onDelete,
+                    enabled = !state.deleting,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Outlined.DeleteOutline, contentDescription = null)
+                    Text("删除此模型", color = MaterialTheme.colorScheme.error)
+                }
+            }
         }
     }
 }

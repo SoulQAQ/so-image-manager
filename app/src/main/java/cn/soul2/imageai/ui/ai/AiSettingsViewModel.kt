@@ -14,6 +14,7 @@ import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
 import cn.soul2.imageai.data.db.entity.ProviderAuthMode
 import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineDispatcher
@@ -79,12 +80,16 @@ data class AiSettingsUiState(
     val credentialConfigured: Boolean = false,
     val error: AiSettingsError? = null,
     val saveGeneration: Int = 0,
+    val deleting: Boolean = false,
+    val deleteGeneration: Int = 0,
+    val existingProvider: Boolean = false,
 )
 
 class AiSettingsViewModel(
     private val repository: AiConfigurationRepository,
     private val credentialStore: AiCredentialStore,
     private val requestedProviderId: String? = null,
+    private val targetPartition: ImagePartition = ImagePartition.MAIN,
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
@@ -100,6 +105,7 @@ class AiSettingsViewModel(
     private var providerCreatedAt = 0L
     private var modelCreatedAt = 0L
     private var protocolCreatedAt = 0L
+    private var sourceCredentialId: String? = null
 
     init {
         viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) { loadCurrentConfiguration() }
@@ -133,6 +139,27 @@ class AiSettingsViewModel(
         mutableState.value = mutableState.value.copy(error = null)
     }
 
+    fun delete() {
+        if (!mutableState.value.existingProvider || mutableState.value.deleting) return
+        mutableState.value = mutableState.value.copy(deleting = true, error = null)
+        viewModelScope.launch {
+            val deleted = withContext(ioDispatcher) { repository.deleteProvider(providerId) }
+            if (deleted) {
+                // Never delete the original alias of a legacy shared copy.
+                credentialStore.delete(credentialStorageId)
+                mutableState.value = mutableState.value.copy(
+                    deleting = false,
+                    deleteGeneration = mutableState.value.deleteGeneration + 1,
+                )
+            } else {
+                mutableState.value = mutableState.value.copy(
+                    deleting = false,
+                    error = AiSettingsError.SAVE_FAILED,
+                )
+            }
+        }
+    }
+
     private suspend fun loadCurrentConfiguration() {
         val snapshot = try {
             withContext(ioDispatcher) {
@@ -155,6 +182,7 @@ class AiSettingsViewModel(
         providerCreatedAt = snapshot.provider?.createdAtEpochMillis ?: 0L
         modelCreatedAt = snapshot.model?.createdAtEpochMillis ?: 0L
         protocolCreatedAt = snapshot.protocol?.createdAtEpochMillis ?: 0L
+        sourceCredentialId = snapshot.provider?.credentialId
         snapshot.model?.modelProfileId?.let { modelId = it }
         snapshot.protocol?.protocolDefinitionId?.let { protocolId = it }
         val credentialConfigured = credentialPresent(snapshot.provider?.credentialId)
@@ -162,6 +190,7 @@ class AiSettingsViewModel(
             form = snapshot.toForm(),
             loading = false,
             credentialConfigured = credentialConfigured,
+            existingProvider = snapshot.provider != null,
         )
     }
 
@@ -279,6 +308,19 @@ class AiSettingsViewModel(
                 } finally {
                     secret.fill('\u0000')
                 }
+            } else if (sourceCredentialId != null && sourceCredentialId != credentialStorageId) {
+                when (val existing = credentialStore.read(requireNotNull(sourceCredentialId))) {
+                    is CredentialReadResult.Available -> try {
+                        credentialStore.put(credentialStorageId, existing.secret)
+                    } catch (_: Exception) {
+                        return AiSettingsError.CREDENTIAL_STORAGE_FAILED
+                    } finally {
+                        existing.secret.fill('\u0000')
+                    }
+                    CredentialReadResult.Missing,
+                    is CredentialReadResult.Unavailable,
+                    -> return AiSettingsError.CREDENTIAL_STORAGE_FAILED
+                }
             }
         }
         return try {
@@ -288,7 +330,7 @@ class AiSettingsViewModel(
             } else {
                 repository.saveFallbackBundle(provider, model, protocol)
             }
-            repository.addProviderToRoutes(provider.providerId)
+            repository.addProviderToRoute(targetPartition, provider.providerId)
             if (form.authMode == ProviderAuthMode.NONE) credentialStore.delete(credentialStorageId)
             providerCreatedAt = provider.createdAtEpochMillis
             modelCreatedAt = model.createdAtEpochMillis
@@ -370,8 +412,9 @@ class AiSettingsViewModel(
             repository: AiConfigurationRepository,
             credentialStore: AiCredentialStore,
             providerId: String? = null,
+            partition: ImagePartition = ImagePartition.MAIN,
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { AiSettingsViewModel(repository, credentialStore, providerId) }
+            initializer { AiSettingsViewModel(repository, credentialStore, providerId, partition) }
         }
     }
 }

@@ -24,6 +24,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import cn.soul2.imageai.ai.config.AiConfigurationRepository
 import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
@@ -40,6 +41,8 @@ import cn.soul2.imageai.ui.ai.AiSettingsDestination
 import cn.soul2.imageai.ui.ai.AiSettingsScreen
 import cn.soul2.imageai.ui.ai.ModelProvidersDestination
 import cn.soul2.imageai.ui.ai.ModelProvidersScreen
+import cn.soul2.imageai.ui.ai.AnalysisSettingsDestination
+import cn.soul2.imageai.ui.ai.AnalysisSettingsScreen
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingScreen
 import cn.soul2.imageai.ui.screens.HomeScreen
 import cn.soul2.imageai.ui.screens.LibraryScreen
@@ -103,7 +106,8 @@ fun SoImageManagerApp(
     val isSearch = currentRoute == SearchDestination.route
     val isAiSettings = currentRoute?.startsWith(AiSettingsDestination.baseRoute) == true
     val isModelProviders = currentRoute == ModelProvidersDestination.route
-    val showBottomNavigation = !isImageDetail && !isSearch && !isAiSettings && !isModelProviders
+    val isAnalysisSettings = currentRoute == AnalysisSettingsDestination.route
+    val showBottomNavigation = !isImageDetail && !isSearch && !isAiSettings && !isModelProviders && !isAnalysisSettings
 
     Scaffold(
         contentWindowInsets = if (isImageDetail) {
@@ -226,8 +230,15 @@ fun SoImageManagerApp(
                         onDocumentImportNoticeConsumed = onDocumentImportNoticeConsumed,
                         onRescan = onRequestGalleryReconciliation,
                         onOpenSystemSettings = onOpenAppSettings,
+                        onOpenGeneralSettings = { navController.navigate(AnalysisSettingsDestination.route) },
                         onOpenAiSettings = { navController.navigate(ModelProvidersDestination.route) },
                     )
+                }
+                composable(AnalysisSettingsDestination.route) {
+                    val repository = aiConfigurationRepository
+                    if (repository != null) {
+                        AnalysisSettingsScreen(repository, navController::navigateUp)
+                    }
                 }
                 composable(ModelProvidersDestination.route) {
                     val repository = aiConfigurationRepository
@@ -235,8 +246,12 @@ fun SoImageManagerApp(
                         ModelProvidersScreen(
                             repository = repository,
                             onBack = navController::navigateUp,
-                            onAdd = { navController.navigate(AiSettingsDestination.createNewRoute()) },
-                            onEdit = { id -> navController.navigate(AiSettingsDestination.createRoute(id)) },
+                            onAdd = { partition ->
+                                navController.navigate(AiSettingsDestination.createNewRoute(partition))
+                            },
+                            onEdit = { partition, id ->
+                                navController.navigate(AiSettingsDestination.createRoute(id, partition))
+                            },
                         )
                     }
                 }
@@ -246,6 +261,9 @@ fun SoImageManagerApp(
                         type = NavType.StringType
                         nullable = true
                         defaultValue = null
+                    }, navArgument(AiSettingsDestination.partitionArgument) {
+                        type = NavType.StringType
+                        defaultValue = ImagePartition.MAIN.name
                     }),
                 ) { entry ->
                     val repository = aiConfigurationRepository
@@ -255,6 +273,12 @@ fun SoImageManagerApp(
                             repository = repository,
                             credentialStore = credentials,
                             providerId = entry.arguments?.getString(AiSettingsDestination.providerIdArgument),
+                            partition = runCatching {
+                                ImagePartition.valueOf(
+                                    entry.arguments?.getString(AiSettingsDestination.partitionArgument)
+                                        ?: ImagePartition.MAIN.name,
+                                )
+                            }.getOrDefault(ImagePartition.MAIN),
                             onBack = navController::navigateUp,
                         )
                     } else {

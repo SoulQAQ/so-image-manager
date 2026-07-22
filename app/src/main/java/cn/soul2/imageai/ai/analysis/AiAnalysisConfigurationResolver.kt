@@ -52,28 +52,23 @@ class RepositoryAiAnalysisConfigurationResolver(
     override suspend fun resolveCandidates(partition: ImagePartition): List<ResolvedAiAnalysisConfiguration> {
         val runtime = repository.getRuntimeSetting()
             ?: unavailable(AiConfigurationFailure.RUNTIME_MISSING)
-        val defaultId = runtime.defaultModelProfileId
-            ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
-        val default = repository.getModel(defaultId)
-            ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
         val routedProviderIds = repository.getEnabledProviderIds(partition)
+        if (routedProviderIds.isEmpty()) {
+            unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
+        }
         return buildList {
-            val candidates = repository.getEnabledVisionModels()
-                .filter { it.providerId in routedProviderIds }
-                .sortedBy { routedProviderIds.indexOf(it.providerId) }
-            val first = candidates.firstOrNull { it.modelProfileId == default.modelProfileId }
-                ?: candidates.firstOrNull()
-                ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
-            add(resolveModel(runtime, first))
-            candidates
-                .filter { it.modelProfileId != first.modelProfileId }
-                .forEach { model ->
-                    try {
-                        add(resolveModel(runtime, model))
-                    } catch (_: AiConfigurationResolutionException) {
-                        // An incomplete fallback profile must not block other configured providers.
-                    }
+            val defaultModel = runtime.defaultModelProfileId?.let { repository.getModel(it) }
+            routedProviderIds.forEach { providerId ->
+                val model = defaultModel?.takeIf { it.providerId == providerId }
+                    ?: repository.getVisionModelForProvider(providerId)
+                    ?: return@forEach
+                try {
+                    add(resolveModel(runtime, model))
+                } catch (_: AiConfigurationResolutionException) {
+                    // An incomplete entry must not block later entries in the route.
                 }
+            }
+            if (isEmpty()) unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
         }
     }
 

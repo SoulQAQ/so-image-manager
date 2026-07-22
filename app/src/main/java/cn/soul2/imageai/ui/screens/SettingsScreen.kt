@@ -1,53 +1,52 @@
 package cn.soul2.imageai.ui.screens
 
-import androidx.annotation.StringRes
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
-import androidx.compose.material.icons.outlined.FolderOpen
-import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.Security
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import cn.soul2.imageai.R
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @Composable
@@ -61,210 +60,175 @@ fun SettingsScreen(
     onDocumentImportNoticeConsumed: () -> Unit = {},
     onRescan: () -> Unit,
     onOpenSystemSettings: () -> Unit,
+    onOpenGeneralSettings: () -> Unit,
     onOpenAiSettings: () -> Unit,
 ) {
-    val settingsViewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.factory(
-            galleryAccessStates = galleryAccessStates,
-            repository = repository,
-            unavailableCounts = unavailableCounts,
-        ),
+    val viewModel: SettingsViewModel = viewModel(
+        factory = SettingsViewModel.factory(galleryAccessStates, repository, unavailableCounts),
     )
-    val uiState by settingsViewModel.uiState.collectAsStateWithLifecycle()
-    val currentReselectPhotos by rememberUpdatedState(onReselectPhotos)
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentReselect by rememberUpdatedState(onReselectPhotos)
     val currentRescan by rememberUpdatedState(onRescan)
-    val currentOpenSystemSettings by rememberUpdatedState(onOpenSystemSettings)
-    val rescanRequestedMessage = stringResource(R.string.settings_rescan_requested)
-    val currentRescanRequestedMessage by rememberUpdatedState(rescanRequestedMessage)
-    val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(settingsViewModel) {
-        settingsViewModel.commands.collect { command ->
+    val currentSystemSettings by rememberUpdatedState(onOpenSystemSettings)
+    val snackbar = remember { SnackbarHostState() }
+    val rescanMessage = stringResource(R.string.settings_rescan_requested)
+    LaunchedEffect(viewModel) {
+        viewModel.commands.collect { command ->
             when (command) {
-                SettingsCommand.ReselectPhotos -> currentReselectPhotos()
+                SettingsCommand.ReselectPhotos -> currentReselect()
                 SettingsCommand.SelectDocumentImages -> onSelectDocumentImages()
                 SettingsCommand.Rescan -> {
                     currentRescan()
-                    launch {
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        snackbarHostState.showSnackbar(currentRescanRequestedMessage)
-                    }
+                    launch { snackbar.showSnackbar(rescanMessage) }
                 }
-                SettingsCommand.OpenSystemSettings -> currentOpenSystemSettings()
+                SettingsCommand.OpenSystemSettings -> currentSystemSettings()
             }
         }
     }
     LaunchedEffect(documentImportNotice) {
-        documentImportNotice?.let { notice ->
-            snackbarHostState.showSnackbar(notice)
+        documentImportNotice?.let {
+            snackbar.showSnackbar(it)
             onDocumentImportNoticeConsumed()
         }
     }
     Box(Modifier.fillMaxSize()) {
         SettingsContent(
-            uiState = uiState,
-            onReselectPhotos = settingsViewModel::reselectPhotos,
-            onSelectDocumentImages = settingsViewModel::selectDocumentImages,
-            onRescan = settingsViewModel::rescan,
-            onOpenSystemSettings = settingsViewModel::openSystemSettings,
-            onOpenAiSettings = onOpenAiSettings,
+            state = state,
+            onGeneral = onOpenGeneralSettings,
+            onProviders = onOpenAiSettings,
+            onImport = viewModel::selectDocumentImages,
+            onRescan = viewModel::rescan,
+            onReselect = viewModel::reselectPhotos,
+            onSystemSettings = viewModel::openSystemSettings,
         )
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsContent(
-    uiState: SettingsUiState,
-    onReselectPhotos: () -> Unit,
-    onSelectDocumentImages: () -> Unit,
+    state: SettingsUiState,
+    onGeneral: () -> Unit,
+    onProviders: () -> Unit,
+    onImport: () -> Unit,
     onRescan: () -> Unit,
-    onOpenSystemSettings: () -> Unit,
-    onOpenAiSettings: () -> Unit,
+    onReselect: () -> Unit,
+    onSystemSettings: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        @Suppress("DEPRECATION")
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull().orEmpty()
+    }
     Column(Modifier.fillMaxSize().testTag("screen_settings")) {
-        TopAppBar(
-            title = { Text(stringResource(R.string.nav_settings)) },
-            windowInsets = WindowInsets(0, 0, 0, 0),
-        )
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                horizontal = 16.dp,
-                vertical = 8.dp,
-            ),
-        ) {
-            item {
-                Text(
-                    text = "图库状态",
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
+        TopAppBar(title = { Text("设置") }, windowInsets = WindowInsets(0, 0, 0, 0))
+        LazyColumn(Modifier.fillMaxSize()) {
+            item { SectionHeader("图库状态") }
             item {
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
                 ) {
-                    SettingsCountText(
-                        label = "图片总数",
-                        count = uiState.indexedCount,
-                        modifier = Modifier.weight(1f),
-                    )
-                    SettingsCountText(
-                        label = "已分析",
-                        count = uiState.analyzedCount,
-                        modifier = Modifier.weight(1f),
-                    )
+                    StatusValue("图片总数", state.indexedCount, Modifier.weight(1f))
+                    StatusValue("已分析", state.analyzedCount, Modifier.weight(1f))
+                    StatusValue("不可访问", state.unavailableCount, Modifier.weight(1f))
                 }
-                HorizontalDivider()
             }
+            item { HorizontalDivider(Modifier.padding(horizontal = 16.dp)) }
+
+            item { SectionHeader("常规设置") }
             item {
-                Text(
-                    text = "常规设置",
-                    modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
+                SettingsRow(
+                    icon = Icons.Outlined.Tune,
+                    title = "分析与显示",
+                    subtitle = "每日上限、并发、图库显示与分析规则",
+                    onClick = onGeneral,
                 )
             }
+
+            item { SectionHeader("模型提供方") }
             item {
-                SettingsAction(
-                    labelRes = R.string.settings_rescan,
-                    icon = Icons.Outlined.Sync,
-                    onClick = onRescan,
-                )
-            }
-            item {
-                Text("模型提供方", modifier = Modifier.padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                SettingsAction(
-                    labelRes = R.string.settings_ai_models,
+                SettingsRow(
                     icon = Icons.Outlined.SmartToy,
-                    onClick = onOpenAiSettings,
+                    title = "模型提供方",
+                    subtitle = "分别管理主分区和隐私分区的调用顺序",
+                    onClick = onProviders,
+                )
+            }
+
+            item { SectionHeader("图库设置") }
+            item {
+                SettingsRow(Icons.Outlined.FolderOpen, "从文件管理器选择图片", "导入应用可持续访问的图片", onImport)
+            }
+            item {
+                SettingsRow(Icons.Outlined.Sync, "重新扫描", "重新同步系统图库与索引状态", onRescan)
+            }
+
+            item { SectionHeader("APP 权限") }
+            item {
+                SettingsRow(
+                    Icons.Outlined.AddPhotoAlternate,
+                    "重新选择照片",
+                    state.permissionLabel?.displayName() ?: "读取中",
+                    onReselect,
                 )
             }
             item {
-                Text("图库设置", modifier = Modifier.padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                SettingsAction(labelRes = R.string.settings_import_documents, icon = Icons.Outlined.FolderOpen, onClick = onSelectDocumentImages)
+                SettingsRow(Icons.Outlined.Settings, "前往系统设置", "管理照片和后台运行权限", onSystemSettings)
             }
+
+            item { SectionHeader("关于") }
             item {
-                Text("APP权限", modifier = Modifier.padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                SettingsAction(
-                    labelRes = R.string.settings_reselect_photos,
-                    icon = Icons.Outlined.AddPhotoAlternate,
-                    onClick = onReselectPhotos,
+                ListItem(
+                    leadingContent = { Icon(Icons.Outlined.Info, null) },
+                    headlineContent = { Text("SoIM") },
+                    supportingContent = { Text("本地 AI 图片管理") },
+                    trailingContent = { Text("v$versionName") },
                 )
-            }
-            item {
-                SettingsAction(
-                    labelRes = R.string.gallery_permission_open_settings,
-                    icon = Icons.Outlined.Settings,
-                    onClick = onOpenSystemSettings,
-                )
-            }
-            item {
-                Text("关于", modifier = Modifier.padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-                Text("SoIM 本地 AI 图片管理", modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 }
 
 @Composable
-private fun SettingsCount(@StringRes labelRes: Int, count: Int?, modifier: Modifier) {
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier.padding(start = 20.dp, top = 18.dp, bottom = 6.dp),
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+    )
+}
+
+@Composable
+private fun StatusValue(label: String, count: Int?, modifier: Modifier) {
     Column(modifier) {
-        Text(
-            text = count?.toString() ?: stringResource(R.string.settings_loading),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            text = stringResource(labelRes),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text(count?.toString() ?: "-", style = MaterialTheme.typography.titleLarge)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 @Composable
-private fun SettingsCountText(label: String, count: Int?, modifier: Modifier) {
-    Column(modifier) {
-        Text(text = count?.toString() ?: stringResource(R.string.settings_loading), style = MaterialTheme.typography.titleMedium)
-        Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun SettingsAction(
-    @StringRes labelRes: Int,
+private fun SettingsRow(
     icon: ImageVector,
+    title: String,
+    subtitle: String,
     onClick: () -> Unit,
 ) {
-    val label = stringResource(labelRes)
-    TextButton(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-        )
-        Spacer(Modifier.width(10.dp))
-        Text(text = label, modifier = Modifier.weight(1f))
-        Icon(
-            imageVector = Icons.Outlined.ChevronRight,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-        )
-    }
+    ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
+        leadingContent = { Icon(icon, null, Modifier.size(22.dp)) },
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle, maxLines = 2) },
+        trailingContent = { Icon(Icons.Outlined.ChevronRight, null, Modifier.size(18.dp)) },
+    )
 }
 
-@StringRes
-private fun permissionLabelRes(label: SettingsPermissionLabel): Int = when (label) {
-    SettingsPermissionLabel.Full -> R.string.settings_permission_full
-    SettingsPermissionLabel.Partial -> R.string.settings_permission_partial
-    SettingsPermissionLabel.Denied -> R.string.settings_permission_denied
+private fun SettingsPermissionLabel.displayName(): String = when (this) {
+    SettingsPermissionLabel.Full -> "完整访问"
+    SettingsPermissionLabel.Partial -> "部分访问"
+    SettingsPermissionLabel.Denied -> "未授权"
 }

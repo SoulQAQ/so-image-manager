@@ -13,6 +13,7 @@ import cn.soul2.imageai.data.db.entity.ImagePartition
 import cn.soul2.imageai.data.db.entity.ProviderRouteEntity
 import cn.soul2.imageai.ai.protocol.CustomJsonProtocolDefinition
 import java.net.URI
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -37,13 +38,71 @@ class AiConfigurationRepository(
         }
     }
 
-    suspend fun addProviderToRoutes(providerId: String) {
-        listOf(ImagePartition.MAIN, ImagePartition.PRIVATE).forEach { partition ->
-            val routes = dao.getRoutes(partition)
-            if (routes.none { it.providerId == providerId }) {
-                dao.upsertRoutes(routes + ProviderRouteEntity(partition, providerId, routes.size, true))
-            }
+    suspend fun addProviderToRoute(partition: ImagePartition, providerId: String) {
+        require(partition == ImagePartition.MAIN || partition == ImagePartition.PRIVATE)
+        require(dao.countOtherPartitionRoutes(providerId, partition) == 0) {
+            "A model entry cannot be shared across partitions"
         }
+        val routes = dao.getRoutes(partition)
+        if (routes.none { it.providerId == providerId }) {
+            dao.upsertRoutes(routes + ProviderRouteEntity(partition, providerId, routes.size, true))
+        }
+    }
+
+    suspend fun removeLegacySharedPrivateRoutes() {
+        val mainIds = dao.getRoutes(ImagePartition.MAIN).mapTo(hashSetOf()) { it.providerId }
+        val privateRoutes = dao.getRoutes(ImagePartition.PRIVATE)
+        val isolatedRoutes = privateRoutes.filterNot { it.providerId in mainIds }
+        if (isolatedRoutes.size != privateRoutes.size) {
+            saveProviderRoutes(ImagePartition.PRIVATE, isolatedRoutes)
+        }
+    }
+
+    suspend fun isolateProviderForPartition(
+        partition: ImagePartition,
+        providerId: String,
+    ): String {
+        if (dao.countOtherPartitionRoutes(providerId, partition) == 0) return providerId
+        val provider = dao.getProvider(providerId) ?: return providerId
+        val model = dao.getVisionModelForProvider(providerId) ?: return providerId
+        val protocol = model.protocolDefinitionId?.let { dao.getProtocol(it) }
+        val suffix = UUID.randomUUID().toString()
+        val isolatedProviderId = "provider.$suffix"
+        val isolatedModelId = "model.$suffix"
+        val isolatedProtocolId = protocol?.let { "protocol.$suffix" }
+        val routes = dao.getRoutes(partition)
+        database.withTransaction {
+            dao.upsertProvider(
+                provider.copy(
+                    providerId = isolatedProviderId,
+                    credentialId = provider.credentialId,
+                    displayName = provider.displayName,
+                ),
+            )
+            if (protocol != null && isolatedProtocolId != null) {
+                dao.upsertProtocol(
+                    protocol.copy(protocolDefinitionId = isolatedProtocolId),
+                )
+            }
+            dao.upsertModel(
+                model.copy(
+                    modelProfileId = isolatedModelId,
+                    providerId = isolatedProviderId,
+                    protocolDefinitionId = isolatedProtocolId,
+                ),
+            )
+            dao.deleteRoutes(partition)
+            dao.upsertRoutes(
+                routes.map { route ->
+                    if (route.providerId == providerId) {
+                        route.copy(providerId = isolatedProviderId)
+                    } else {
+                        route
+                    }
+                },
+            )
+        }
+        return isolatedProviderId
     }
 
     suspend fun saveProvider(provider: ProviderProfileEntity) {
@@ -67,6 +126,7 @@ class AiConfigurationRepository(
             dao.upsertProvider(provider)
             if (protocol != null) dao.upsertProtocol(protocol)
             dao.upsertModel(model)
+            dao.deleteOtherModels(provider.providerId, model.modelProfileId)
             dao.upsertRuntimeSetting(runtime)
         }
     }
@@ -97,6 +157,7 @@ class AiConfigurationRepository(
             dao.upsertProvider(provider)
             if (protocol != null) dao.upsertProtocol(protocol)
             dao.upsertModel(model)
+            dao.deleteOtherModels(provider.providerId, model.modelProfileId)
         }
     }
 

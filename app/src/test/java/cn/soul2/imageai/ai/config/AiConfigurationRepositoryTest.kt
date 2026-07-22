@@ -10,7 +10,10 @@ import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
 import cn.soul2.imageai.data.db.entity.ProviderAuthMode
 import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
+import cn.soul2.imageai.data.db.entity.ProviderRouteEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import cn.soul2.imageai.ai.protocol.CustomJsonProtocolDefinitionTest
+import cn.soul2.imageai.ai.analysis.RepositoryAiAnalysisConfigurationResolver
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -146,6 +149,81 @@ class AiConfigurationRepositoryTest {
                 provider().copy(allowedRedirectOriginsJson = "[\"https://example.com/path\"]"),
             )
         }
+    }
+
+    @Test
+    fun providerRouteBelongsToExactlyOnePartition() = runTest {
+        repository.saveProvider(provider())
+        repository.saveModel(model())
+
+        repository.addProviderToRoute(ImagePartition.MAIN, PROVIDER_ID)
+
+        assertEquals(listOf(PROVIDER_ID), repository.getEnabledProviderIds(ImagePartition.MAIN))
+        assertEquals(emptyList<String>(), repository.getEnabledProviderIds(ImagePartition.PRIVATE))
+        assertThrows(IllegalArgumentException::class.java) {
+            kotlinx.coroutines.runBlocking {
+                repository.addProviderToRoute(ImagePartition.PRIVATE, PROVIDER_ID)
+            }
+        }
+    }
+
+    @Test
+    fun legacySharedPrivateRouteIsRemovedWithoutChangingMainRoute() = runTest {
+        repository.saveProvider(provider())
+        repository.saveModel(model())
+        database.aiConfigurationDao().upsertRoutes(
+            listOf(
+                ProviderRouteEntity(ImagePartition.MAIN, PROVIDER_ID, 0, true),
+                ProviderRouteEntity(ImagePartition.PRIVATE, PROVIDER_ID, 0, true),
+            ),
+        )
+
+        repository.removeLegacySharedPrivateRoutes()
+
+        assertEquals(listOf(PROVIDER_ID), repository.getEnabledProviderIds(ImagePartition.MAIN))
+        assertEquals(emptyList<String>(), repository.getEnabledProviderIds(ImagePartition.PRIVATE))
+    }
+
+    @Test
+    fun savingEntryKeepsOnlyOneModelForItsBaseUrlProfile() = runTest {
+        repository.saveProvider(provider())
+        repository.saveModel(model())
+        repository.saveFallbackBundle(
+            provider(),
+            model().copy(modelProfileId = "model-second", modelId = "second-model"),
+            protocol = null,
+        )
+
+        val models = database.aiConfigurationDao().getModelsForProvider(PROVIDER_ID)
+        assertEquals(listOf("second-model"), models.map(ModelProfileEntity::modelId))
+    }
+
+    @Test
+    fun resolverUsesOneModelPerEntryInPartitionOrder() = runTest {
+        val secondProvider = provider().copy(providerId = "provider-second", displayName = "第二模型")
+        repository.saveProvider(provider())
+        repository.saveProvider(secondProvider)
+        repository.saveModel(model())
+        repository.saveModel(model().copy(modelProfileId = "model-legacy-extra", modelId = "ignored"))
+        repository.saveModel(
+            model().copy(
+                modelProfileId = "model-second",
+                providerId = secondProvider.providerId,
+                modelId = "second",
+            ),
+        )
+        repository.saveRuntimeSetting(runtimeSetting())
+        database.aiConfigurationDao().upsertRoutes(
+            listOf(
+                ProviderRouteEntity(ImagePartition.MAIN, secondProvider.providerId, 0, true),
+                ProviderRouteEntity(ImagePartition.MAIN, PROVIDER_ID, 1, true),
+            ),
+        )
+
+        val candidates = RepositoryAiAnalysisConfigurationResolver(repository)
+            .resolveCandidates(ImagePartition.MAIN)
+
+        assertEquals(listOf("second", "gpt-image-reader"), candidates.map { it.model.modelId })
     }
 
     private suspend fun assertValidationFails(block: suspend () -> Unit) {
