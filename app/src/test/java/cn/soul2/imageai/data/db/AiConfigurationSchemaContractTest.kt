@@ -7,14 +7,14 @@ import org.junit.Test
 
 class AiConfigurationSchemaContractTest {
     @Test
-    fun versionSevenRetainsProviderModelProtocolAndRuntimeConfiguration() {
+    fun versionEightRetainsProviderModelProtocolAndRuntimeConfiguration() {
         val schema = projectFile(
-            "app/schemas/cn.soul2.imageai.data.db.AppDatabase/7.json",
+            "app/schemas/cn.soul2.imageai.data.db.AppDatabase/8.json",
         )
-        assertTrue("Room schema v7 must be exported", schema.isFile)
+        assertTrue("Room schema v8 must be exported", schema.isFile)
         val text = schema.readText()
 
-        assertTrue(Regex("\\\"version\\\"\\s*:\\s*7").containsMatchIn(text))
+        assertTrue(Regex("\\\"version\\\"\\s*:\\s*8").containsMatchIn(text))
         listOf(
             "provider_profile",
             "model_profile",
@@ -30,10 +30,13 @@ class AiConfigurationSchemaContractTest {
         ).forEach { index -> assertTrue("Missing index: $index", text.contains(index)) }
         assertFalse("Credentials must not be stored in Room", text.contains("api_key", ignoreCase = true))
         assertFalse("Credential ciphertext must not be stored in Room", text.contains("ciphertext", true))
+        listOf("daily_image_limit", "only_show_analyzed", "automatic_failover_enabled").forEach { column ->
+            assertTrue("Missing AI runtime column: $column", text.contains("\"columnName\": \"$column\""))
+        }
     }
 
     @Test
-    fun everyDatabaseFactoryRegistersMigrationSixToSevenWithoutDestructiveFallback() {
+    fun everyDatabaseFactoryRegistersMigrationSevenToEightWithoutDestructiveFallback() {
         val factory = projectFile(
             "app/src/main/java/cn/soul2/imageai/data/db/AppDatabaseFactory.kt",
         ).readText()
@@ -41,6 +44,7 @@ class AiConfigurationSchemaContractTest {
         assertTrue(factory.contains("MIGRATION_4_5"))
         assertTrue(factory.contains("MIGRATION_5_6"))
         assertTrue(factory.contains("MIGRATION_6_7"))
+        assertTrue(factory.contains("MIGRATION_7_8"))
         assertFalse(factory.contains("fallbackToDestructiveMigration"))
     }
 

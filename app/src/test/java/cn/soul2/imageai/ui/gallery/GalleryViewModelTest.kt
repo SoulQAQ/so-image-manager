@@ -45,6 +45,8 @@ class GalleryViewModelTest {
             LibraryViewModel::class.java
         ]
 
+        runCurrent()
+
         assertEquals(
             listOf(GalleryQuery(GallerySource.Recent), GalleryQuery(GallerySource.All)),
             repository.queries,

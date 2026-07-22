@@ -30,6 +30,12 @@ data class AiRuntimeSettingEntity(
     val globalRequestsPerMinute: Int,
     @ColumnInfo(name = "global_requests_per_day")
     val globalRequestsPerDay: Int,
+    @ColumnInfo(name = "daily_image_limit")
+    val dailyImageLimit: Int = 0,
+    @ColumnInfo(name = "only_show_analyzed")
+    val onlyShowAnalyzed: Boolean = false,
+    @ColumnInfo(name = "automatic_failover_enabled")
+    val automaticFailoverEnabled: Boolean = true,
     @ColumnInfo(name = "prompt_text")
     val promptText: String,
     @ColumnInfo(name = "updated_at_epoch_millis")

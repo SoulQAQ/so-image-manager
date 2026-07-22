@@ -353,14 +353,14 @@ function Test-LatestRoomSchema {
         throw "No exported Room schema found"
     }
     $latest = $schemaFiles | Sort-Object { [int] $_.BaseName } -Descending | Select-Object -First 1
-    if ($latest.BaseName -cne "7") {
-        throw "Latest Room schema filename must be 7.json"
+    if ($latest.BaseName -cne "8") {
+        throw "Latest Room schema filename must be 8.json"
     }
     $schemaBytes = [IO.File]::ReadAllBytes($latest.FullName)
     $schemaText = [Text.Encoding]::UTF8.GetString($schemaBytes)
     $schema = $schemaText | ConvertFrom-Json
-    if ([int] $schema.database.version -ne 7) {
-        throw "Latest Room schema database version must be 7"
+    if ([int] $schema.database.version -ne 8) {
+        throw "Latest Room schema database version must be 8"
     }
     $tables = @($schema.database.entities | ForEach-Object { $_.tableName } | Sort-Object)
     $expected = @(

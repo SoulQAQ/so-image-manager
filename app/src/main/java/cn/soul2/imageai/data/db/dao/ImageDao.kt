@@ -35,6 +35,15 @@ abstract class ImageDao {
         return markRemovedFromSoim(ids)
     }
 
+    @Query("UPDATE image SET availability = 'ANALYSIS_REJECTED' WHERE local_id = :localId")
+    protected abstract suspend fun markAnalysisRejected(localId: Long): Int
+
+    @Transaction
+    open suspend fun hideRejectedAnalysis(localId: Long): Int {
+        deleteSearchDocuments(listOf(localId))
+        return markAnalysisRejected(localId)
+    }
+
     @Query("SELECT * FROM image WHERE local_id IN (:localIds) AND availability = 'AVAILABLE'")
     abstract suspend fun availableByIds(localIds: List<Long>): List<ImageEntity>
 
@@ -43,8 +52,19 @@ abstract class ImageDao {
 
     @Query(
         """
+        SELECT image.local_id FROM image
+        LEFT JOIN active_image_analysis AS active ON active.image_local_id = image.local_id
+        WHERE image.availability = 'AVAILABLE'
+          AND image.missing_candidate_since_epoch_millis IS NULL
+          AND active.analysis_id IS NULL
+        """,
+    )
+    abstract suspend fun allUnanalyzedAvailableIds(): List<Long>
+
+    @Query(
+        """
         SELECT * FROM image
-        WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL
+        WHERE image.availability = 'AVAILABLE' AND image.missing_candidate_since_epoch_millis IS NULL
         ORDER BY sort_time_epoch_millis DESC, media_store_id DESC,
             volume_name DESC, local_id DESC
         """,
@@ -54,12 +74,45 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL
+        WHERE image.availability = 'AVAILABLE' AND image.missing_candidate_since_epoch_millis IS NULL
         ORDER BY sort_time_epoch_millis DESC, media_store_id DESC,
             volume_name DESC, local_id DESC
         """,
     )
     abstract fun pagingRecent(): PagingSource<Int, ImageEntity>
+
+    @Query(
+        """
+        SELECT image.* FROM image
+        INNER JOIN active_image_analysis AS active ON active.image_local_id = image.local_id
+        WHERE image.availability = 'AVAILABLE' AND image.missing_candidate_since_epoch_millis IS NULL
+        ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
+            image.volume_name DESC, image.local_id DESC
+        """,
+    )
+    abstract fun pagingAnalyzed(): PagingSource<Int, ImageEntity>
+
+    @Query(
+        """
+        SELECT image.* FROM image
+        LEFT JOIN active_image_analysis AS active ON active.image_local_id = image.local_id
+        WHERE image.availability = 'AVAILABLE' AND image.missing_candidate_since_epoch_millis IS NULL
+          AND active.analysis_id IS NULL
+        ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
+            image.volume_name DESC, image.local_id DESC
+        """,
+    )
+    abstract fun pagingUnanalyzed(): PagingSource<Int, ImageEntity>
+
+    @Query(
+        """
+        SELECT * FROM image
+        WHERE image.availability = 'ANALYSIS_REJECTED'
+        ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
+            image.volume_name DESC, image.local_id DESC
+        """,
+    )
+    abstract fun pagingRejected(): PagingSource<Int, ImageEntity>
 
     @Query(
         """

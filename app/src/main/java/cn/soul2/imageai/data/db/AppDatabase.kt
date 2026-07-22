@@ -67,7 +67,7 @@ import cn.soul2.imageai.data.db.entity.BatchAnalysisItemEntity
         BatchAnalysisRunEntity::class,
         BatchAnalysisItemEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(RoomConverters::class)

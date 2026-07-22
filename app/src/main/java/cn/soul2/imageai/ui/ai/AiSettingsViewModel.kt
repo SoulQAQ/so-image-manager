@@ -52,6 +52,9 @@ data class AiSettingsForm(
     val globalConcurrency: String = "2",
     val globalRequestsPerMinute: String = "30",
     val globalRequestsPerDay: String = "1000",
+    val dailyImageLimit: String = "0",
+    val onlyShowAnalyzed: Boolean = false,
+    val automaticFailoverEnabled: Boolean = true,
     val prompt: String = DEFAULT_PROMPT,
     val customProtocolName: String = "自定义 JSON 协议",
     val customProtocolJson: String = "",
@@ -226,6 +229,9 @@ class AiSettingsViewModel(
                 globalMaxConcurrency = form.globalConcurrency.requiredInt(),
                 globalRequestsPerMinute = form.globalRequestsPerMinute.requiredInt(),
                 globalRequestsPerDay = form.globalRequestsPerDay.requiredInt(),
+                dailyImageLimit = form.dailyImageLimit.requiredInt(),
+                onlyShowAnalyzed = form.onlyShowAnalyzed,
+                automaticFailoverEnabled = form.automaticFailoverEnabled,
                 promptText = form.prompt.trim(),
                 updatedAtEpochMillis = now,
             )
@@ -310,6 +316,10 @@ class AiSettingsViewModel(
                 ?: defaults.globalRequestsPerMinute,
             globalRequestsPerDay = runtime?.globalRequestsPerDay?.toString()
                 ?: defaults.globalRequestsPerDay,
+            dailyImageLimit = runtime?.dailyImageLimit?.toString() ?: defaults.dailyImageLimit,
+            onlyShowAnalyzed = runtime?.onlyShowAnalyzed ?: defaults.onlyShowAnalyzed,
+            automaticFailoverEnabled = runtime?.automaticFailoverEnabled
+                ?: defaults.automaticFailoverEnabled,
             prompt = runtime?.promptText ?: defaults.prompt,
             customProtocolName = protocol?.displayName ?: defaults.customProtocolName,
             customProtocolJson = protocol?.definitionJson.orEmpty(),

@@ -150,6 +150,7 @@ fun SoImageManagerApp(
                     HomeScreen(
                         repository = galleryRepository,
                         syncRuns = syncRuns,
+                        runtimeSettings = aiConfigurationRepository?.runtimeSetting ?: flowOf(null),
                         galleryAccessState = galleryAccessState,
                         onImageClick = { localId ->
                             navController.navigate(ImageDetailDestination.createRoute(localId))
@@ -176,6 +177,7 @@ fun SoImageManagerApp(
                     LibraryScreen(
                         repository = galleryRepository,
                         syncRuns = syncRuns,
+                        runtimeSettings = aiConfigurationRepository?.runtimeSetting ?: flowOf(null),
                         galleryAccessState = galleryAccessState,
                         onImageClick = { localId ->
                             navController.navigate(ImageDetailDestination.createRoute(localId))

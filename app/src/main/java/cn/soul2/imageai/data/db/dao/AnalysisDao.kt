@@ -43,6 +43,9 @@ internal interface AnalysisDao {
     @Query("SELECT COUNT(*) FROM image_analysis WHERE image_local_id = :imageLocalId")
     suspend fun countAnalyses(imageLocalId: Long): Int
 
+    @Query("SELECT COUNT(*) FROM image_analysis WHERE completed_at_epoch_millis >= :dayStartEpochMillis")
+    suspend fun countCompletedSince(dayStartEpochMillis: Long): Int
+
     @Query("SELECT * FROM active_image_analysis WHERE image_local_id = :imageLocalId LIMIT 1")
     suspend fun getActive(imageLocalId: Long): ActiveImageAnalysisEntity?
 

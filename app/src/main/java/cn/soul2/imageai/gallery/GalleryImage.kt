@@ -16,6 +16,7 @@ data class GalleryImage(
     val bucketName: String?,
     val isFavorite: Boolean,
     val source: ImageSource = ImageSource.MEDIA_STORE,
+    val hasActiveAnalysis: Boolean = false,
 ) {
     val originalAspectRatio: Float
         get() = if (width > 0 && height > 0) width.toFloat() / height else 1f

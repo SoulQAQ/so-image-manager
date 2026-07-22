@@ -277,6 +277,21 @@ private fun AiSettingsFormContent(
         item { NumericField(form.globalConcurrency, R.string.ai_settings_concurrency) { onFormChange(form.copy(globalConcurrency = it)) } }
         item { NumericField(form.globalRequestsPerMinute, R.string.ai_settings_rpm) { onFormChange(form.copy(globalRequestsPerMinute = it)) } }
         item { NumericField(form.globalRequestsPerDay, R.string.ai_settings_daily) { onFormChange(form.copy(globalRequestsPerDay = it)) } }
+        item { NumericField(form.dailyImageLimit, R.string.ai_settings_daily_image_limit) { onFormChange(form.copy(dailyImageLimit = it)) } }
+        item {
+            ToggleRow(
+                label = R.string.ai_settings_automatic_failover,
+                checked = form.automaticFailoverEnabled,
+                onCheckedChange = { onFormChange(form.copy(automaticFailoverEnabled = it)) },
+            )
+        }
+        item {
+            ToggleRow(
+                label = R.string.ai_settings_only_show_analyzed,
+                checked = form.onlyShowAnalyzed,
+                onCheckedChange = { onFormChange(form.copy(onlyShowAnalyzed = it)) },
+            )
+        }
         item { QuotaTitle(R.string.ai_settings_quota_provider) }
         item { NumericField(form.providerConcurrency, R.string.ai_settings_concurrency) { onFormChange(form.copy(providerConcurrency = it)) } }
         item { NumericField(form.providerRequestsPerMinute, R.string.ai_settings_rpm) { onFormChange(form.copy(providerRequestsPerMinute = it)) } }

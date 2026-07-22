@@ -358,4 +358,14 @@ object AppDatabaseMigrations {
             ).forEach(database::execSQL)
         }
     }
+
+    val MIGRATION_7_8: Migration = object : Migration(7, 8) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            listOf(
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `daily_image_limit` INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `only_show_analyzed` INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `automatic_failover_enabled` INTEGER NOT NULL DEFAULT 1",
+            ).forEach(database::execSQL)
+        }
+    }
 }

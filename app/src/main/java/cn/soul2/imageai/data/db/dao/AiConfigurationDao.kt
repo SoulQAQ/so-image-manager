@@ -29,6 +29,9 @@ internal interface AiConfigurationDao {
     @Query("SELECT * FROM model_profile WHERE model_profile_id = :modelProfileId LIMIT 1")
     suspend fun getModel(modelProfileId: String): ModelProfileEntity?
 
+    @Query("SELECT * FROM model_profile WHERE enabled = 1 AND supports_vision = 1 ORDER BY model_profile_id ASC")
+    suspend fun getEnabledVisionModels(): List<ModelProfileEntity>
+
     @Query("SELECT * FROM protocol_definition WHERE protocol_definition_id = :protocolId LIMIT 1")
     suspend fun getProtocol(protocolId: String): ProtocolDefinitionEntity?
 

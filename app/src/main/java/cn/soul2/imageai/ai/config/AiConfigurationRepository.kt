@@ -49,6 +49,35 @@ class AiConfigurationRepository(
         }
     }
 
+    suspend fun saveFallbackBundle(
+        provider: ProviderProfileEntity,
+        model: ModelProfileEntity,
+        protocol: ProtocolDefinitionEntity?,
+    ) {
+        validateProvider(provider)
+        validateModel(model)
+        if (model.providerId != provider.providerId) {
+            invalid("model providerId must match the saved provider")
+        }
+        when (model.protocolType) {
+            ModelProtocolType.OPENAI_RESPONSES -> if (protocol != null) {
+                invalid("OPENAI_RESPONSES must not include a custom protocol definition")
+            }
+            ModelProtocolType.CUSTOM_JSON -> {
+                val definition = protocol ?: invalid("CUSTOM_JSON requires a protocol definition")
+                validateProtocol(definition)
+                if (model.protocolDefinitionId != definition.protocolDefinitionId) {
+                    invalid("model protocolDefinitionId must match the saved definition")
+                }
+            }
+        }
+        database.withTransaction {
+            dao.upsertProvider(provider)
+            if (protocol != null) dao.upsertProtocol(protocol)
+            dao.upsertModel(model)
+        }
+    }
+
     fun validateBundle(
         provider: ProviderProfileEntity,
         model: ModelProfileEntity,
@@ -136,12 +165,17 @@ class AiConfigurationRepository(
             setting.globalRequestsPerMinute,
             setting.globalRequestsPerDay,
         )
+        if (setting.dailyImageLimit !in 0..100_000) {
+            invalid("dailyImageLimit must be between 0 and 100000")
+        }
         requireTextLength("promptText", setting.promptText, AiConfigurationLimits.PROMPT_LENGTH)
     }
 
     suspend fun getProvider(providerId: String) = dao.getProvider(providerId)
 
     suspend fun getModel(modelProfileId: String) = dao.getModel(modelProfileId)
+
+    suspend fun getEnabledVisionModels() = dao.getEnabledVisionModels()
 
     suspend fun getProtocol(protocolDefinitionId: String) = dao.getProtocol(protocolDefinitionId)
 

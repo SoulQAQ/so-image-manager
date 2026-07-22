@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.paging.compose.collectAsLazyPagingItems
 import cn.soul2.imageai.R
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
+import cn.soul2.imageai.data.db.entity.AiRuntimeSettingEntity
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.media.permission.GalleryAccessState
@@ -20,6 +21,7 @@ import cn.soul2.imageai.ui.gallery.GalleryScreen
 import cn.soul2.imageai.ui.gallery.HomeViewModel
 import cn.soul2.imageai.ui.gallery.GallerySelectionViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun HomeScreen(
@@ -35,10 +37,11 @@ fun HomeScreen(
     onDeleteImages: (List<GalleryImage>) -> Unit = {},
     onRemoveImages: (List<GalleryImage>) -> Unit = {},
     onAnalyzeImages: (List<GalleryImage>) -> Unit = {},
+    runtimeSettings: Flow<AiRuntimeSettingEntity?> = flowOf(null),
 ) {
     val viewModel: HomeViewModel = viewModel(
         key = "home_gallery",
-        factory = HomeViewModel.factory(repository, syncRuns),
+        factory = HomeViewModel.factory(repository, syncRuns, runtimeSettings),
     )
     val uiState by viewModel.uiState.collectAsState()
     val images = viewModel.images.collectAsLazyPagingItems()

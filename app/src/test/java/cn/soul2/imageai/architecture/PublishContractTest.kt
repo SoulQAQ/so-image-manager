@@ -231,12 +231,12 @@ class PublishContractTest {
     }
 
     @Test
-    fun latestRoomSchemaIsPinnedToVersionSevenBatchAnalysisFoundation() {
+    fun latestRoomSchemaIsPinnedToVersionEightAiRuntimeControls() {
         val schema = scriptText().substringAfter("function Test-LatestRoomSchema")
             .substringBefore("function Get-ApkSha256")
 
-        assertTrue(schema.contains("\$latest.BaseName -cne \"7\""))
-        assertTrue(schema.contains("[int] \$schema.database.version -ne 7"))
+        assertTrue(schema.contains("\$latest.BaseName -cne \"8\""))
+        assertTrue(schema.contains("[int] \$schema.database.version -ne 8"))
         assertTrue(schema.contains("app_setting"))
         assertTrue(schema.contains("media_sync_checkpoint"))
         assertTrue(schema.contains("media_sync_run"))

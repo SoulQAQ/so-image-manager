@@ -7,6 +7,10 @@
     <string name="nav_settings">设置</string>
     <string name="home_empty">暂无已索引图片</string>
     <string name="library_empty">图库暂无图片</string>
+    <string name="library_filter_groups">筛选图片分组</string>
+    <string name="library_group_default">默认图片</string>
+    <string name="library_group_unanalyzed">查看未分析图片</string>
+    <string name="library_group_rejected">查看供应方拒绝的图片</string>
     <string name="tasks_empty">暂无进行中的任务</string>
     <string name="settings_empty">暂无设置项</string>
     <string name="tasks_section_current">当前同步</string>
@@ -66,6 +70,7 @@
     <string name="gallery_selection_count_compact">已选 %1$d</string>
     <string name="gallery_selection_cancel">取消选择</string>
     <string name="gallery_selection_analyze">分析 / 重新分析</string>
+    <string name="gallery_selection_reanalyze">重新分析</string>
     <string name="gallery_selection_share">分享</string>
     <string name="gallery_selection_remove">从 SoIM 移除</string>
     <string name="gallery_selection_delete">删除原图</string>
@@ -177,6 +182,9 @@
     <string name="ai_settings_concurrency">最大并发数</string>
     <string name="ai_settings_rpm">每分钟请求数（0 为不限）</string>
     <string name="ai_settings_daily">每日请求数（0 为不限）</string>
+    <string name="ai_settings_daily_image_limit">每日图片分析上限（0 为不限）</string>
+    <string name="ai_settings_automatic_failover">自动使用备用供应方</string>
+    <string name="ai_settings_only_show_analyzed">默认仅显示已分析图片</string>
     <string name="ai_settings_section_advanced">高级网络设置</string>
     <string name="ai_settings_connect_timeout">连接超时（毫秒）</string>
     <string name="ai_settings_read_timeout">读取超时（毫秒）</string>

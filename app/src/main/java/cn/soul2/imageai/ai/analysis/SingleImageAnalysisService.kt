@@ -59,8 +59,8 @@ class SingleImageAnalysisService(
         if (target.imageLocalId <= 0L || target.contentUri.isBlank()) {
             return SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.IMAGE_UNAVAILABLE)
         }
-        val configuration = try {
-            configurationResolver.resolve()
+        val configurations = try {
+            configurationResolver.resolveCandidates()
         } catch (error: AiConfigurationResolutionException) {
             return SingleImageAnalysisResult.Failure(
                 SingleImageAnalysisFailure.CONFIGURATION_REQUIRED,
@@ -68,84 +68,92 @@ class SingleImageAnalysisService(
             )
         }
         val startedAt = nowEpochMillis()
-        val image = try {
-            imagePreprocessor.prepare(
-                contentUri = target.contentUri,
-                maxEdge = configuration.model.maxImageEdge,
-                maxBytes = configuration.model.maxImageBytes,
-            )
-        } catch (error: ImagePreparationException) {
+        val dailyLimit = configurations.first().runtime.dailyImageLimit
+        if (dailyLimit > 0 && canonicalRepository.countCompletedAnalysesSince(utcDayStart(startedAt)) >= dailyLimit) {
             return SingleImageAnalysisResult.Failure(
-                SingleImageAnalysisFailure.IMAGE_PREPARATION_FAILED,
-                error.failure.name,
-            )
-        } catch (_: SecurityException) {
-            return SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.IMAGE_UNAVAILABLE)
-        }
-        val quotaPolicy = try {
-            AiQuotaPolicy.from(
-                configuration.runtime,
-                configuration.provider,
-                configuration.model,
-            )
-        } catch (_: IllegalArgumentException) {
-            return SingleImageAnalysisResult.Failure(
-                SingleImageAnalysisFailure.CONFIGURATION_REQUIRED,
+                SingleImageAnalysisFailure.REQUEST_LIMITED,
+                DAILY_IMAGE_LIMIT_DETAIL,
             )
         }
-        val payload = try {
-            try {
+        var lastFailure: SingleImageAnalysisResult.Failure? = null
+        for ((index, configuration) in configurations.withIndex()) {
+            val image = try {
+                imagePreprocessor.prepare(target.contentUri, configuration.model.maxImageEdge, configuration.model.maxImageBytes)
+            } catch (error: ImagePreparationException) {
+                return SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.IMAGE_PREPARATION_FAILED, error.failure.name)
+            } catch (_: SecurityException) {
+                return SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.IMAGE_UNAVAILABLE)
+            }
+            val quotaPolicy = try {
+                AiQuotaPolicy.from(configuration.runtime, configuration.provider, configuration.model)
+            } catch (_: IllegalArgumentException) {
+                image.bytes.fill(0)
+                lastFailure = SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.CONFIGURATION_REQUIRED)
+                if (!configuration.runtime.automaticFailoverEnabled || index == configurations.lastIndex) {
+                    break
+                }
+                continue
+            }
+            val payload = try {
                 clients.require(configuration.model.protocolType).analyze(
                     AiModelInvocation(configuration, quotaPolicy, image),
                 )
             } catch (error: AiModelException) {
-                return error.toAnalysisFailure()
+                lastFailure = error.toAnalysisFailure()
+                null
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
-                return SingleImageAnalysisResult.Failure(
-                    SingleImageAnalysisFailure.INTERNAL_ERROR,
-                )
+                lastFailure = SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.INTERNAL_ERROR)
+                null
+            } finally {
+                image.bytes.fill(0)
             }
-        } finally {
-            image.bytes.fill(0)
-        }
-        val completedAt = nowEpochMillis().coerceAtLeast(startedAt)
-        val analysisId = newAnalysisId()
-        val protocolId = configuration.protocolDefinition?.protocolDefinitionId
-            ?: BUILTIN_OPENAI_RESPONSES_PROTOCOL_ID
-        val draft = payload.toDraft(
-            CanonicalAiDraftContext(
-                analysisId = analysisId,
-                imageLocalId = target.imageLocalId,
-                providerProfileId = configuration.provider.providerId,
-                modelProfileId = configuration.model.modelProfileId,
-                protocolDefinitionId = protocolId,
-                promptTemplateId = promptFingerprint(configuration.runtime.promptText),
-                createdAtEpochMillis = startedAt,
-                completedAtEpochMillis = completedAt,
-            ),
-        )
-        return try {
-            when (val activation = canonicalRepository.activateAnalysis(draft)) {
-                is ActivationResult.Activated -> SingleImageAnalysisResult.Success(
-                    analysisId,
-                    activation.projectionGeneration,
-                )
-                is ActivationResult.AlreadyActive -> SingleImageAnalysisResult.Success(
-                    analysisId,
-                    activation.projectionGeneration,
-                )
-                is ActivationResult.Blocked -> SingleImageAnalysisResult.Failure(
-                    SingleImageAnalysisFailure.INDEX_PROJECTION_BLOCKED,
-                    activation.code,
-                )
+            if (payload == null) {
+                if (!configuration.runtime.automaticFailoverEnabled ||
+                    index == configurations.lastIndex ||
+                    !lastFailure.isFailoverEligible()
+                ) break
+                continue
             }
-        } catch (_: IllegalArgumentException) {
-            SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.RESPONSE_INVALID)
-        } catch (_: IllegalStateException) {
-            SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.INTERNAL_ERROR)
+            val completedAt = nowEpochMillis().coerceAtLeast(startedAt)
+            val analysisId = newAnalysisId()
+            val protocolId = configuration.protocolDefinition?.protocolDefinitionId
+                ?: BUILTIN_OPENAI_RESPONSES_PROTOCOL_ID
+            val draft = payload.toDraft(
+                CanonicalAiDraftContext(
+                    analysisId = analysisId,
+                    imageLocalId = target.imageLocalId,
+                    providerProfileId = configuration.provider.providerId,
+                    modelProfileId = configuration.model.modelProfileId,
+                    protocolDefinitionId = protocolId,
+                    promptTemplateId = promptFingerprint(configuration.runtime.promptText),
+                    createdAtEpochMillis = startedAt,
+                    completedAtEpochMillis = completedAt,
+                ),
+            )
+            return try {
+                when (val activation = canonicalRepository.activateAnalysis(draft)) {
+                    is ActivationResult.Activated -> SingleImageAnalysisResult.Success(
+                        analysisId,
+                        activation.projectionGeneration,
+                    )
+                    is ActivationResult.AlreadyActive -> SingleImageAnalysisResult.Success(
+                        analysisId,
+                        activation.projectionGeneration,
+                    )
+                    is ActivationResult.Blocked -> SingleImageAnalysisResult.Failure(
+                        SingleImageAnalysisFailure.INDEX_PROJECTION_BLOCKED,
+                        activation.code,
+                    )
+                }
+            } catch (_: IllegalArgumentException) {
+                SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.RESPONSE_INVALID)
+            } catch (_: IllegalStateException) {
+                SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.INTERNAL_ERROR)
+            }
         }
+        return lastFailure ?: SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.CONFIGURATION_REQUIRED)
     }
 
     private fun AiModelException.toAnalysisFailure() = SingleImageAnalysisResult.Failure(
@@ -161,6 +169,16 @@ class SingleImageAnalysisService(
         detailCode = failure.name,
     )
 
+    private fun SingleImageAnalysisResult.Failure?.isFailoverEligible(): Boolean =
+        this?.reason in setOf(
+            SingleImageAnalysisFailure.CREDENTIAL_REQUIRED,
+            SingleImageAnalysisFailure.CREDENTIAL_UNAVAILABLE,
+            SingleImageAnalysisFailure.REQUEST_LIMITED,
+            SingleImageAnalysisFailure.NETWORK_FAILED,
+            SingleImageAnalysisFailure.PROVIDER_REJECTED,
+            SingleImageAnalysisFailure.PROTOCOL_UNSUPPORTED,
+        )
+
     private fun promptFingerprint(prompt: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
             .digest(prompt.toByteArray(Charsets.UTF_8))
@@ -168,8 +186,13 @@ class SingleImageAnalysisService(
         return "prompt.sha256.$digest"
     }
 
+    private fun utcDayStart(epochMillis: Long): Long =
+        epochMillis.coerceAtLeast(0L) / MILLIS_PER_DAY * MILLIS_PER_DAY
+
     companion object {
         const val BUILTIN_OPENAI_RESPONSES_PROTOCOL_ID = "builtin.openai-responses.v1"
         const val OUTPUT_SCHEMA_VERSION = CanonicalAiOutputSchema.VERSION
+        const val DAILY_IMAGE_LIMIT_DETAIL = "DAILY_IMAGE_LIMIT"
+        private const val MILLIS_PER_DAY = 86_400_000L
     }
 }

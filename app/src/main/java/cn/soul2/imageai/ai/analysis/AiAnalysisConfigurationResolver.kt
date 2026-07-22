@@ -31,6 +31,8 @@ class AiConfigurationResolutionException(
 
 fun interface AiAnalysisConfigurationResolver {
     suspend fun resolve(): ResolvedAiAnalysisConfiguration
+
+    suspend fun resolveCandidates(): List<ResolvedAiAnalysisConfiguration> = listOf(resolve())
 }
 
 class RepositoryAiAnalysisConfigurationResolver(
@@ -43,6 +45,34 @@ class RepositoryAiAnalysisConfigurationResolver(
             ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
         val model = repository.getModel(modelId)
             ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
+        return resolveModel(runtime, model)
+    }
+
+    override suspend fun resolveCandidates(): List<ResolvedAiAnalysisConfiguration> {
+        val runtime = repository.getRuntimeSetting()
+            ?: unavailable(AiConfigurationFailure.RUNTIME_MISSING)
+        val defaultId = runtime.defaultModelProfileId
+            ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
+        val default = repository.getModel(defaultId)
+            ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
+        return buildList {
+            add(resolveModel(runtime, default))
+            repository.getEnabledVisionModels()
+                .filter { it.modelProfileId != default.modelProfileId }
+                .forEach { model ->
+                    try {
+                        add(resolveModel(runtime, model))
+                    } catch (_: AiConfigurationResolutionException) {
+                        // An incomplete fallback profile must not block other configured providers.
+                    }
+                }
+        }
+    }
+
+    private suspend fun resolveModel(
+        runtime: AiRuntimeSettingEntity,
+        model: ModelProfileEntity,
+    ): ResolvedAiAnalysisConfiguration {
         if (!model.enabled) unavailable(AiConfigurationFailure.MODEL_DISABLED)
         if (!model.supportsVision) unavailable(AiConfigurationFailure.MODEL_NOT_VISION_CAPABLE)
         val provider = repository.getProvider(model.providerId)

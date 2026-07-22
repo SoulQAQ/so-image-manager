@@ -26,6 +26,9 @@ class RoomGalleryRepository(
             when (query.source) {
                 GallerySource.Recent -> imageDao.pagingRecent()
                 GallerySource.All -> imageDao.pagingAll()
+                GallerySource.Analyzed -> imageDao.pagingAnalyzed()
+                GallerySource.Unanalyzed -> imageDao.pagingUnanalyzed()
+                GallerySource.Rejected -> imageDao.pagingRejected()
             }
         },
     ).flow.map { pagingData -> pagingData.map(ImageEntity::toGalleryImage) }

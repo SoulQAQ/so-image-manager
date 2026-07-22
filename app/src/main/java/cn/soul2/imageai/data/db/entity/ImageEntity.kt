@@ -7,6 +7,7 @@ import androidx.room.PrimaryKey
 
 enum class ImageAvailability {
     AVAILABLE,
+    ANALYSIS_REJECTED,
     REMOVED_FROM_SOIM,
     PERMISSION_REVOKED,
     SELECTION_REMOVED,

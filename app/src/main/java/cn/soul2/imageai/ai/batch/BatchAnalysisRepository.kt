@@ -16,7 +16,7 @@ class BatchAnalysisRepository(
 ) {
     fun observeLatest(): Flow<BatchAnalysisRunEntity?> = dao.observeLatest()
 
-    suspend fun enqueueAll(): BatchAnalysisRunEntity? = enqueue(imageDao.allAvailableIds())
+    suspend fun enqueueAll(): BatchAnalysisRunEntity? = enqueue(imageDao.allUnanalyzedAvailableIds())
 
     suspend fun enqueue(imageIds: List<Long>): BatchAnalysisRunEntity? =
         dao.createRun(imageIds, now())
@@ -40,6 +40,9 @@ class BatchAnalysisRepository(
             is SingleImageAnalysisResult.Success -> dao.finishItem(run.runId, imageId, "SUCCEEDED", null)
             is SingleImageAnalysisResult.Failure -> {
                 dao.finishItem(run.runId, imageId, "FAILED", result.reason.name)
+                if (result.reason == cn.soul2.imageai.ai.analysis.SingleImageAnalysisFailure.PROVIDER_REJECTED) {
+                    imageDao.hideRejectedAnalysis(imageId)
+                }
                 if (BatchAnalysisPolicy.pausesRun(result.reason)) {
                     dao.pauseRun(run.runId, now())
                     return BatchSliceResult.Paused
