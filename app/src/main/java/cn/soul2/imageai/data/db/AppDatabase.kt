@@ -37,6 +37,7 @@ import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
 import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
 import cn.soul2.imageai.data.db.entity.BatchAnalysisRunEntity
 import cn.soul2.imageai.data.db.entity.BatchAnalysisItemEntity
+import cn.soul2.imageai.data.db.entity.ProviderRouteEntity
 
 @Database(
     entities = [
@@ -66,8 +67,9 @@ import cn.soul2.imageai.data.db.entity.BatchAnalysisItemEntity
         AiRuntimeSettingEntity::class,
         BatchAnalysisRunEntity::class,
         BatchAnalysisItemEntity::class,
+        ProviderRouteEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 @TypeConverters(RoomConverters::class)

@@ -156,6 +156,9 @@ class CanonicalMetadataRepository(
     suspend fun countCompletedAnalysesSince(dayStartEpochMillis: Long): Int =
         analysisDao.countCompletedSince(dayStartEpochMillis)
 
+    suspend fun promoteUnprocessedToMain(imageLocalId: Long): Int =
+        database.imageDao().promoteUnprocessedToMain(imageLocalId)
+
     override fun observeEffectiveMetadata(imageLocalId: Long): Flow<EffectiveImageMetadata?> {
         if (imageLocalId <= 0L) invalid("effective metadata imageLocalId must be positive")
         return combine(

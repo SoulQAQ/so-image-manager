@@ -21,6 +21,13 @@ enum class ImageSource {
     DOCUMENT,
 }
 
+enum class ImagePartition {
+    MAIN,
+    PRIVATE,
+    PRIVATE_UNANALYZABLE,
+    UNPROCESSED,
+}
+
 @Entity(
     tableName = "image",
     indices = [
@@ -78,4 +85,5 @@ data class ImageEntity(
     @ColumnInfo(name = "missing_observation_count")
     val missingObservationCount: Int,
     val source: ImageSource = ImageSource.MEDIA_STORE,
+    val partition: ImagePartition = ImagePartition.MAIN,
 )

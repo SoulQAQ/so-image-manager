@@ -7,6 +7,7 @@ import cn.soul2.imageai.ai.output.CanonicalAiOutputSchema
 import cn.soul2.imageai.ai.quota.AiQuotaPolicy
 import cn.soul2.imageai.analysis.ActivationResult
 import cn.soul2.imageai.analysis.CanonicalMetadataRepository
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import java.security.MessageDigest
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -14,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 data class ImageAnalysisTarget(
     val imageLocalId: Long,
     val contentUri: String,
+    val partition: ImagePartition = ImagePartition.MAIN,
 )
 
 sealed interface SingleImageAnalysisResult {
@@ -60,7 +62,7 @@ class SingleImageAnalysisService(
             return SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.IMAGE_UNAVAILABLE)
         }
         val configurations = try {
-            configurationResolver.resolveCandidates()
+            configurationResolver.resolveCandidates(target.partition)
         } catch (error: AiConfigurationResolutionException) {
             return SingleImageAnalysisResult.Failure(
                 SingleImageAnalysisFailure.CONFIGURATION_REQUIRED,
@@ -89,7 +91,7 @@ class SingleImageAnalysisService(
             } catch (_: IllegalArgumentException) {
                 image.bytes.fill(0)
                 lastFailure = SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.CONFIGURATION_REQUIRED)
-                if (!configuration.runtime.automaticFailoverEnabled || index == configurations.lastIndex) {
+                if (index == configurations.lastIndex) {
                     break
                 }
                 continue
@@ -110,8 +112,7 @@ class SingleImageAnalysisService(
                 image.bytes.fill(0)
             }
             if (payload == null) {
-                if (!configuration.runtime.automaticFailoverEnabled ||
-                    index == configurations.lastIndex ||
+                if (index == configurations.lastIndex ||
                     !lastFailure.isFailoverEligible()
                 ) break
                 continue
@@ -134,10 +135,12 @@ class SingleImageAnalysisService(
             )
             return try {
                 when (val activation = canonicalRepository.activateAnalysis(draft)) {
-                    is ActivationResult.Activated -> SingleImageAnalysisResult.Success(
-                        analysisId,
-                        activation.projectionGeneration,
-                    )
+                is ActivationResult.Activated -> {
+                    if (target.partition == ImagePartition.UNPROCESSED) {
+                        canonicalRepository.promoteUnprocessedToMain(target.imageLocalId)
+                    }
+                    SingleImageAnalysisResult.Success(analysisId, activation.projectionGeneration)
+                }
                     is ActivationResult.AlreadyActive -> SingleImageAnalysisResult.Success(
                         analysisId,
                         activation.projectionGeneration,
@@ -175,7 +178,6 @@ class SingleImageAnalysisService(
             SingleImageAnalysisFailure.CREDENTIAL_UNAVAILABLE,
             SingleImageAnalysisFailure.REQUEST_LIMITED,
             SingleImageAnalysisFailure.NETWORK_FAILED,
-            SingleImageAnalysisFailure.PROVIDER_REJECTED,
             SingleImageAnalysisFailure.PROTOCOL_UNSUPPORTED,
         )
 

@@ -13,10 +13,13 @@ abstract class ImageDao {
     @Query(
         """
         SELECT COUNT(*) FROM image
-        WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL
+        WHERE availability = 'AVAILABLE' AND partition = 'MAIN' AND missing_candidate_since_epoch_millis IS NULL
         """,
     )
     abstract fun observeAvailableCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM image WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL")
+    abstract fun observeTotalGalleryCount(): Flow<Int>
 
     @Query("SELECT COUNT(*) FROM image WHERE availability != 'AVAILABLE' AND availability != 'REMOVED_FROM_SOIM'")
     abstract fun observeUnavailableCount(): Flow<Int>
@@ -35,26 +38,47 @@ abstract class ImageDao {
         return markRemovedFromSoim(ids)
     }
 
-    @Query("UPDATE image SET availability = 'ANALYSIS_REJECTED' WHERE local_id = :localId")
-    protected abstract suspend fun markAnalysisRejected(localId: Long): Int
+    @Query("UPDATE image SET partition = 'PRIVATE' WHERE local_id = :localId")
+    protected abstract suspend fun moveToPrivate(localId: Long): Int
+
+    @Query("UPDATE image SET partition = 'MAIN' WHERE local_id = :localId AND partition IN ('PRIVATE', 'PRIVATE_UNANALYZABLE')")
+    abstract suspend fun moveToMain(localId: Long): Int
+
+    @Query("SELECT COUNT(*) FROM image WHERE availability = 'AVAILABLE' AND partition = 'MAIN' AND missing_candidate_since_epoch_millis IS NULL")
+    abstract fun observeMainCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM image WHERE availability = 'AVAILABLE' AND partition = 'UNPROCESSED' AND missing_candidate_since_epoch_millis IS NULL")
+    abstract fun observeUnprocessedCount(): Flow<Int>
+
+    @Query("UPDATE image SET partition = 'MAIN' WHERE local_id = :localId AND partition = 'UNPROCESSED'")
+    abstract suspend fun promoteUnprocessedToMain(localId: Long): Int
+
+    @Query("UPDATE image SET partition = 'PRIVATE_UNANALYZABLE' WHERE local_id = :localId")
+    protected abstract suspend fun markPrivateUnanalyzable(localId: Long): Int
 
     @Transaction
-    open suspend fun hideRejectedAnalysis(localId: Long): Int {
+    open suspend fun moveRejectedMainImageToPrivate(localId: Long): Int {
         deleteSearchDocuments(listOf(localId))
-        return markAnalysisRejected(localId)
+        return moveToPrivate(localId)
+    }
+
+    @Transaction
+    open suspend fun markRejectedPrivateImageUnanalyzable(localId: Long): Int {
+        deleteSearchDocuments(listOf(localId))
+        return markPrivateUnanalyzable(localId)
     }
 
     @Query("SELECT * FROM image WHERE local_id IN (:localIds) AND availability = 'AVAILABLE'")
     abstract suspend fun availableByIds(localIds: List<Long>): List<ImageEntity>
 
-    @Query("SELECT local_id FROM image WHERE availability = 'AVAILABLE' AND missing_candidate_since_epoch_millis IS NULL")
+    @Query("SELECT local_id FROM image WHERE availability = 'AVAILABLE' AND partition = 'UNPROCESSED' AND missing_candidate_since_epoch_millis IS NULL")
     abstract suspend fun allAvailableIds(): List<Long>
 
     @Query(
         """
         SELECT image.local_id FROM image
         LEFT JOIN active_image_analysis AS active ON active.image_local_id = image.local_id
-        WHERE image.availability = 'AVAILABLE'
+        WHERE image.availability = 'AVAILABLE' AND image.partition = 'UNPROCESSED'
           AND image.missing_candidate_since_epoch_millis IS NULL
           AND active.analysis_id IS NULL
         """,
@@ -64,7 +88,7 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE image.availability = 'AVAILABLE' AND image.missing_candidate_since_epoch_millis IS NULL
+        WHERE image.availability = 'AVAILABLE' AND image.partition = 'MAIN' AND image.missing_candidate_since_epoch_millis IS NULL
         ORDER BY sort_time_epoch_millis DESC, media_store_id DESC,
             volume_name DESC, local_id DESC
         """,
@@ -74,7 +98,7 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE image.availability = 'AVAILABLE' AND image.missing_candidate_since_epoch_millis IS NULL
+        WHERE image.availability = 'AVAILABLE' AND image.partition = 'MAIN' AND image.missing_candidate_since_epoch_millis IS NULL
         ORDER BY sort_time_epoch_millis DESC, media_store_id DESC,
             volume_name DESC, local_id DESC
         """,
@@ -85,7 +109,7 @@ abstract class ImageDao {
         """
         SELECT image.* FROM image
         INNER JOIN active_image_analysis AS active ON active.image_local_id = image.local_id
-        WHERE image.availability = 'AVAILABLE' AND image.missing_candidate_since_epoch_millis IS NULL
+        WHERE image.availability = 'AVAILABLE' AND image.partition = 'MAIN' AND image.missing_candidate_since_epoch_millis IS NULL
         ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
             image.volume_name DESC, image.local_id DESC
         """,
@@ -96,7 +120,7 @@ abstract class ImageDao {
         """
         SELECT image.* FROM image
         LEFT JOIN active_image_analysis AS active ON active.image_local_id = image.local_id
-        WHERE image.availability = 'AVAILABLE' AND image.missing_candidate_since_epoch_millis IS NULL
+        WHERE image.availability = 'AVAILABLE' AND image.partition = 'UNPROCESSED' AND image.missing_candidate_since_epoch_millis IS NULL
           AND active.analysis_id IS NULL
         ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
             image.volume_name DESC, image.local_id DESC
@@ -107,7 +131,7 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE image.availability = 'ANALYSIS_REJECTED'
+        WHERE image.partition = 'PRIVATE_UNANALYZABLE'
         ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
             image.volume_name DESC, image.local_id DESC
         """,
@@ -118,7 +142,7 @@ abstract class ImageDao {
         """
         SELECT * FROM image
         WHERE local_id = :localId
-          AND availability = 'AVAILABLE'
+          AND availability = 'AVAILABLE' AND partition = 'MAIN'
           AND missing_candidate_since_epoch_millis IS NULL
         LIMIT 1
         """,
@@ -128,7 +152,7 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE availability = 'AVAILABLE'
+        WHERE availability = 'AVAILABLE' AND partition = 'MAIN'
           AND missing_candidate_since_epoch_millis IS NULL
           AND (
             sort_time_epoch_millis > :sortTime
@@ -153,7 +177,7 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
-        WHERE availability = 'AVAILABLE'
+        WHERE availability = 'AVAILABLE' AND partition = 'MAIN'
           AND missing_candidate_since_epoch_millis IS NULL
           AND (
             sort_time_epoch_millis < :sortTime
@@ -194,7 +218,7 @@ abstract class ImageDao {
 
     @Query(
         """
-        SELECT volume_name, media_store_id, local_id, availability
+        SELECT volume_name, media_store_id, local_id, availability, partition
         FROM image
         WHERE volume_name = :volumeName AND media_store_id IN (:mediaStoreIds)
         """,

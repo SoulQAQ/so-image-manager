@@ -84,9 +84,16 @@ data class AiSettingsUiState(
 class AiSettingsViewModel(
     private val repository: AiConfigurationRepository,
     private val credentialStore: AiCredentialStore,
+    private val requestedProviderId: String? = null,
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
+    private val isNewProvider = requestedProviderId == NEW_PROVIDER_ARGUMENT
+    private val existingProviderId = requestedProviderId?.takeUnless { it == NEW_PROVIDER_ARGUMENT }
+    private val providerId = if (isNewProvider) "provider.${UUID.randomUUID()}" else existingProviderId ?: PROVIDER_ID
+    private var modelId = if (providerId == PROVIDER_ID) MODEL_ID else "model.$providerId"
+    private var protocolId = if (providerId == PROVIDER_ID) PROTOCOL_ID else "protocol.$providerId"
+    private val credentialStorageId = if (providerId == PROVIDER_ID) CREDENTIAL_ID else "credential.$providerId"
     private val mutableState = MutableStateFlow(AiSettingsUiState())
     val uiState: StateFlow<AiSettingsUiState> = mutableState.asStateFlow()
     private var dirty = false
@@ -130,8 +137,10 @@ class AiSettingsViewModel(
         val snapshot = try {
             withContext(ioDispatcher) {
                 val runtime = repository.getRuntimeSetting()
-                val model = runtime?.defaultModelProfileId?.let { repository.getModel(it) }
-                val provider = model?.let { repository.getProvider(it.providerId) }
+                val model = existingProviderId?.let { repository.getVisionModelForProvider(it) }
+                    ?: runtime?.defaultModelProfileId?.let { repository.getModel(it) }
+                val provider = existingProviderId?.let { repository.getProvider(it) }
+                    ?: model?.let { repository.getProvider(it.providerId) }
                 val protocol = model?.protocolDefinitionId?.let { repository.getProtocol(it) }
                 ConfigurationSnapshot(runtime, provider, model, protocol)
             }
@@ -146,6 +155,8 @@ class AiSettingsViewModel(
         providerCreatedAt = snapshot.provider?.createdAtEpochMillis ?: 0L
         modelCreatedAt = snapshot.model?.createdAtEpochMillis ?: 0L
         protocolCreatedAt = snapshot.protocol?.createdAtEpochMillis ?: 0L
+        snapshot.model?.modelProfileId?.let { modelId = it }
+        snapshot.protocol?.protocolDefinitionId?.let { protocolId = it }
         val credentialConfigured = credentialPresent(snapshot.provider?.credentialId)
         mutableState.value = AiSettingsUiState(
             form = snapshot.toForm(),
@@ -169,10 +180,10 @@ class AiSettingsViewModel(
 
     private suspend fun saveForm(form: AiSettingsForm): AiSettingsError? {
         val now = nowEpochMillis()
-        val credentialId = if (form.authMode == ProviderAuthMode.NONE) null else CREDENTIAL_ID
+        val credentialId = if (form.authMode == ProviderAuthMode.NONE) null else credentialStorageId
         val provider = try {
             ProviderProfileEntity(
-                providerId = PROVIDER_ID,
+                providerId = providerId,
                 displayName = form.providerName.trim(),
                 baseUrl = form.baseUrl.trim(),
                 authMode = form.authMode,
@@ -199,15 +210,15 @@ class AiSettingsViewModel(
         } catch (_: IllegalArgumentException) {
             return AiSettingsError.INVALID_FIELDS
         }
-        val protocolId = if (form.protocolType == ModelProtocolType.CUSTOM_JSON) PROTOCOL_ID else null
+        val savedProtocolId = if (form.protocolType == ModelProtocolType.CUSTOM_JSON) protocolId else null
         val model = try {
             ModelProfileEntity(
-                modelProfileId = MODEL_ID,
-                providerId = PROVIDER_ID,
+                modelProfileId = modelId,
+                providerId = providerId,
                 displayName = form.modelName.trim(),
                 modelId = form.modelId.trim(),
                 protocolType = form.protocolType,
-                protocolDefinitionId = protocolId,
+                protocolDefinitionId = savedProtocolId,
                 supportsVision = true,
                 maxOutputTokens = form.maxOutputTokens.optionalInt(),
                 temperature = form.temperature.optionalDouble(),
@@ -225,7 +236,7 @@ class AiSettingsViewModel(
         }
         val runtime = try {
             AiRuntimeSettingEntity(
-                defaultModelProfileId = MODEL_ID,
+                defaultModelProfileId = modelId,
                 globalMaxConcurrency = form.globalConcurrency.requiredInt(),
                 globalRequestsPerMinute = form.globalRequestsPerMinute.requiredInt(),
                 globalRequestsPerDay = form.globalRequestsPerDay.requiredInt(),
@@ -238,9 +249,9 @@ class AiSettingsViewModel(
         } catch (_: IllegalArgumentException) {
             return AiSettingsError.INVALID_FIELDS
         }
-        val protocol = if (protocolId != null) {
+        val protocol = if (savedProtocolId != null) {
             ProtocolDefinitionEntity(
-                protocolDefinitionId = protocolId,
+                protocolDefinitionId = savedProtocolId,
                 displayName = form.customProtocolName.trim(),
                 definitionJson = form.customProtocolJson.trim(),
                 enabled = true,
@@ -262,7 +273,7 @@ class AiSettingsViewModel(
             if (form.apiKey.isNotBlank()) {
                 val secret = form.apiKey.toCharArray()
                 try {
-                    credentialStore.put(CREDENTIAL_ID, secret)
+                    credentialStore.put(credentialStorageId, secret)
                 } catch (_: Exception) {
                     return AiSettingsError.CREDENTIAL_STORAGE_FAILED
                 } finally {
@@ -271,8 +282,14 @@ class AiSettingsViewModel(
             }
         }
         return try {
-            repository.saveBundle(provider, model, runtime, protocol)
-            if (form.authMode == ProviderAuthMode.NONE) credentialStore.delete(CREDENTIAL_ID)
+            val existingRuntime = repository.getRuntimeSetting()
+            if (existingRuntime == null || existingRuntime.defaultModelProfileId == modelId) {
+                repository.saveBundle(provider, model, runtime, protocol)
+            } else {
+                repository.saveFallbackBundle(provider, model, protocol)
+            }
+            repository.addProviderToRoutes(provider.providerId)
+            if (form.authMode == ProviderAuthMode.NONE) credentialStore.delete(credentialStorageId)
             providerCreatedAt = provider.createdAtEpochMillis
             modelCreatedAt = model.createdAtEpochMillis
             protocolCreatedAt = protocol?.createdAtEpochMillis ?: 0L
@@ -347,12 +364,14 @@ class AiSettingsViewModel(
         const val MODEL_ID = "model.active"
         const val PROTOCOL_ID = "protocol.active"
         const val CREDENTIAL_ID = "credential.active"
+        private const val NEW_PROVIDER_ARGUMENT = "new"
 
         fun factory(
             repository: AiConfigurationRepository,
             credentialStore: AiCredentialStore,
+            providerId: String? = null,
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { AiSettingsViewModel(repository, credentialStore) }
+            initializer { AiSettingsViewModel(repository, credentialStore, providerId) }
         }
     }
 }

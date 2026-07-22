@@ -3,6 +3,7 @@ package cn.soul2.imageai.data.db.dao
 import androidx.room.ColumnInfo
 import cn.soul2.imageai.data.db.entity.ImageEntity
 import cn.soul2.imageai.data.db.entity.ImageAvailability
+import cn.soul2.imageai.data.db.entity.ImagePartition
 
 data class ExistingImageIdentity(
     @ColumnInfo(name = "volume_name")
@@ -12,6 +13,7 @@ data class ExistingImageIdentity(
     @ColumnInfo(name = "local_id")
     val localId: Long,
     val availability: ImageAvailability = ImageAvailability.AVAILABLE,
+    val partition: ImagePartition = ImagePartition.UNPROCESSED,
 )
 
 internal data class ImageIdentityQueryBatch(
@@ -55,6 +57,9 @@ internal object ImageUpsertResolver {
                 availability = existingImage.availability.takeIf {
                     it == ImageAvailability.REMOVED_FROM_SOIM
                 } ?: image.availability,
+                // MediaStore synchronization is metadata-only. It must never undo a
+                // deliberate partition move or an analysis result transition.
+                partition = existingImage.partition,
             )
         }
     }

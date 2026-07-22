@@ -6,9 +6,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
+data class GalleryStatus(val totalCount: Int, val analyzedCount: Int)
+
 interface GalleryRepository {
     fun observe(query: GalleryQuery): Flow<PagingData<GalleryImage>>
     fun observeCount(): Flow<Int>
+    fun observeStatus(): Flow<GalleryStatus> = observeCount().map { GalleryStatus(it, it) }
     fun observeImage(localId: Long): Flow<GalleryImage?>
     fun observeEffectiveMetadata(localId: Long): Flow<EffectiveImageMetadata?> = flowOf(null)
     fun observeImageWindow(localId: Long): Flow<GalleryImageWindow?> =

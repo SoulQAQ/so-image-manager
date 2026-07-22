@@ -38,6 +38,8 @@ import cn.soul2.imageai.ui.gallery.ImageDetailDestination
 import cn.soul2.imageai.ui.gallery.ImageDetailScreen
 import cn.soul2.imageai.ui.ai.AiSettingsDestination
 import cn.soul2.imageai.ui.ai.AiSettingsScreen
+import cn.soul2.imageai.ui.ai.ModelProvidersDestination
+import cn.soul2.imageai.ui.ai.ModelProvidersScreen
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingScreen
 import cn.soul2.imageai.ui.screens.HomeScreen
 import cn.soul2.imageai.ui.screens.LibraryScreen
@@ -99,8 +101,9 @@ fun SoImageManagerApp(
     val currentRoute = backStackEntry?.destination?.route ?: AppDestination.start.route
     val isImageDetail = currentRoute == ImageDetailDestination.route
     val isSearch = currentRoute == SearchDestination.route
-    val isAiSettings = currentRoute == AiSettingsDestination.route
-    val showBottomNavigation = !isImageDetail && !isSearch && !isAiSettings
+    val isAiSettings = currentRoute?.startsWith(AiSettingsDestination.baseRoute) == true
+    val isModelProviders = currentRoute == ModelProvidersDestination.route
+    val showBottomNavigation = !isImageDetail && !isSearch && !isAiSettings && !isModelProviders
 
     Scaffold(
         contentWindowInsets = if (isImageDetail) {
@@ -223,16 +226,35 @@ fun SoImageManagerApp(
                         onDocumentImportNoticeConsumed = onDocumentImportNoticeConsumed,
                         onRescan = onRequestGalleryReconciliation,
                         onOpenSystemSettings = onOpenAppSettings,
-                        onOpenAiSettings = { navController.navigate(AiSettingsDestination.route) },
+                        onOpenAiSettings = { navController.navigate(ModelProvidersDestination.route) },
                     )
                 }
-                composable(AiSettingsDestination.route) {
+                composable(ModelProvidersDestination.route) {
+                    val repository = aiConfigurationRepository
+                    if (repository != null) {
+                        ModelProvidersScreen(
+                            repository = repository,
+                            onBack = navController::navigateUp,
+                            onAdd = { navController.navigate(AiSettingsDestination.createNewRoute()) },
+                            onEdit = { id -> navController.navigate(AiSettingsDestination.createRoute(id)) },
+                        )
+                    }
+                }
+                composable(
+                    route = AiSettingsDestination.route,
+                    arguments = listOf(navArgument(AiSettingsDestination.providerIdArgument) {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }),
+                ) { entry ->
                     val repository = aiConfigurationRepository
                     val credentials = aiCredentialStore
                     if (repository != null && credentials != null) {
                         AiSettingsScreen(
                             repository = repository,
                             credentialStore = credentials,
+                            providerId = entry.arguments?.getString(AiSettingsDestination.providerIdArgument),
                             onBack = navController::navigateUp,
                         )
                     } else {

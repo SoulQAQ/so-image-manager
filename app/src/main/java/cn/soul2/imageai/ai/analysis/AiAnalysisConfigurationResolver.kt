@@ -6,6 +6,7 @@ import cn.soul2.imageai.data.db.entity.ModelProfileEntity
 import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
 import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 
 data class ResolvedAiAnalysisConfiguration(
     val runtime: AiRuntimeSettingEntity,
@@ -32,7 +33,7 @@ class AiConfigurationResolutionException(
 fun interface AiAnalysisConfigurationResolver {
     suspend fun resolve(): ResolvedAiAnalysisConfiguration
 
-    suspend fun resolveCandidates(): List<ResolvedAiAnalysisConfiguration> = listOf(resolve())
+    suspend fun resolveCandidates(partition: ImagePartition = ImagePartition.MAIN): List<ResolvedAiAnalysisConfiguration> = listOf(resolve())
 }
 
 class RepositoryAiAnalysisConfigurationResolver(
@@ -48,17 +49,24 @@ class RepositoryAiAnalysisConfigurationResolver(
         return resolveModel(runtime, model)
     }
 
-    override suspend fun resolveCandidates(): List<ResolvedAiAnalysisConfiguration> {
+    override suspend fun resolveCandidates(partition: ImagePartition): List<ResolvedAiAnalysisConfiguration> {
         val runtime = repository.getRuntimeSetting()
             ?: unavailable(AiConfigurationFailure.RUNTIME_MISSING)
         val defaultId = runtime.defaultModelProfileId
             ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
         val default = repository.getModel(defaultId)
             ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
+        val routedProviderIds = repository.getEnabledProviderIds(partition)
         return buildList {
-            add(resolveModel(runtime, default))
-            repository.getEnabledVisionModels()
-                .filter { it.modelProfileId != default.modelProfileId }
+            val candidates = repository.getEnabledVisionModels()
+                .filter { it.providerId in routedProviderIds }
+                .sortedBy { routedProviderIds.indexOf(it.providerId) }
+            val first = candidates.firstOrNull { it.modelProfileId == default.modelProfileId }
+                ?: candidates.firstOrNull()
+                ?: unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
+            add(resolveModel(runtime, first))
+            candidates
+                .filter { it.modelProfileId != first.modelProfileId }
                 .forEach { model ->
                     try {
                         add(resolveModel(runtime, model))

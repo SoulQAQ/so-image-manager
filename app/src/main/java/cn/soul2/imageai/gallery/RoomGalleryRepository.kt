@@ -35,6 +35,11 @@ class RoomGalleryRepository(
 
     override fun observeCount(): Flow<Int> = imageDao.observeAvailableCount()
 
+    override fun observeStatus(): Flow<GalleryStatus> = combine(
+        imageDao.observeTotalGalleryCount(),
+        imageDao.observeAvailableCount(),
+    ) { total, analyzed -> GalleryStatus(total, analyzed) }
+
     override fun observeImage(localId: Long): Flow<GalleryImage?> =
         imageDao.observeAvailableById(localId).map { entity -> entity?.toGalleryImage() }
 

@@ -7,12 +7,20 @@ import cn.soul2.imageai.data.db.entity.AiRuntimeSettingEntity
 import cn.soul2.imageai.data.db.entity.ModelProfileEntity
 import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
 import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
+import cn.soul2.imageai.data.db.entity.ProviderRouteEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 internal interface AiConfigurationDao {
     @Query("SELECT * FROM provider_profile ORDER BY display_name ASC, provider_id ASC")
     fun observeProviders(): Flow<List<ProviderProfileEntity>>
+
+    @Query("SELECT * FROM provider_route WHERE partition = :partition ORDER BY position ASC")
+    fun observeRoutes(partition: ImagePartition): Flow<List<ProviderRouteEntity>>
+
+    @Query("SELECT * FROM provider_route WHERE partition = :partition ORDER BY position ASC")
+    suspend fun getRoutes(partition: ImagePartition): List<ProviderRouteEntity>
 
     @Query("SELECT * FROM model_profile ORDER BY display_name ASC, model_profile_id ASC")
     fun observeModels(): Flow<List<ModelProfileEntity>>
@@ -29,6 +37,9 @@ internal interface AiConfigurationDao {
     @Query("SELECT * FROM model_profile WHERE model_profile_id = :modelProfileId LIMIT 1")
     suspend fun getModel(modelProfileId: String): ModelProfileEntity?
 
+    @Query("SELECT * FROM model_profile WHERE provider_id = :providerId AND supports_vision = 1 ORDER BY model_profile_id ASC LIMIT 1")
+    suspend fun getVisionModelForProvider(providerId: String): ModelProfileEntity?
+
     @Query("SELECT * FROM model_profile WHERE enabled = 1 AND supports_vision = 1 ORDER BY model_profile_id ASC")
     suspend fun getEnabledVisionModels(): List<ModelProfileEntity>
 
@@ -40,6 +51,12 @@ internal interface AiConfigurationDao {
 
     @Upsert
     suspend fun upsertProvider(provider: ProviderProfileEntity)
+
+    @Upsert
+    suspend fun upsertRoutes(routes: List<ProviderRouteEntity>)
+
+    @Query("DELETE FROM provider_route WHERE partition = :partition")
+    suspend fun deleteRoutes(partition: ImagePartition): Int
 
     @Upsert
     suspend fun upsertModel(model: ModelProfileEntity)

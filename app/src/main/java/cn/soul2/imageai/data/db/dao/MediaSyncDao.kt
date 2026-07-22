@@ -322,7 +322,7 @@ abstract class MediaSyncDao {
 
     @Query(
         """
-        SELECT volume_name, media_store_id, local_id, availability
+        SELECT volume_name, media_store_id, local_id, availability, partition
         FROM image
         WHERE volume_name = :volumeName AND media_store_id IN (:mediaStoreIds)
         """,

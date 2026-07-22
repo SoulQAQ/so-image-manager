@@ -141,6 +141,7 @@ internal interface SearchIndexDao {
         SELECT search_document_fts.rowid FROM search_document_fts
         INNER JOIN image AS i ON i.local_id = search_document_fts.rowid
         WHERE search_document_fts MATCH :matchQuery AND i.availability = 'AVAILABLE'
+          AND i.partition = 'MAIN'
         ORDER BY i.sort_time_epoch_millis DESC, i.media_store_id DESC,
             i.volume_name DESC, i.local_id DESC
         LIMIT :limit
@@ -159,6 +160,7 @@ internal interface SearchIndexDao {
         INNER JOIN search_term AS t ON t.term_id = m.term_id
         INNER JOIN image AS i ON i.local_id = m.image_local_id
         WHERE t.normalized_key = :normalizedKey AND i.availability = 'AVAILABLE'
+          AND i.partition = 'MAIN'
         ORDER BY m.weight DESC, i.sort_time_epoch_millis DESC,
             i.media_store_id DESC, i.volume_name DESC, i.local_id DESC
         LIMIT :limit
@@ -180,6 +182,7 @@ internal interface SearchIndexDao {
         INNER JOIN search_term AS t ON t.term_id = m.term_id
         INNER JOIN image AS i ON i.local_id = m.image_local_id
         WHERE m.term_id IN (:termIds) AND i.availability = 'AVAILABLE'
+          AND i.partition = 'MAIN'
         ORDER BY m.weight DESC, i.sort_time_epoch_millis DESC,
             i.media_store_id DESC, i.volume_name DESC, i.local_id DESC
         LIMIT :limit
@@ -200,7 +203,7 @@ internal interface SearchIndexDao {
         """
         SELECT i.* FROM image AS i
         LEFT JOIN search_document AS d ON d.rowid = i.local_id
-        WHERE i.availability = 'AVAILABLE' AND d.rowid IS NULL
+        WHERE i.availability = 'AVAILABLE' AND i.partition = 'MAIN' AND d.rowid IS NULL
         ORDER BY i.sort_time_epoch_millis DESC, i.media_store_id DESC,
             i.volume_name DESC, i.local_id DESC
         LIMIT :limit

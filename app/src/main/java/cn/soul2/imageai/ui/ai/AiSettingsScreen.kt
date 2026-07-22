@@ -50,17 +50,26 @@ import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProviderAuthMode
 
 object AiSettingsDestination {
-    const val route = "ai_settings"
+    const val providerIdArgument = "providerId"
+    const val route = "ai_settings?providerId={providerId}"
+    const val baseRoute = "ai_settings"
+
+    fun createRoute(providerId: String? = null): String = providerId?.let {
+        "ai_settings?providerId=$it"
+    } ?: baseRoute
+
+    fun createNewRoute(): String = "ai_settings?providerId=new"
 }
 
 @Composable
 fun AiSettingsScreen(
     repository: AiConfigurationRepository,
     credentialStore: AiCredentialStore,
+    providerId: String? = null,
     onBack: () -> Unit,
 ) {
     val viewModel: AiSettingsViewModel = viewModel(
-        factory = AiSettingsViewModel.factory(repository, credentialStore),
+        factory = AiSettingsViewModel.factory(repository, credentialStore, providerId),
     )
     val state by viewModel.uiState.collectAsState()
     val snackbar = remember { SnackbarHostState() }

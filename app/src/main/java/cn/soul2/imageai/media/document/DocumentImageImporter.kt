@@ -8,6 +8,7 @@ import android.provider.OpenableColumns
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.entity.ImageAvailability
 import cn.soul2.imageai.data.db.entity.ImageEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import cn.soul2.imageai.data.db.entity.ImageSource
 import java.nio.ByteBuffer
 import java.security.MessageDigest
@@ -90,6 +91,7 @@ class DocumentImageImporter(
             isFavorite = false,
             quickFingerprint = identity.fingerprint,
             availability = ImageAvailability.AVAILABLE,
+            partition = ImagePartition.UNPROCESSED,
             lastSeenSyncRunId = null,
             missingCandidateSinceEpochMillis = null,
             missingObservationCount = 0,

@@ -368,4 +368,27 @@ object AppDatabaseMigrations {
             ).forEach(database::execSQL)
         }
     }
+
+    val MIGRATION_8_9: Migration = object : Migration(8, 9) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                "ALTER TABLE `image` ADD COLUMN `partition` TEXT NOT NULL DEFAULT 'UNPROCESSED'",
+            )
+            database.execSQL(
+                "UPDATE `image` SET `partition` = 'MAIN' WHERE EXISTS (" +
+                    "SELECT 1 FROM `active_image_analysis` AS active " +
+                    "WHERE active.`image_local_id` = `image`.`local_id`)",
+            )
+            database.execSQL(
+                "UPDATE `image` SET `partition` = 'PRIVATE' WHERE `availability` = 'ANALYSIS_REJECTED'",
+            )
+            listOf(
+                "CREATE TABLE IF NOT EXISTS `provider_route` (`partition` TEXT NOT NULL, `provider_id` TEXT NOT NULL, `position` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, PRIMARY KEY(`partition`, `provider_id`), FOREIGN KEY(`provider_id`) REFERENCES `provider_profile`(`provider_id`) ON UPDATE NO ACTION ON DELETE CASCADE)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_provider_route_partition_position` ON `provider_route` (`partition`, `position`)",
+                "CREATE INDEX IF NOT EXISTS `index_provider_route_provider_id` ON `provider_route` (`provider_id`)",
+                "INSERT OR IGNORE INTO `provider_route` (`partition`, `provider_id`, `position`, `enabled`) SELECT 'MAIN', `provider_id`, 0, `enabled` FROM `model_profile` WHERE `model_profile_id` = (SELECT `default_model_profile_id` FROM `ai_runtime_setting` WHERE `singleton_id` = 1)",
+                "INSERT OR IGNORE INTO `provider_route` (`partition`, `provider_id`, `position`, `enabled`) SELECT 'PRIVATE', `provider_id`, 0, `enabled` FROM `model_profile` WHERE `model_profile_id` = (SELECT `default_model_profile_id` FROM `ai_runtime_setting` WHERE `singleton_id` = 1)",
+            ).forEach(database::execSQL)
+        }
+    }
 }

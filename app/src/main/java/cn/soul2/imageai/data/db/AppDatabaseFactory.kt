@@ -9,6 +9,7 @@ import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_4_5
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_5_6
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_6_7
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_7_8
+import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_8_9
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 
 object AppDatabaseFactory {
@@ -28,6 +29,7 @@ object AppDatabaseFactory {
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
+        MIGRATION_8_9,
     ).build()
 
     suspend fun cleanupLegacyDatabaseIfNeeded(

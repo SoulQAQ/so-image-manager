@@ -30,6 +30,7 @@ enum class SettingsCommand {
 data class SettingsUiState(
     val permissionLabel: SettingsPermissionLabel? = null,
     val indexedCount: Int? = null,
+    val analyzedCount: Int? = null,
     val unavailableCount: Int? = null,
 )
 
@@ -43,16 +44,17 @@ class SettingsViewModel(
 
     val uiState = combine(
         galleryAccessStates,
-        repository.observeCount(),
+        repository.observeStatus(),
         unavailableCounts,
-    ) { accessState, indexedCount, unavailableCount ->
+    ) { accessState, status, unavailableCount ->
         SettingsUiState(
             permissionLabel = when (accessState) {
                 GalleryAccessState.Full -> SettingsPermissionLabel.Full
                 GalleryAccessState.Partial -> SettingsPermissionLabel.Partial
                 is GalleryAccessState.Denied -> SettingsPermissionLabel.Denied
             },
-            indexedCount = indexedCount,
+            indexedCount = status.totalCount,
+            analyzedCount = status.analyzedCount,
             unavailableCount = unavailableCount,
         )
     }.stateIn(

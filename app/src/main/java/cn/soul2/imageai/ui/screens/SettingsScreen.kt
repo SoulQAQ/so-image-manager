@@ -139,79 +139,25 @@ private fun SettingsContent(
         ) {
             item {
                 Text(
-                    text = stringResource(R.string.settings_section_ai),
+                    text = "图库状态",
                     modifier = Modifier.padding(vertical = 6.dp),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
             item {
-                SettingsAction(
-                    labelRes = R.string.settings_ai_models,
-                    icon = Icons.Outlined.SmartToy,
-                    onClick = onOpenAiSettings,
-                )
-                HorizontalDivider()
-            }
-            item {
-                Text(
-                    text = stringResource(R.string.settings_section_import),
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            item {
-                SettingsAction(
-                    labelRes = R.string.settings_import_documents,
-                    icon = Icons.Outlined.FolderOpen,
-                    onClick = onSelectDocumentImages,
-                )
-                HorizontalDivider()
-            }
-            item {
-                Text(
-                    text = stringResource(R.string.settings_section_access),
-                    modifier = Modifier.padding(vertical = 6.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Security,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = stringResource(R.string.settings_permission_label),
-                        modifier = Modifier.weight(1f),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        text = uiState.permissionLabel?.let { label ->
-                            stringResource(permissionLabelRes(label))
-                        } ?: stringResource(R.string.settings_loading),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                HorizontalDivider()
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    SettingsCount(
-                        labelRes = R.string.settings_indexed,
+                    SettingsCountText(
+                        label = "图片总数",
                         count = uiState.indexedCount,
                         modifier = Modifier.weight(1f),
                     )
-                    SettingsCount(
-                        labelRes = R.string.settings_unavailable,
-                        count = uiState.unavailableCount,
+                    SettingsCountText(
+                        label = "已分析",
+                        count = uiState.analyzedCount,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -219,17 +165,10 @@ private fun SettingsContent(
             }
             item {
                 Text(
-                    text = stringResource(R.string.settings_section_maintenance),
+                    text = "常规设置",
                     modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            item {
-                SettingsAction(
-                    labelRes = R.string.settings_reselect_photos,
-                    icon = Icons.Outlined.AddPhotoAlternate,
-                    onClick = onReselectPhotos,
                 )
             }
             item {
@@ -240,11 +179,35 @@ private fun SettingsContent(
                 )
             }
             item {
+                Text("模型提供方", modifier = Modifier.padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                SettingsAction(
+                    labelRes = R.string.settings_ai_models,
+                    icon = Icons.Outlined.SmartToy,
+                    onClick = onOpenAiSettings,
+                )
+            }
+            item {
+                Text("图库设置", modifier = Modifier.padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                SettingsAction(labelRes = R.string.settings_import_documents, icon = Icons.Outlined.FolderOpen, onClick = onSelectDocumentImages)
+            }
+            item {
+                Text("APP权限", modifier = Modifier.padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                SettingsAction(
+                    labelRes = R.string.settings_reselect_photos,
+                    icon = Icons.Outlined.AddPhotoAlternate,
+                    onClick = onReselectPhotos,
+                )
+            }
+            item {
                 SettingsAction(
                     labelRes = R.string.gallery_permission_open_settings,
                     icon = Icons.Outlined.Settings,
                     onClick = onOpenSystemSettings,
                 )
+            }
+            item {
+                Text("关于", modifier = Modifier.padding(top = 16.dp, bottom = 4.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text("SoIM 本地 AI 图片管理", modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -262,6 +225,14 @@ private fun SettingsCount(@StringRes labelRes: Int, count: Int?, modifier: Modif
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun SettingsCountText(label: String, count: Int?, modifier: Modifier) {
+    Column(modifier) {
+        Text(text = count?.toString() ?: stringResource(R.string.settings_loading), style = MaterialTheme.typography.titleMedium)
+        Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

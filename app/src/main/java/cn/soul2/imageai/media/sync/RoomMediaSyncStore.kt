@@ -3,6 +3,7 @@ package cn.soul2.imageai.media.sync
 import cn.soul2.imageai.data.db.dao.MediaSyncDao
 import cn.soul2.imageai.data.db.entity.ImageAvailability
 import cn.soul2.imageai.data.db.entity.ImageEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import cn.soul2.imageai.data.db.entity.ImageSource
 import cn.soul2.imageai.data.db.entity.MediaSyncCheckpointEntity
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
@@ -126,6 +127,7 @@ internal object RoomMediaSyncMapper {
             isFavorite = image.isFavorite,
             quickFingerprint = image.quickFingerprint(),
             availability = ImageAvailability.AVAILABLE,
+            partition = ImagePartition.UNPROCESSED,
             lastSeenSyncRunId = run.runId.takeIf { run.mode == SyncMode.RECONCILE },
             missingCandidateSinceEpochMillis = null,
             missingObservationCount = 0,

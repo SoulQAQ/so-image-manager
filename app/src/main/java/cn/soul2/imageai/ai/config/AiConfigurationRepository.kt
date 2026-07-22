@@ -9,6 +9,8 @@ import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProtocolDefinitionEntity
 import cn.soul2.imageai.data.db.entity.ProviderAuthMode
 import cn.soul2.imageai.data.db.entity.ProviderProfileEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
+import cn.soul2.imageai.data.db.entity.ProviderRouteEntity
 import cn.soul2.imageai.ai.protocol.CustomJsonProtocolDefinition
 import java.net.URI
 import org.json.JSONArray
@@ -23,6 +25,26 @@ class AiConfigurationRepository(
     val models = dao.observeModels()
     val protocols = dao.observeProtocols()
     val runtimeSetting = dao.observeRuntimeSetting()
+
+    fun providerRoutes(partition: ImagePartition) = dao.observeRoutes(partition)
+
+    suspend fun saveProviderRoutes(partition: ImagePartition, routes: List<ProviderRouteEntity>) {
+        val normalized = routes.distinctBy(ProviderRouteEntity::providerId)
+            .mapIndexed { index, route -> route.copy(partition = partition, position = index) }
+        database.withTransaction {
+            dao.deleteRoutes(partition)
+            if (normalized.isNotEmpty()) dao.upsertRoutes(normalized)
+        }
+    }
+
+    suspend fun addProviderToRoutes(providerId: String) {
+        listOf(ImagePartition.MAIN, ImagePartition.PRIVATE).forEach { partition ->
+            val routes = dao.getRoutes(partition)
+            if (routes.none { it.providerId == providerId }) {
+                dao.upsertRoutes(routes + ProviderRouteEntity(partition, providerId, routes.size, true))
+            }
+        }
+    }
 
     suspend fun saveProvider(provider: ProviderProfileEntity) {
         validateProvider(provider)
@@ -175,7 +197,12 @@ class AiConfigurationRepository(
 
     suspend fun getModel(modelProfileId: String) = dao.getModel(modelProfileId)
 
+    suspend fun getVisionModelForProvider(providerId: String) = dao.getVisionModelForProvider(providerId)
+
     suspend fun getEnabledVisionModels() = dao.getEnabledVisionModels()
+
+    suspend fun getEnabledProviderIds(partition: ImagePartition): List<String> =
+        dao.getRoutes(partition).filter { it.enabled }.map { it.providerId }
 
     suspend fun getProtocol(protocolDefinitionId: String) = dao.getProtocol(protocolDefinitionId)
 

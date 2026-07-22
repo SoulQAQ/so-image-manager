@@ -6,6 +6,7 @@ import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
 import cn.soul2.imageai.data.db.dao.BatchAnalysisDao
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.entity.BatchAnalysisRunEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import kotlinx.coroutines.flow.Flow
 
 class BatchAnalysisRepository(
@@ -34,14 +35,20 @@ class BatchAnalysisRepository(
                 cn.soul2.imageai.ai.analysis.SingleImageAnalysisFailure.IMAGE_UNAVAILABLE,
             )
         } else {
-            analyzer.analyze(ImageAnalysisTarget(image.localId, image.contentUri))
+            analyzer.analyze(ImageAnalysisTarget(image.localId, image.contentUri, image.partition))
         }
         when (result) {
             is SingleImageAnalysisResult.Success -> dao.finishItem(run.runId, imageId, "SUCCEEDED", null)
             is SingleImageAnalysisResult.Failure -> {
                 dao.finishItem(run.runId, imageId, "FAILED", result.reason.name)
                 if (result.reason == cn.soul2.imageai.ai.analysis.SingleImageAnalysisFailure.PROVIDER_REJECTED) {
-                    imageDao.hideRejectedAnalysis(imageId)
+                    when (image?.partition) {
+                        ImagePartition.MAIN,
+                        ImagePartition.UNPROCESSED -> imageDao.moveRejectedMainImageToPrivate(imageId)
+                        ImagePartition.PRIVATE -> imageDao.markRejectedPrivateImageUnanalyzable(imageId)
+                        ImagePartition.PRIVATE_UNANALYZABLE -> Unit
+                        null -> Unit
+                    }
                 }
                 if (BatchAnalysisPolicy.pausesRun(result.reason)) {
                     dao.pauseRun(run.runId, now())
