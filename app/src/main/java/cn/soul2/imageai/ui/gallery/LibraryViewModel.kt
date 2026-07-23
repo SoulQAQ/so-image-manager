@@ -26,8 +26,9 @@ class LibraryViewModel(
     repository: GalleryRepository,
     syncRuns: Flow<MediaSyncRunEntity?>,
     runtimeSettings: Flow<AiRuntimeSettingEntity?> = flowOf(null),
+    initialSource: GallerySource? = null,
 ) : ViewModel() {
-    private val selectedSource = MutableStateFlow<GallerySource?>(null)
+    private val selectedSource = MutableStateFlow(initialSource)
     private val activeSource = combine(selectedSource, runtimeSettings) { selected, runtime ->
         selected ?: if (runtime?.onlyShowAnalyzed == true) GallerySource.Analyzed else GallerySource.All
     }.distinctUntilChanged().stateIn(
@@ -35,6 +36,8 @@ class LibraryViewModel(
         started = SharingStarted.Eagerly,
         initialValue = GallerySource.All,
     )
+
+    val currentSource = activeSource
 
     val images = activeSource.flatMapLatest { source ->
         repository.observe(GalleryQuery(source))
@@ -61,8 +64,9 @@ class LibraryViewModel(
             repository: GalleryRepository,
             syncRuns: Flow<MediaSyncRunEntity?>,
             runtimeSettings: Flow<AiRuntimeSettingEntity?> = flowOf(null),
+            initialSource: GallerySource? = null,
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { LibraryViewModel(repository, syncRuns, runtimeSettings) }
+            initializer { LibraryViewModel(repository, syncRuns, runtimeSettings, initialSource) }
         }
     }
 }

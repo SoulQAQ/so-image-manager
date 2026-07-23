@@ -81,6 +81,7 @@ import cn.soul2.imageai.data.db.entity.UserTermOverrideAction
 import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.gallery.GalleryImageWindow
 import cn.soul2.imageai.gallery.GalleryRepository
+import cn.soul2.imageai.gallery.GallerySource
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -101,16 +102,18 @@ fun ImageDetailScreen(
     singleImageAnalyzer: SingleImageAnalyzer? = null,
     canonicalMetadataRepository: CanonicalMetadataRepository? = null,
     localId: Long,
+    source: GallerySource = GallerySource.All,
     onBack: () -> Unit,
 ) {
     key(localId) {
     val viewModel: ImageDetailViewModel = viewModel(
-        key = "image_detail_$localId",
+        key = "image_detail_${source::class.simpleName}_$localId",
         factory = ImageDetailViewModel.factory(
             repository,
             localId,
             singleImageAnalyzer,
             canonicalMetadataRepository,
+            source,
         ),
     )
     val uiState by viewModel.uiState.collectAsState()

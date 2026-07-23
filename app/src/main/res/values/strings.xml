@@ -3,6 +3,7 @@
     <string name="app_name">SoIM</string>
     <string name="nav_home">首页</string>
     <string name="nav_library">图库</string>
+    <string name="private_gallery_title">隐私分区</string>
     <string name="nav_tasks">任务</string>
     <string name="nav_settings">设置</string>
     <string name="home_empty">暂无已索引图片</string>
@@ -73,6 +74,7 @@
     <string name="gallery_selection_reanalyze">重新分析</string>
     <string name="gallery_selection_share">分享</string>
     <string name="gallery_selection_remove">从 SoIM 移除</string>
+    <string name="gallery_selection_private">移入隐私</string>
     <string name="gallery_selection_delete">删除原图</string>
     <string name="batch_analysis_section">批量 AI 分析</string>
     <string name="batch_analysis_all">分析全部图库</string>

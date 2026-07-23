@@ -62,6 +62,7 @@ fun SettingsScreen(
     onOpenSystemSettings: () -> Unit,
     onOpenGeneralSettings: () -> Unit,
     onOpenAiSettings: () -> Unit,
+    onOpenPrivateGallery: () -> Unit,
 ) {
     val viewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.factory(galleryAccessStates, repository, unavailableCounts),
@@ -100,6 +101,7 @@ fun SettingsScreen(
             onRescan = viewModel::rescan,
             onReselect = viewModel::reselectPhotos,
             onSystemSettings = viewModel::openSystemSettings,
+            onPrivateGallery = onOpenPrivateGallery,
         )
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
@@ -115,6 +117,7 @@ private fun SettingsContent(
     onRescan: () -> Unit,
     onReselect: () -> Unit,
     onSystemSettings: () -> Unit,
+    onPrivateGallery: () -> Unit,
 ) {
     val context = LocalContext.current
     val versionName = remember(context) {
@@ -165,6 +168,9 @@ private fun SettingsContent(
             }
             item {
                 SettingsRow(Icons.Outlined.Sync, "重新扫描", "重新同步系统图库与索引状态", onRescan)
+            }
+            item {
+                SettingsRow(Icons.Outlined.FolderOpen, "隐私分区", "查看仅在本机保存的隐私图片", onPrivateGallery)
             }
 
             item { SectionHeader("APP 权限") }

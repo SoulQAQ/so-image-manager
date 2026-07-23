@@ -36,6 +36,7 @@ fun LibraryScreen(
     syncRuns: Flow<MediaSyncRunEntity?>,
     galleryAccessState: GalleryAccessState,
     onImageClick: (Long) -> Unit,
+    onImageClickWithSource: ((Long, GallerySource) -> Unit)? = null,
     isPermissionRequestInFlight: Boolean = false,
     onRequestGalleryPermission: () -> Unit = {},
     onOpenAppSettings: () -> Unit = {},
@@ -43,20 +44,28 @@ fun LibraryScreen(
     onDeleteImages: (List<GalleryImage>) -> Unit = {},
     onRemoveImages: (List<GalleryImage>) -> Unit = {},
     onAnalyzeImages: (List<GalleryImage>) -> Unit = {},
+    onMoveToPrivateImages: (List<GalleryImage>) -> Unit = {},
     runtimeSettings: Flow<AiRuntimeSettingEntity?> = flowOf(null),
+    initialSource: GallerySource? = null,
+    viewModelKey: String = "library_gallery",
+    selectionKey: String = "library_selection",
+    titleRes: Int = R.string.nav_library,
+    privateMode: Boolean = false,
+    onBack: (() -> Unit)? = null,
 ) {
     val viewModel: LibraryViewModel = viewModel(
-        key = "library_gallery",
-        factory = LibraryViewModel.factory(repository, syncRuns, runtimeSettings),
+        key = viewModelKey,
+        factory = LibraryViewModel.factory(repository, syncRuns, runtimeSettings, initialSource),
     )
     val uiState by viewModel.uiState.collectAsState()
+    val currentSource by viewModel.currentSource.collectAsState()
     val images = viewModel.images.collectAsLazyPagingItems()
-    val selectionViewModel: GallerySelectionViewModel = viewModel(key = "library_selection")
+    val selectionViewModel: GallerySelectionViewModel = viewModel(key = selectionKey)
     val selected by selectionViewModel.selected.collectAsState()
     var sourceMenuExpanded by remember { mutableStateOf(false) }
 
     GalleryScreen(
-        titleRes = R.string.nav_library,
+        titleRes = titleRes,
         screenTag = "screen_library",
         collectionTag = "library_grid",
         layout = GalleryLayout.Grid,
@@ -66,7 +75,9 @@ fun LibraryScreen(
         isPermissionRequestInFlight = isPermissionRequestInFlight,
         onRequestGalleryPermission = onRequestGalleryPermission,
         onOpenAppSettings = onOpenAppSettings,
-        onImageClick = onImageClick,
+        onImageClick = { localId ->
+            onImageClickWithSource?.invoke(localId, currentSource) ?: onImageClick(localId)
+        },
         selectedImages = selected,
         onToggleSelection = selectionViewModel::toggle,
         onClearSelection = selectionViewModel::clear,
@@ -83,6 +94,10 @@ fun LibraryScreen(
             onAnalyzeImages(selectedImages)
             selectionViewModel.clear()
         },
+        onMoveToPrivateSelection = if (privateMode) null else { selectedImages ->
+            onMoveToPrivateImages(selectedImages)
+            selectionViewModel.clear()
+        },
         topBarAction = {
             IconButton(onClick = { sourceMenuExpanded = true }) {
                 Icon(Icons.Outlined.FilterList, stringResource(R.string.library_filter_groups))
@@ -91,19 +106,31 @@ fun LibraryScreen(
                 expanded = sourceMenuExpanded,
                 onDismissRequest = { sourceMenuExpanded = false },
             ) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_group_default)) },
-                    onClick = { sourceMenuExpanded = false; viewModel.showSource(null) },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_group_unanalyzed)) },
-                    onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.Unanalyzed) },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_group_rejected)) },
-                    onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.Rejected) },
-                )
+                if (privateMode) {
+                    DropdownMenuItem(
+                        text = { Text("隐私分区") },
+                        onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.Private) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("无法分析") },
+                        onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.PrivateUnanalyzable) },
+                    )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_group_default)) },
+                        onClick = { sourceMenuExpanded = false; viewModel.showSource(null) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_group_unanalyzed)) },
+                        onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.Unanalyzed) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.library_group_rejected)) },
+                        onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.Rejected) },
+                    )
+                }
             }
         },
+        onNavigateBack = onBack,
     )
 }

@@ -36,6 +36,8 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,7 +71,9 @@ internal fun GalleryScreen(
     onDeleteSelection: (List<GalleryImage>) -> Unit = {},
     onRemoveSelection: (List<GalleryImage>) -> Unit = {},
     onAnalyzeSelection: (List<GalleryImage>) -> Unit = {},
+    onMoveToPrivateSelection: ((List<GalleryImage>) -> Unit)? = null,
     topBarAction: @Composable (() -> Unit)? = null,
+    onNavigateBack: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().testTag(screenTag)) {
         TopAppBar(
@@ -85,6 +89,10 @@ internal fun GalleryScreen(
                 if (selectedImages.isNotEmpty()) {
                     IconButton(onClick = onClearSelection) {
                         Icon(Icons.Outlined.Close, stringResource(R.string.gallery_selection_cancel))
+                    }
+                } else if (onNavigateBack != null) {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, "返回")
                     }
                 }
             },
@@ -128,6 +136,7 @@ internal fun GalleryScreen(
                 onShare = onShareSelection,
                 onRemove = onRemoveSelection,
                 onDelete = onDeleteSelection,
+                onMoveToPrivate = onMoveToPrivateSelection,
             )
         }
     }
@@ -140,6 +149,7 @@ private fun SelectionActionBar(
     onShare: (List<GalleryImage>) -> Unit,
     onRemove: (List<GalleryImage>) -> Unit,
     onDelete: (List<GalleryImage>) -> Unit,
+    onMoveToPrivate: ((List<GalleryImage>) -> Unit)?,
 ) {
     Surface(tonalElevation = 2.dp) {
         Row(
@@ -152,6 +162,11 @@ private fun SelectionActionBar(
             }
             SelectionAction(Icons.Outlined.Share, R.string.gallery_selection_share) {
                 onShare(selected)
+            }
+            if (onMoveToPrivate != null) {
+                SelectionAction(Icons.Outlined.Lock, R.string.gallery_selection_private) {
+                    onMoveToPrivate(selected)
+                }
             }
             SelectionAction(Icons.Outlined.VisibilityOff, R.string.gallery_selection_remove) {
                 onRemove(selected)

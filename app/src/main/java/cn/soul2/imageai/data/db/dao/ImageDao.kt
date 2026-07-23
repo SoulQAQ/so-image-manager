@@ -41,6 +41,17 @@ abstract class ImageDao {
     @Query("UPDATE image SET partition = 'PRIVATE' WHERE local_id = :localId")
     protected abstract suspend fun moveToPrivate(localId: Long): Int
 
+    @Query("UPDATE image SET partition = 'PRIVATE' WHERE local_id IN (:localIds) AND partition = 'MAIN' AND availability = 'AVAILABLE'")
+    protected abstract suspend fun moveMainImagesToPrivateInternal(localIds: List<Long>): Int
+
+    @Transaction
+    open suspend fun moveMainImagesToPrivate(localIds: Collection<Long>): Int {
+        val ids = localIds.distinct().filter { it > 0L }
+        if (ids.isEmpty()) return 0
+        deleteSearchDocuments(ids)
+        return moveMainImagesToPrivateInternal(ids)
+    }
+
     @Query("UPDATE image SET partition = 'MAIN' WHERE local_id = :localId AND partition IN ('PRIVATE', 'PRIVATE_UNANALYZABLE')")
     abstract suspend fun moveToMain(localId: Long): Int
 
@@ -131,12 +142,49 @@ abstract class ImageDao {
     @Query(
         """
         SELECT * FROM image
+        WHERE image.availability = 'AVAILABLE' AND image.partition = 'PRIVATE'
+          AND image.missing_candidate_since_epoch_millis IS NULL
+        ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
+            image.volume_name DESC, image.local_id DESC
+        """,
+    )
+    abstract fun pagingPrivate(): PagingSource<Int, ImageEntity>
+
+    @Query(
+        """
+        SELECT * FROM image
         WHERE image.partition = 'PRIVATE_UNANALYZABLE'
         ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
             image.volume_name DESC, image.local_id DESC
         """,
     )
     abstract fun pagingRejected(): PagingSource<Int, ImageEntity>
+
+    @Query(
+        """
+        SELECT * FROM image
+        WHERE image.availability = 'AVAILABLE' AND image.partition = 'PRIVATE_UNANALYZABLE'
+          AND image.missing_candidate_since_epoch_millis IS NULL
+        ORDER BY image.sort_time_epoch_millis DESC, image.media_store_id DESC,
+            image.volume_name DESC, image.local_id DESC
+        """,
+    )
+    abstract fun pagingPrivateUnanalyzable(): PagingSource<Int, ImageEntity>
+
+    @Query(
+        "SELECT * FROM image WHERE local_id = :localId AND availability = 'AVAILABLE' AND partition = :partition AND missing_candidate_since_epoch_millis IS NULL LIMIT 1",
+    )
+    abstract fun observeAvailableByIdInPartition(localId: Long, partition: cn.soul2.imageai.data.db.entity.ImagePartition): Flow<ImageEntity?>
+
+    @Query(
+        "SELECT * FROM image WHERE availability = 'AVAILABLE' AND partition = :partition AND missing_candidate_since_epoch_millis IS NULL AND (sort_time_epoch_millis > :sortTime OR (sort_time_epoch_millis = :sortTime AND media_store_id > :mediaStoreId) OR (sort_time_epoch_millis = :sortTime AND media_store_id = :mediaStoreId AND volume_name > :volumeName) OR (sort_time_epoch_millis = :sortTime AND media_store_id = :mediaStoreId AND volume_name = :volumeName AND local_id > :localId)) ORDER BY sort_time_epoch_millis ASC, media_store_id ASC, volume_name ASC, local_id ASC LIMIT 1",
+    )
+    abstract fun observePreviousInPartition(sortTime: Long, mediaStoreId: Long, volumeName: String, localId: Long, partition: cn.soul2.imageai.data.db.entity.ImagePartition): Flow<ImageEntity?>
+
+    @Query(
+        "SELECT * FROM image WHERE availability = 'AVAILABLE' AND partition = :partition AND missing_candidate_since_epoch_millis IS NULL AND (sort_time_epoch_millis < :sortTime OR (sort_time_epoch_millis = :sortTime AND media_store_id < :mediaStoreId) OR (sort_time_epoch_millis = :sortTime AND media_store_id = :mediaStoreId AND volume_name < :volumeName) OR (sort_time_epoch_millis = :sortTime AND media_store_id = :mediaStoreId AND volume_name = :volumeName AND local_id < :localId)) ORDER BY sort_time_epoch_millis DESC, media_store_id DESC, volume_name DESC, local_id DESC LIMIT 1",
+    )
+    abstract fun observeNextInPartition(sortTime: Long, mediaStoreId: Long, volumeName: String, localId: Long, partition: cn.soul2.imageai.data.db.entity.ImagePartition): Flow<ImageEntity?>
 
     @Query(
         """

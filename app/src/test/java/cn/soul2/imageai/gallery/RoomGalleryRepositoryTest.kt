@@ -10,6 +10,7 @@ import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.data.db.entity.EffectiveCaptionSource
 import cn.soul2.imageai.data.db.entity.ImageAvailability
 import cn.soul2.imageai.data.db.entity.ImageEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
@@ -199,6 +200,42 @@ class RoomGalleryRepositoryTest {
         )
 
         assertEquals(expected, repositoryWithReader.observeEffectiveMetadata(8L).first())
+    }
+
+    @Test
+    fun privateGalleryAndDetailWindowNeverExposeMainImages() = runTest {
+        database.imageDao().upsert(
+            listOf(
+                image(localId = 1L, mediaStoreId = 1L, sortTime = 300L),
+                image(localId = 2L, mediaStoreId = 2L, sortTime = 200L).copy(partition = ImagePartition.PRIVATE),
+                image(localId = 3L, mediaStoreId = 3L, sortTime = 100L).copy(partition = ImagePartition.PRIVATE),
+                image(localId = 4L, mediaStoreId = 4L, sortTime = 50L).copy(partition = ImagePartition.PRIVATE_UNANALYZABLE),
+            ),
+        )
+
+        assertEquals(
+            listOf(2L, 3L),
+            repository.observe(GalleryQuery(GallerySource.Private)).asSnapshot().map { it.localId },
+        )
+        assertEquals(
+            listOf(4L),
+            repository.observe(GalleryQuery(GallerySource.PrivateUnanalyzable)).asSnapshot().map { it.localId },
+        )
+        val window = requireNotNull(repository.observeImageWindow(3L, GallerySource.Private).first())
+        assertEquals(2L, window.previous?.localId)
+        assertEquals(3L, window.current.localId)
+        assertEquals(null, window.next)
+        assertEquals(null, repository.observeImage(1L, GallerySource.Private).first())
+    }
+
+    @Test
+    fun movingMainImagesToPrivateRemovesTheirSearchableGalleryProjection() = runTest {
+        database.imageDao().upsert(listOf(image(localId = 9L, mediaStoreId = 9L)))
+
+        database.imageDao().moveMainImagesToPrivate(listOf(9L))
+
+        assertEquals(emptyList<Long>(), repository.observe(GalleryQuery(GallerySource.All)).asSnapshot().map { it.localId })
+        assertEquals(listOf(9L), repository.observe(GalleryQuery(GallerySource.Private)).asSnapshot().map { it.localId })
     }
 
     private fun image(

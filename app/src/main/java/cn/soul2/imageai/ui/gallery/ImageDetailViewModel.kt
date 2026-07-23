@@ -14,6 +14,8 @@ import cn.soul2.imageai.analysis.CorrectionCommand
 import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.gallery.GalleryImageWindow
 import cn.soul2.imageai.gallery.GalleryRepository
+import cn.soul2.imageai.gallery.GallerySource
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.flatMapLatest
@@ -54,11 +56,15 @@ class ImageDetailViewModel(
     localId: Long,
     private val singleImageAnalyzer: SingleImageAnalyzer? = null,
     private val metadataRepository: CanonicalMetadataRepository? = null,
+    private val source: GallerySource = GallerySource.All,
 ) : ViewModel() {
     private val selectedLocalId = MutableStateFlow(localId)
 
     val uiState = selectedLocalId
-        .flatMapLatest(repository::observeImageWindow)
+        .flatMapLatest { localId ->
+            if (source.isPrivateSource()) repository.observeImageWindow(localId, source)
+            else repository.observeImageWindow(localId)
+        }
         .map { window -> window?.let(ImageDetailUiState::Ready) ?: ImageDetailUiState.Missing }
         .stateIn(
             scope = viewModelScope,
@@ -100,7 +106,11 @@ class ImageDetailViewModel(
         val targetLocalId = selectedLocalId.value
         mutableAnalysisState.value = ImageAnalysisUiState.Running(targetLocalId)
         viewModelScope.launch {
-            val image = repository.observeImage(targetLocalId).first()
+            val image = if (source.isPrivateSource()) {
+                repository.observeImage(targetLocalId, source).first()
+            } else {
+                repository.observeImage(targetLocalId).first()
+            }
             if (image == null) {
                 mutableAnalysisState.value = ImageAnalysisUiState.Failure(
                     targetLocalId,
@@ -110,7 +120,7 @@ class ImageDetailViewModel(
             }
             mutableAnalysisState.value = when (
                 val result = analyzer.analyze(
-                    ImageAnalysisTarget(targetLocalId, image.contentUri),
+                    ImageAnalysisTarget(targetLocalId, image.contentUri, source.analysisPartition()),
                 )
             ) {
                 is SingleImageAnalysisResult.Success -> ImageAnalysisUiState.Success(targetLocalId)
@@ -148,6 +158,7 @@ class ImageDetailViewModel(
             localId: Long,
             singleImageAnalyzer: SingleImageAnalyzer? = null,
             metadataRepository: CanonicalMetadataRepository? = null,
+            source: GallerySource = GallerySource.All,
         ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 ImageDetailViewModel(
@@ -155,8 +166,24 @@ class ImageDetailViewModel(
                     localId,
                     singleImageAnalyzer,
                     metadataRepository,
+                    source,
                 )
             }
         }
     }
 }
+
+private fun GallerySource.analysisPartition(): ImagePartition = when (this) {
+    GallerySource.Private,
+    GallerySource.PrivateUnanalyzable,
+    GallerySource.Rejected,
+    -> ImagePartition.PRIVATE
+    GallerySource.Unanalyzed -> ImagePartition.UNPROCESSED
+    else -> ImagePartition.MAIN
+}
+
+private fun GallerySource.isPrivateSource(): Boolean = this in setOf(
+    GallerySource.Private,
+    GallerySource.PrivateUnanalyzable,
+    GallerySource.Rejected,
+)

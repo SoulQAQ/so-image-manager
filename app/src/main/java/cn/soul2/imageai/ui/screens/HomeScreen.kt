@@ -37,6 +37,7 @@ fun HomeScreen(
     onDeleteImages: (List<GalleryImage>) -> Unit = {},
     onRemoveImages: (List<GalleryImage>) -> Unit = {},
     onAnalyzeImages: (List<GalleryImage>) -> Unit = {},
+    onMoveToPrivateImages: (List<GalleryImage>) -> Unit = {},
     runtimeSettings: Flow<AiRuntimeSettingEntity?> = flowOf(null),
 ) {
     val viewModel: HomeViewModel = viewModel(
@@ -74,6 +75,10 @@ fun HomeScreen(
         },
         onAnalyzeSelection = { selectedImages ->
             onAnalyzeImages(selectedImages)
+            selectionViewModel.clear()
+        },
+        onMoveToPrivateSelection = { selectedImages ->
+            onMoveToPrivateImages(selectedImages)
             selectionViewModel.clear()
         },
         topBarAction = {

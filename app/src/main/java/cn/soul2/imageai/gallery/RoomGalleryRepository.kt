@@ -8,6 +8,7 @@ import cn.soul2.imageai.analysis.EffectiveImageMetadata
 import cn.soul2.imageai.analysis.EffectiveMetadataReader
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.entity.ImageEntity
+import cn.soul2.imageai.data.db.entity.ImagePartition
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
@@ -28,6 +29,8 @@ class RoomGalleryRepository(
                 GallerySource.All -> imageDao.pagingAll()
                 GallerySource.Analyzed -> imageDao.pagingAnalyzed()
                 GallerySource.Unanalyzed -> imageDao.pagingUnanalyzed()
+                GallerySource.Private -> imageDao.pagingPrivate()
+                GallerySource.PrivateUnanalyzable -> imageDao.pagingPrivateUnanalyzable()
                 GallerySource.Rejected -> imageDao.pagingRejected()
             }
         },
@@ -42,6 +45,11 @@ class RoomGalleryRepository(
 
     override fun observeImage(localId: Long): Flow<GalleryImage?> =
         imageDao.observeAvailableById(localId).map { entity -> entity?.toGalleryImage() }
+
+    override fun observeImage(localId: Long, source: GallerySource): Flow<GalleryImage?> {
+        val partition = source.partitionOrNull() ?: ImagePartition.MAIN
+        return imageDao.observeAvailableByIdInPartition(localId, partition).map { it?.toGalleryImage() }
+    }
 
     override fun observeEffectiveMetadata(localId: Long): Flow<EffectiveImageMetadata?> =
         effectiveMetadataReader.observeEffectiveMetadata(localId)
@@ -74,6 +82,16 @@ class RoomGalleryRepository(
             }
         }
 
+    override fun observeImageWindow(localId: Long, source: GallerySource): Flow<GalleryImageWindow?> {
+        val partition = source.partitionOrNull() ?: ImagePartition.MAIN
+        return imageDao.observeAvailableByIdInPartition(localId, partition).flatMapLatest { current ->
+            if (current == null) flowOf(null) else combine(
+                imageDao.observePreviousInPartition(current.sortTimeEpochMillis, current.mediaStoreId, current.volumeName, current.localId, partition),
+                imageDao.observeNextInPartition(current.sortTimeEpochMillis, current.mediaStoreId, current.volumeName, current.localId, partition),
+            ) { previous, next -> GalleryImageWindow(previous?.toGalleryImage(), current.toGalleryImage(), next?.toGalleryImage()) }
+        }
+    }
+
     companion object {
         internal val PAGING_CONFIG = PagingConfig(
             pageSize = 60,
@@ -99,3 +117,11 @@ private fun ImageEntity.toGalleryImage() = GalleryImage(
     isFavorite = isFavorite,
     source = source,
 )
+
+private fun GallerySource.partitionOrNull(): ImagePartition? = when (this) {
+    GallerySource.Private -> ImagePartition.PRIVATE
+    GallerySource.PrivateUnanalyzable,
+    GallerySource.Rejected,
+    -> ImagePartition.PRIVATE_UNANALYZABLE
+    else -> null
+}

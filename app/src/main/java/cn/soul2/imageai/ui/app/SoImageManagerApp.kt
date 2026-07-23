@@ -33,6 +33,7 @@ import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.gallery.GallerySelectionActions
 import cn.soul2.imageai.ai.batch.BatchAnalysisRepository
 import cn.soul2.imageai.gallery.GalleryRepository
+import cn.soul2.imageai.gallery.GallerySource
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.search.ImageSearchRepository
 import cn.soul2.imageai.ui.gallery.ImageDetailDestination
@@ -54,6 +55,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+
+private object PrivateGalleryDestination {
+    const val route = "private_gallery"
+}
+
+private object PrivateImageDetailDestination {
+    const val localIdArgument = "localId"
+    const val sourceArgument = "source"
+    const val route = "private_image/{$localIdArgument}/{$sourceArgument}"
+
+    fun createRoute(localId: Long, source: GallerySource): String =
+        "private_image/$localId/${source.routeName()}"
+}
 
 @Composable
 fun SoImageManagerApp(
@@ -102,12 +116,13 @@ fun SoImageManagerApp(
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: AppDestination.start.route
-    val isImageDetail = currentRoute == ImageDetailDestination.route
+    val isImageDetail = currentRoute == ImageDetailDestination.route || currentRoute == PrivateImageDetailDestination.route
+    val isPrivateGallery = currentRoute == PrivateGalleryDestination.route
     val isSearch = currentRoute == SearchDestination.route
     val isAiSettings = currentRoute?.startsWith(AiSettingsDestination.baseRoute) == true
     val isModelProviders = currentRoute == ModelProvidersDestination.route
     val isAnalysisSettings = currentRoute == AnalysisSettingsDestination.route
-    val showBottomNavigation = !isImageDetail && !isSearch && !isAiSettings && !isModelProviders && !isAnalysisSettings
+    val showBottomNavigation = !isImageDetail && !isPrivateGallery && !isSearch && !isAiSettings && !isModelProviders && !isAnalysisSettings
 
     Scaffold(
         contentWindowInsets = if (isImageDetail) {
@@ -178,6 +193,11 @@ fun SoImageManagerApp(
                                 gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
                             }
                         },
+                        onMoveToPrivateImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.moveToPrivate(images.map(GalleryImage::localId))
+                            }
+                        },
                     )
                 }
                 composable(AppDestination.LIBRARY.route) {
@@ -202,6 +222,11 @@ fun SoImageManagerApp(
                         onAnalyzeImages = { images ->
                             coroutineScope.launch(Dispatchers.IO) {
                                 gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
+                            }
+                        },
+                        onMoveToPrivateImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.moveToPrivate(images.map(GalleryImage::localId))
                             }
                         },
                     )
@@ -232,6 +257,40 @@ fun SoImageManagerApp(
                         onOpenSystemSettings = onOpenAppSettings,
                         onOpenGeneralSettings = { navController.navigate(AnalysisSettingsDestination.route) },
                         onOpenAiSettings = { navController.navigate(ModelProvidersDestination.route) },
+                        onOpenPrivateGallery = { navController.navigate(PrivateGalleryDestination.route) },
+                    )
+                }
+                composable(PrivateGalleryDestination.route) {
+                    LibraryScreen(
+                        repository = galleryRepository,
+                        syncRuns = syncRuns,
+                        runtimeSettings = aiConfigurationRepository?.runtimeSetting ?: flowOf(null),
+                        galleryAccessState = galleryAccessState,
+                        initialSource = GallerySource.Private,
+                        privateMode = true,
+                        onBack = navController::navigateUp,
+                        viewModelKey = "private_gallery",
+                        selectionKey = "private_gallery_selection",
+                        titleRes = cn.soul2.imageai.R.string.private_gallery_title,
+                        onImageClick = {},
+                        onImageClickWithSource = { localId, source ->
+                            navController.navigate(PrivateImageDetailDestination.createRoute(localId, source))
+                        },
+                        isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
+                        onRequestGalleryPermission = onRequestGalleryPermission,
+                        onOpenAppSettings = onOpenAppSettings,
+                        onShareImages = onShareImages,
+                        onDeleteImages = onDeleteImages,
+                        onRemoveImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
+                            }
+                        },
+                        onAnalyzeImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
+                            }
+                        },
                     )
                 }
                 composable(AnalysisSettingsDestination.route) {
@@ -289,6 +348,27 @@ fun SoImageManagerApp(
                         }
                     }
                 }
+                composable(
+                    route = PrivateImageDetailDestination.route,
+                    arguments = listOf(navArgument(PrivateImageDetailDestination.localIdArgument) {
+                        type = NavType.LongType
+                    }, navArgument(PrivateImageDetailDestination.sourceArgument) {
+                        type = NavType.StringType
+                    }),
+                ) { entry ->
+                    val localId = requireNotNull(entry.arguments?.getLong(PrivateImageDetailDestination.localIdArgument))
+                    val source = entry.arguments?.getString(PrivateImageDetailDestination.sourceArgument)
+                        ?.let(::privateSourceFromRoute)
+                        ?: GallerySource.Private
+                    ImageDetailScreen(
+                        repository = galleryRepository,
+                        singleImageAnalyzer = singleImageAnalyzer,
+                        canonicalMetadataRepository = canonicalMetadataRepository,
+                        localId = localId,
+                        source = source,
+                        onBack = navController::navigateUp,
+                    )
+                }
                 composable(SearchDestination.route) {
                     SearchScreen(
                         searchRepository = imageSearchRepository,
@@ -322,4 +402,16 @@ fun SoImageManagerApp(
             }
         }
     }
+}
+
+private fun GallerySource.routeName(): String = when (this) {
+    GallerySource.PrivateUnanalyzable,
+    GallerySource.Rejected,
+    -> "unanalyzable"
+    else -> "private"
+}
+
+private fun privateSourceFromRoute(value: String): GallerySource = when (value) {
+    "unanalyzable" -> GallerySource.PrivateUnanalyzable
+    else -> GallerySource.Private
 }

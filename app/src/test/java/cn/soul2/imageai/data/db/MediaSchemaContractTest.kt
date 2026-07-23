@@ -22,13 +22,13 @@ class MediaSchemaContractTest {
         )
 
         assertEquals(
-            "pagingAll, pagingRecent and the next-neighbor query must share the total order",
-            3,
+            "paging and next-neighbor queries must share the total order",
+            4,
             descendingOrder.findAll(source).count(),
         )
         assertEquals(
             "the previous-neighbor query must reverse the complete total order",
-            1,
+            2,
             ascendingOrder.findAll(source).count(),
         )
     }

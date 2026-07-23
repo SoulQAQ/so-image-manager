@@ -13,6 +13,10 @@ class GallerySelectionActions(
         imageDao.removeFromSoim(imageIds.distinct())
     }
 
+    suspend fun moveToPrivate(imageIds: Collection<Long>) {
+        imageDao.moveMainImagesToPrivate(imageIds)
+    }
+
     suspend fun analyze(imageIds: Collection<Long>) {
         if (batchRepository.enqueue(imageIds.toList()) != null) batchScheduler.enqueue()
     }
