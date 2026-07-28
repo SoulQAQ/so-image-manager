@@ -1,9 +1,16 @@
 package cn.soul2.imageai.ui.app
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -13,13 +20,17 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -57,9 +68,12 @@ import cn.soul2.imageai.ui.screens.LibraryScreen
 import cn.soul2.imageai.ui.screens.LibraryBrowserScreen
 import cn.soul2.imageai.ui.screens.SettingsScreen
 import cn.soul2.imageai.ui.screens.TasksScreen
+import cn.soul2.imageai.ui.screens.UpdateDialog
 import cn.soul2.imageai.ui.search.SearchDestination
 import cn.soul2.imageai.ui.search.SearchScreen
 import cn.soul2.imageai.update.AppUpdateState
+import cn.soul2.imageai.update.InstalledUpdateNotice
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -141,16 +155,29 @@ fun SoImageManagerApp(
     gallerySelectionActions: GallerySelectionActions? = null,
     batchAnalysisRepository: BatchAnalysisRepository? = null,
     appUpdateState: Flow<AppUpdateState> = flowOf(AppUpdateState.Idle),
+    installedUpdateNotice: Flow<InstalledUpdateNotice?> = flowOf(null),
     onCheckForUpdate: () -> Unit = {},
     onDownloadUpdate: () -> Unit = {},
     onCancelUpdateDownload: () -> Unit = {},
     onDismissUpdateFailure: () -> Unit = {},
+    onDismissInstalledUpdateNotice: () -> Unit = {},
     onInstallUpdate: (File) -> Unit = {},
     onShareImages: (List<GalleryImage>) -> Unit = {},
     onDeleteImages: (List<GalleryImage>) -> Unit = {},
 ) {
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
+    val updateState by appUpdateState.collectAsStateWithLifecycle(initialValue = AppUpdateState.Idle)
+    val updateNotice by installedUpdateNotice.collectAsStateWithLifecycle(initialValue = null)
+    var showUpdateDialog by remember { mutableStateOf(false) }
+    val updatePromptKey = when (val current = updateState) {
+        is AppUpdateState.Available -> "available:${current.release.tagName}"
+        is AppUpdateState.Ready -> "ready:${current.release.tagName}"
+        else -> null
+    }
+    LaunchedEffect(updatePromptKey) {
+        if (updatePromptKey != null) showUpdateDialog = true
+    }
     val analysisTaskSnackbar = remember { SnackbarHostState() }
     val analyzeImages: (List<GalleryImage>) -> Unit = { images ->
         coroutineScope.launch {
@@ -407,10 +434,7 @@ fun SoImageManagerApp(
                         onOpenUnprocessedGallery = { navController.navigate(UnprocessedGalleryDestination.route) },
                         appUpdateState = appUpdateState,
                         onCheckForUpdate = onCheckForUpdate,
-                        onDownloadUpdate = onDownloadUpdate,
-                        onCancelUpdateDownload = onCancelUpdateDownload,
-                        onDismissUpdateFailure = onDismissUpdateFailure,
-                        onInstallUpdate = onInstallUpdate,
+                        onOpenUpdateDetails = { showUpdateDialog = true },
                     )
                 }
                 composable(UnprocessedGalleryDestination.route) {
@@ -620,6 +644,50 @@ fun SoImageManagerApp(
             }
         }
     }
+    if (updateNotice != null) {
+        InstalledUpdateNoticeDialog(
+            notice = checkNotNull(updateNotice),
+            onDismiss = onDismissInstalledUpdateNotice,
+        )
+    } else if (showUpdateDialog) {
+        UpdateDialog(
+            state = updateState,
+            onDismiss = {
+                showUpdateDialog = false
+                if (updateState is AppUpdateState.Failed) onDismissUpdateFailure()
+            },
+            onCheck = onCheckForUpdate,
+            onDownload = onDownloadUpdate,
+            onCancelDownload = onCancelUpdateDownload,
+            onInstall = onInstallUpdate,
+        )
+    }
+}
+
+@Composable
+private fun InstalledUpdateNoticeDialog(
+    notice: InstalledUpdateNotice,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("已更新到 ${notice.tagName}") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (notice.releaseName.isNotBlank() && notice.releaseName != notice.tagName) {
+                    Text(notice.releaseName, style = MaterialTheme.typography.titleSmall)
+                }
+                Text(
+                    notice.notes.ifBlank { "此版本没有附加更新说明。" },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { Button(onClick = onDismiss) { Text("知道了") } },
+    )
 }
 
 internal fun analysisEnqueueMessage(

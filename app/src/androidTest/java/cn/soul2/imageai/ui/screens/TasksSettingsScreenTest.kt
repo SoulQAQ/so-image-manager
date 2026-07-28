@@ -16,6 +16,7 @@ import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.ui.app.SoImageManagerApp
 import cn.soul2.imageai.ui.theme.SoImageManagerTheme
 import cn.soul2.imageai.update.AppUpdateState
+import cn.soul2.imageai.update.InstalledUpdateNotice
 import cn.soul2.imageai.update.SemanticVersion
 import cn.soul2.imageai.update.UpdateAsset
 import cn.soul2.imageai.update.UpdateRelease
@@ -239,6 +240,36 @@ class TasksSettingsScreenTest {
                 actions,
             )
         }
+    }
+
+    @Test
+    fun showsInstalledReleaseNotesOnceFromTheMainScreen() {
+        val notice = MutableStateFlow<InstalledUpdateNotice?>(
+            InstalledUpdateNotice(
+                version = SemanticVersion(0, 17, 1),
+                tagName = "v0.17.1",
+                releaseName = "SoIM v0.17.1",
+                notes = "自动检查更新，并在更新后展示本次更新内容。",
+            ),
+        )
+        composeRule.setContent {
+            SoImageManagerTheme {
+                SoImageManagerApp(
+                    galleryRepository = MutableGalleryRepository(0),
+                    syncRuns = flowOf(null),
+                    galleryAccessState = GalleryAccessState.Full,
+                    galleryAccessStates = flowOf(GalleryAccessState.Full),
+                    installedUpdateNotice = notice,
+                    onDismissInstalledUpdateNotice = { notice.value = null },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("已更新到 v0.17.1").assertIsDisplayed()
+        composeRule.onNodeWithText("自动检查更新，并在更新后展示本次更新内容。")
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("知道了").performClick()
+        composeRule.onNodeWithText("已更新到 v0.17.1").assertDoesNotExist()
     }
 
     private class MutableGalleryRepository(initialCount: Int) : GalleryRepository {

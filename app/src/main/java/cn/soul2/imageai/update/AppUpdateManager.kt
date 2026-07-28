@@ -3,6 +3,8 @@ package cn.soul2.imageai.update
 import android.content.Context
 import android.content.SharedPreferences
 import java.io.File
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -21,9 +23,17 @@ class AppUpdateManager(
     private val downloads: UpdateDownloadGateway = AndroidUpdateDownloadGateway(context),
     private val verifier: UpdateArtifactVerifier = ApkUpdateVerifier(context),
     private val pendingStore: PendingUpdateStore = SharedPreferencesPendingUpdateStore(context),
+    private val lifecycleStore: UpdateLifecycleStore = SharedPreferencesUpdateLifecycleStore(context),
+    private val nowEpochMillis: () -> Long = System::currentTimeMillis,
+    private val epochDayAt: (Long) -> Long = { epochMillis ->
+        Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay()
+    },
 ) {
     private val mutableState = MutableStateFlow<AppUpdateState>(AppUpdateState.Idle)
     val state: StateFlow<AppUpdateState> = mutableState.asStateFlow()
+    private val mutableInstalledUpdateNotice = MutableStateFlow<InstalledUpdateNotice?>(null)
+    val installedUpdateNotice: StateFlow<InstalledUpdateNotice?> =
+        mutableInstalledUpdateNotice.asStateFlow()
 
     private val lock = Any()
     private var operation: Job? = null
@@ -32,10 +42,28 @@ class AppUpdateManager(
         pendingStore.load()?.let(::monitor)
     }
 
+    fun onAppStarted() {
+        val installed = runCatching { verifier.installedVersion() }.getOrNull()
+        mutableInstalledUpdateNotice.value = installed?.let { version ->
+            lifecycleStore.loadUnseenInstalledNotice(version.version)
+        }
+        val now = nowEpochMillis()
+        if (!lifecycleStore.markFirstStartOfDay(epochDayAt(now))) return
+        if (AutomaticUpdateCheckPolicy.isDue(lifecycleStore.lastCheckAtMillis(), now)) {
+            checkForUpdate()
+        }
+    }
+
+    fun dismissInstalledUpdateNotice() {
+        mutableInstalledUpdateNotice.value?.let { lifecycleStore.markNoticeShown(it.version) }
+        mutableInstalledUpdateNotice.value = null
+    }
+
     fun checkForUpdate() {
         if (mutableState.value is AppUpdateState.Downloading || mutableState.value is AppUpdateState.Ready) {
             return
         }
+        lifecycleStore.recordCheckStarted(nowEpochMillis())
         launchOperation {
             mutableState.value = AppUpdateState.Checking
             try {
@@ -129,6 +157,7 @@ class AppUpdateManager(
                     val file = downloads.fileFor(release.asset)
                     try {
                         verifier.verify(file, release)
+                        lifecycleStore.savePreparedRelease(release)
                         pendingStore.clear()
                         mutableState.value = AppUpdateState.Ready(release, file)
                     } catch (error: AppUpdateException) {

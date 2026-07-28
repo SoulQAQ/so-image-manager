@@ -106,6 +106,119 @@ class AppUpdateManagerTest {
         assertEquals(null, store.pending)
     }
 
+    @Test
+    fun automaticCheckRunsOncePerDayAndOnlyAfterMoreThanTwoDays() = runTest {
+        val dayMillis = 24L * 60L * 60L * 1_000L
+        var now = 10L * dayMillis
+        var requests = 0
+        val lifecycle = MemoryLifecycleStore()
+        val manager = AppUpdateManager(
+            context = context,
+            scope = this,
+            source = ReleaseUpdateSource {
+                requests += 1
+                release(SemanticVersion(0, 16, 0))
+            },
+            downloads = FakeDownloads(),
+            verifier = FakeVerifier(SemanticVersion(0, 17, 0)),
+            pendingStore = MemoryPendingStore(),
+            lifecycleStore = lifecycle,
+            nowEpochMillis = { now },
+            epochDayAt = { it / dayMillis },
+        )
+
+        manager.onAppStarted()
+        advanceUntilIdle()
+        assertEquals(1, requests)
+
+        manager.onAppStarted()
+        advanceUntilIdle()
+        assertEquals(1, requests)
+
+        now += dayMillis
+        manager.onAppStarted()
+        advanceUntilIdle()
+        assertEquals(1, requests)
+
+        now += dayMillis
+        manager.onAppStarted()
+        advanceUntilIdle()
+        assertEquals(1, requests)
+
+        now += dayMillis
+        manager.onAppStarted()
+        advanceUntilIdle()
+        assertEquals(2, requests)
+    }
+
+    @Test
+    fun preparedReleaseNotesAppearOnceAfterTargetVersionIsInstalled() = runTest {
+        val target = release()
+        val lifecycle = MemoryLifecycleStore()
+        val downloadManager = AppUpdateManager(
+            context = context,
+            scope = this,
+            source = ReleaseUpdateSource { target },
+            downloads = FakeDownloads(ArrayDeque(listOf(UpdateDownloadStatus.Successful))),
+            verifier = FakeVerifier(SemanticVersion(0, 16, 0)),
+            pendingStore = MemoryPendingStore(),
+            lifecycleStore = lifecycle,
+        )
+        downloadManager.checkForUpdate()
+        advanceUntilIdle()
+        downloadManager.downloadUpdate()
+        advanceUntilIdle()
+
+        val installedManager = AppUpdateManager(
+            context = context,
+            scope = this,
+            source = ReleaseUpdateSource { target },
+            downloads = FakeDownloads(),
+            verifier = FakeVerifier(target.version),
+            pendingStore = MemoryPendingStore(),
+            lifecycleStore = lifecycle,
+        )
+        installedManager.onAppStarted()
+        advanceUntilIdle()
+
+        assertEquals(target.version, installedManager.installedUpdateNotice.value?.version)
+        assertEquals(target.notes, installedManager.installedUpdateNotice.value?.notes)
+
+        installedManager.dismissInstalledUpdateNotice()
+        installedManager.onAppStarted()
+        assertEquals(null, installedManager.installedUpdateNotice.value)
+    }
+
+    @Test
+    fun automaticCheckRequiresStrictlyMoreThanTwoDays() {
+        val interval = AutomaticUpdateCheckPolicy.MINIMUM_INTERVAL_MILLIS
+        assertEquals(false, AutomaticUpdateCheckPolicy.isDue(1_000L, 1_000L + interval))
+        assertEquals(true, AutomaticUpdateCheckPolicy.isDue(1_000L, 1_001L + interval))
+        assertEquals(true, AutomaticUpdateCheckPolicy.isDue(2_000L, 1_000L))
+    }
+
+    @Test
+    fun sharedPreferencesLifecycleStorePersistsAndConsumesTargetReleaseNotice() {
+        context.getSharedPreferences("app_update_lifecycle", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        val target = release()
+        val store = SharedPreferencesUpdateLifecycleStore(context)
+
+        assertTrue(store.markFirstStartOfDay(42L))
+        assertEquals(false, store.markFirstStartOfDay(42L))
+        store.recordCheckStarted(123_456L)
+        assertEquals(123_456L, store.lastCheckAtMillis())
+
+        store.savePreparedRelease(target)
+        assertEquals(null, store.loadUnseenInstalledNotice(SemanticVersion(0, 16, 0)))
+        assertEquals(target.notes, store.loadUnseenInstalledNotice(target.version)?.notes)
+
+        store.markNoticeShown(target.version)
+        assertEquals(null, store.loadUnseenInstalledNotice(target.version))
+    }
+
     private class FakeVerifier(private val installed: SemanticVersion) : UpdateArtifactVerifier {
         override fun installedVersion() = InstalledAppVersion(installed, installed.toString(), 21L)
         override fun verify(file: File, release: UpdateRelease): File = file
@@ -130,6 +243,45 @@ class AppUpdateManagerTest {
         }
         override fun clear() {
             pending = null
+        }
+    }
+
+    private class MemoryLifecycleStore : UpdateLifecycleStore {
+        private var lastStartDay: Long? = null
+        private var lastCheckAt: Long? = null
+        private var prepared: InstalledUpdateNotice? = null
+        private var shownVersion: SemanticVersion? = null
+
+        override fun markFirstStartOfDay(epochDay: Long): Boolean {
+            if (lastStartDay == epochDay) return false
+            lastStartDay = epochDay
+            return true
+        }
+
+        override fun lastCheckAtMillis(): Long? = lastCheckAt
+
+        override fun recordCheckStarted(atEpochMillis: Long) {
+            lastCheckAt = atEpochMillis
+        }
+
+        override fun savePreparedRelease(release: UpdateRelease) {
+            prepared = InstalledUpdateNotice(
+                release.version,
+                release.tagName,
+                release.releaseName,
+                release.notes,
+            )
+        }
+
+        override fun loadUnseenInstalledNotice(
+            installedVersion: SemanticVersion,
+        ): InstalledUpdateNotice? = prepared?.takeIf {
+            it.version == installedVersion && shownVersion != installedVersion
+        }
+
+        override fun markNoticeShown(version: SemanticVersion) {
+            shownVersion = version
+            if (prepared?.version == version) prepared = null
         }
     }
 

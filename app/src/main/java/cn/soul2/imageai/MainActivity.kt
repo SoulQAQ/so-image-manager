@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        container.appUpdateManager.onAppStarted()
         enableEdgeToEdge()
         setContent {
             SoImageManagerTheme {
@@ -249,10 +250,13 @@ class MainActivity : ComponentActivity() {
                 gallerySelectionActions = container.gallerySelectionActions,
                 batchAnalysisRepository = container.batchAnalysisRepository,
                 appUpdateState = container.appUpdateManager.state,
+                installedUpdateNotice = container.appUpdateManager.installedUpdateNotice,
                 onCheckForUpdate = container.appUpdateManager::checkForUpdate,
                 onDownloadUpdate = container.appUpdateManager::downloadUpdate,
                 onCancelUpdateDownload = container.appUpdateManager::cancelDownload,
                 onDismissUpdateFailure = container.appUpdateManager::dismissFailure,
+                onDismissInstalledUpdateNotice =
+                    container.appUpdateManager::dismissInstalledUpdateNotice,
                 onInstallUpdate = installUpdate,
                 onShareImages = ::shareImages,
                 onDeleteImages = { images ->

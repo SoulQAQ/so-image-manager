@@ -80,17 +80,13 @@ fun SettingsScreen(
     onOpenUnprocessedGallery: () -> Unit,
     appUpdateState: Flow<AppUpdateState> = flowOf(AppUpdateState.Idle),
     onCheckForUpdate: () -> Unit = {},
-    onDownloadUpdate: () -> Unit = {},
-    onCancelUpdateDownload: () -> Unit = {},
-    onDismissUpdateFailure: () -> Unit = {},
-    onInstallUpdate: (File) -> Unit = {},
+    onOpenUpdateDetails: () -> Unit = {},
 ) {
     val viewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.factory(galleryAccessStates, repository, unavailableCounts),
     )
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val updateState by appUpdateState.collectAsStateWithLifecycle(initialValue = AppUpdateState.Idle)
-    var showUpdateDialog by remember { mutableStateOf(false) }
     val currentReselect by rememberUpdatedState(onReselectPhotos)
     val currentRescan by rememberUpdatedState(onRescan)
     val currentSystemSettings by rememberUpdatedState(onOpenSystemSettings)
@@ -115,10 +111,6 @@ fun SettingsScreen(
             onDocumentImportNoticeConsumed()
         }
     }
-    val updatePromptKey = updateState.promptKey()
-    LaunchedEffect(updatePromptKey) {
-        if (updatePromptKey != null) showUpdateDialog = true
-    }
     Box(Modifier.fillMaxSize()) {
         SettingsContent(
             state = state,
@@ -140,24 +132,11 @@ fun SettingsScreen(
                     is AppUpdateState.Downloading,
                     is AppUpdateState.Ready,
                     is AppUpdateState.Failed,
-                    -> showUpdateDialog = true
+                    -> onOpenUpdateDetails()
                 }
             },
         )
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
-    }
-    if (showUpdateDialog) {
-        UpdateDialog(
-            state = updateState,
-            onDismiss = {
-                showUpdateDialog = false
-                if (updateState is AppUpdateState.Failed) onDismissUpdateFailure()
-            },
-            onCheck = onCheckForUpdate,
-            onDownload = onDownloadUpdate,
-            onCancelDownload = onCancelUpdateDownload,
-            onInstall = onInstallUpdate,
-        )
     }
 }
 
@@ -259,7 +238,7 @@ private fun SettingsContent(
 }
 
 @Composable
-private fun UpdateDialog(
+internal fun UpdateDialog(
     state: AppUpdateState,
     onDismiss: () -> Unit,
     onCheck: () -> Unit,
@@ -368,13 +347,6 @@ private fun AppUpdateState.subtitle(currentVersion: String): String = when (this
     is AppUpdateState.Downloading -> "正在下载 ${release.tagName}"
     is AppUpdateState.Ready -> "${release.tagName} 已下载，点击安装"
     is AppUpdateState.Failed -> "更新失败，点击查看"
-}
-
-private fun AppUpdateState.promptKey(): String? = when (this) {
-    is AppUpdateState.Available -> "available:${release.tagName}"
-    is AppUpdateState.Ready -> "ready:${release.tagName}"
-    is AppUpdateState.Failed -> "failed:$message"
-    else -> null
 }
 
 private fun formatBytes(bytes: Long): String = when {
