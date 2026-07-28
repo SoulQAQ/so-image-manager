@@ -1,3 +1,27 @@
+## v0.17.0 (2026-07-28)
+
+### 功能
+- 设置页“关于”新增“检查更新”，直接读取 SoIM 最新公开 GitHub Release。
+- 发现新版本后展示版本号、安装包大小和 Release 更新说明，由用户确认后下载。
+- 使用 Android 系统 DownloadManager 下载，支持后台继续；App 进程重启后可恢复下载进度。
+- 下载完成后强制校验文件大小、GitHub SHA-256、应用 ID、versionName、versionCode 和 APK 签名。
+- 校验通过后按 Android 标准流程申请“允许此来源安装应用”，再打开系统安装器完成覆盖更新。
+- 更新文件仅保存在 App 专用目录，通过非导出的 FileProvider 临时授权给系统安装器。
+- 更新客户端不包含 GitHub Token，只访问公开 Release API 和 HTTPS 安装包地址。
+- v0.17.0 需要用户手动安装一次；从后续 Release 开始可使用 App 内更新入口。
+
+### 修复
+- 新增原子 Debug 测试 APK 发布流程，失败时回滚版本元数据与制品。
+
+### 测试
+- clean、全量单元测试、lintDebug、AndroidTest 编译、Debug/Release 构建均通过。
+- 设备测试：无可用设备或 AVD，已跳过（SKIPPED_NO_DEVICE）
+
+### 签名与校验
+- Debug 签名：CN=Android Debug
+- SHA-256：B919502D6BC564258EF7DE63672A6B170DDE14043E118FD3DE5AD4C2BF40AE93
+
+---
 ## v0.16.0 (2026-07-28)
 
 ### 功能

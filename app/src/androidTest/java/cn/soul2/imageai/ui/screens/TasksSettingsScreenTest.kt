@@ -15,6 +15,11 @@ import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.ui.app.SoImageManagerApp
 import cn.soul2.imageai.ui.theme.SoImageManagerTheme
+import cn.soul2.imageai.update.AppUpdateState
+import cn.soul2.imageai.update.SemanticVersion
+import cn.soul2.imageai.update.UpdateAsset
+import cn.soul2.imageai.update.UpdateRelease
+import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -174,6 +179,66 @@ class TasksSettingsScreenTest {
         composeRule.onNodeWithTag("bottom_navigation").assertIsDisplayed()
         composeRule.onNodeWithText("前往系统设置").performClick()
         composeRule.runOnIdle { assertEquals(listOf(1), invokedGenerations) }
+    }
+
+    @Test
+    fun settingsChecksDownloadsAndInstallsGitHubRelease() {
+        val release = UpdateRelease(
+            version = SemanticVersion(0, 17, 0),
+            tagName = "v0.17.0",
+            releaseName = "SoIM v0.17.0",
+            notes = "新增应用内更新。",
+            publishedAt = "2026-07-29T00:00:00Z",
+            pageUrl = "https://github.com/SoulQAQ/so-image-manager/releases/tag/v0.17.0",
+            asset = UpdateAsset(
+                name = "soim-v0.17.0-debug.apk",
+                downloadUrl = "https://github.com/SoulQAQ/so-image-manager/releases/download/v0.17.0/soim-v0.17.0-debug.apk",
+                sizeBytes = 100L,
+                sha256 = "a".repeat(64),
+            ),
+        )
+        val updateState = MutableStateFlow<AppUpdateState>(AppUpdateState.Idle)
+        val actions = mutableListOf<String>()
+        val apk = File("C:/tmp/soim-v0.17.0-debug.apk")
+        composeRule.setContent {
+            SoImageManagerTheme {
+                SoImageManagerApp(
+                    galleryRepository = MutableGalleryRepository(0),
+                    syncRuns = flowOf(null),
+                    galleryAccessState = GalleryAccessState.Full,
+                    galleryAccessStates = flowOf(GalleryAccessState.Full),
+                    appUpdateState = updateState,
+                    onCheckForUpdate = {
+                        actions += "check"
+                        updateState.value = AppUpdateState.Available(release)
+                    },
+                    onDownloadUpdate = {
+                        actions += "download"
+                        updateState.value = AppUpdateState.Downloading(release, 50L, 100L)
+                    },
+                    onInstallUpdate = { file ->
+                        actions += "install:${file.name}"
+                    },
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag("destination_settings").performClick()
+        composeRule.onNodeWithText("检查更新").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("发现新版本 v0.17.0").assertIsDisplayed()
+        composeRule.onNodeWithText("新增应用内更新。").assertIsDisplayed()
+        composeRule.onNodeWithText("下载更新").performClick()
+        composeRule.onNodeWithText("正在下载 v0.17.0").assertIsDisplayed()
+
+        composeRule.runOnIdle { updateState.value = AppUpdateState.Ready(release, apk) }
+        composeRule.onNodeWithText("更新已准备完成").assertIsDisplayed()
+        composeRule.onNodeWithText("安装").performClick()
+        composeRule.runOnIdle {
+            assertEquals(
+                listOf("check", "download", "install:soim-v0.17.0-debug.apk"),
+                actions,
+            )
+        }
     }
 
     private class MutableGalleryRepository(initialCount: Int) : GalleryRepository {

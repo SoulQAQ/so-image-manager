@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.ClipData
 import android.app.RecoverableSecurityException
 import android.net.Uri
+import android.os.Environment
 import android.os.Bundle
 import android.provider.Settings
 import android.provider.MediaStore
@@ -14,6 +15,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +45,8 @@ import cn.soul2.imageai.ui.onboarding.GalleryPermissionRequestCoordinator
 import cn.soul2.imageai.ui.theme.SoImageManagerTheme
 import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.data.db.entity.ImageSource
+import cn.soul2.imageai.update.AndroidUpdateDownloadGateway
+import java.io.File
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -71,6 +76,7 @@ class MainActivity : ComponentActivity() {
         val uiState by accessViewModel.uiState.collectAsStateWithLifecycle()
         val coroutineScope = rememberCoroutineScope()
         var documentImportNotice by remember { mutableStateOf<String?>(null) }
+        var pendingUpdatePath by rememberSaveable { mutableStateOf<String?>(null) }
         val permissionRequestCoordinator = remember { GalleryPermissionRequestCoordinator() }
         val permissionRequestInFlight by
             permissionRequestCoordinator.inFlight.collectAsStateWithLifecycle()
@@ -126,6 +132,18 @@ class MainActivity : ComponentActivity() {
                         imported.rejectedCount,
                     )
                 }
+            }
+        }
+        val installPermissionLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) {
+            val pending = pendingUpdatePath?.let(::File)
+            pendingUpdatePath = null
+            if (
+                pending != null &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())
+            ) {
+                openUpdateInstaller(pending)
             }
         }
         var pendingDeleteImages by remember { mutableStateOf<List<GalleryImage>>(emptyList()) }
@@ -184,6 +202,19 @@ class MainActivity : ComponentActivity() {
                 },
             )
         }
+        val installUpdate: (File) -> Unit = { apk ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+                pendingUpdatePath = apk.absolutePath
+                installPermissionLauncher.launch(
+                    Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:$packageName"),
+                    ),
+                )
+            } else {
+                openUpdateInstaller(apk)
+            }
+        }
 
         if (uiState.isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -217,6 +248,12 @@ class MainActivity : ComponentActivity() {
                     container.mediaSyncScheduler::requestReconciliation,
                 gallerySelectionActions = container.gallerySelectionActions,
                 batchAnalysisRepository = container.batchAnalysisRepository,
+                appUpdateState = container.appUpdateManager.state,
+                onCheckForUpdate = container.appUpdateManager::checkForUpdate,
+                onDownloadUpdate = container.appUpdateManager::downloadUpdate,
+                onCancelUpdateDownload = container.appUpdateManager::cancelDownload,
+                onDismissUpdateFailure = container.appUpdateManager::dismissFailure,
+                onInstallUpdate = installUpdate,
                 onShareImages = ::shareImages,
                 onDeleteImages = { images ->
                     val deletable = images.filter { it.source == ImageSource.MEDIA_STORE }
@@ -298,6 +335,20 @@ class MainActivity : ComponentActivity() {
                 },
                 getString(cn.soul2.imageai.R.string.gallery_selection_share),
             ),
+        )
+    }
+
+    private fun openUpdateInstaller(apk: File) {
+        val downloadsRoot = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
+        val updateDirectory = File(downloadsRoot, "updates").canonicalFile
+        val verifiedApk = apk.canonicalFile
+        if (verifiedApk.parentFile != updateDirectory || !verifiedApk.isFile) return
+        val uri = FileProvider.getUriForFile(this, "$packageName.updates", verifiedApk)
+        startActivity(
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, AndroidUpdateDownloadGateway.APK_MIME_TYPE)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            },
         )
     }
 }

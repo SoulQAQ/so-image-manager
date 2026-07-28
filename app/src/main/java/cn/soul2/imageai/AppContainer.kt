@@ -39,6 +39,7 @@ import cn.soul2.imageai.search.RoomImageSearchRepository
 import cn.soul2.imageai.search.ImageSearchRepository
 import cn.soul2.imageai.search.SearchIndexBackfill
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingRepository
+import cn.soul2.imageai.update.AppUpdateManager
 import kotlinx.coroutines.CoroutineScope
 
 class AppContainer(
@@ -56,6 +57,7 @@ class AppContainer(
     val aiConfigurationRepository = AiConfigurationRepository(database)
     val aiCredentialStore: AiCredentialStore = AndroidKeystoreCredentialStore(applicationContext)
     val aiQuotaCoordinator = AiQuotaCoordinator(applicationContext)
+    val appUpdateManager = AppUpdateManager(applicationContext, processScope)
     val aiHttpTransport = SecureAiHttpTransport(aiCredentialStore, aiQuotaCoordinator)
     val imagePreprocessor = ContentImagePreprocessor(applicationContext.contentResolver)
     val documentImageImporter = DocumentImageImporter(

@@ -59,6 +59,8 @@ import cn.soul2.imageai.ui.screens.SettingsScreen
 import cn.soul2.imageai.ui.screens.TasksScreen
 import cn.soul2.imageai.ui.search.SearchDestination
 import cn.soul2.imageai.ui.search.SearchScreen
+import cn.soul2.imageai.update.AppUpdateState
+import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.Dispatchers
@@ -138,6 +140,12 @@ fun SoImageManagerApp(
     onRequestGalleryReconciliation: () -> Unit = {},
     gallerySelectionActions: GallerySelectionActions? = null,
     batchAnalysisRepository: BatchAnalysisRepository? = null,
+    appUpdateState: Flow<AppUpdateState> = flowOf(AppUpdateState.Idle),
+    onCheckForUpdate: () -> Unit = {},
+    onDownloadUpdate: () -> Unit = {},
+    onCancelUpdateDownload: () -> Unit = {},
+    onDismissUpdateFailure: () -> Unit = {},
+    onInstallUpdate: (File) -> Unit = {},
     onShareImages: (List<GalleryImage>) -> Unit = {},
     onDeleteImages: (List<GalleryImage>) -> Unit = {},
 ) {
@@ -397,6 +405,12 @@ fun SoImageManagerApp(
                         onOpenAiSettings = { navController.navigate(ModelProvidersDestination.route) },
                         onOpenPrivateGallery = { navController.navigate(PrivateGalleryDestination.route) },
                         onOpenUnprocessedGallery = { navController.navigate(UnprocessedGalleryDestination.route) },
+                        appUpdateState = appUpdateState,
+                        onCheckForUpdate = onCheckForUpdate,
+                        onDownloadUpdate = onDownloadUpdate,
+                        onCancelUpdateDownload = onCancelUpdateDownload,
+                        onDismissUpdateFailure = onDismissUpdateFailure,
+                        onInstallUpdate = onInstallUpdate,
                     )
                 }
                 composable(UnprocessedGalleryDestination.route) {
