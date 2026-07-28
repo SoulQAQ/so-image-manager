@@ -3,17 +3,15 @@ package cn.soul2.imageai.ui.screens
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.FilterList
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import cn.soul2.imageai.data.db.entity.AiRuntimeSettingEntity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -50,7 +48,10 @@ fun LibraryScreen(
     viewModelKey: String = "library_gallery",
     selectionKey: String = "library_selection",
     titleRes: Int = R.string.nav_library,
+    titleText: String? = null,
     privateMode: Boolean = false,
+    allowMoveToPrivate: Boolean = !privateMode,
+    contentHeader: (@Composable () -> Unit)? = null,
     onBack: (() -> Unit)? = null,
 ) {
     val viewModel: LibraryViewModel = viewModel(
@@ -62,10 +63,10 @@ fun LibraryScreen(
     val images = viewModel.images.collectAsLazyPagingItems()
     val selectionViewModel: GallerySelectionViewModel = viewModel(key = selectionKey)
     val selected by selectionViewModel.selected.collectAsState()
-    var sourceMenuExpanded by remember { mutableStateOf(false) }
 
     GalleryScreen(
         titleRes = titleRes,
+        titleText = titleText,
         screenTag = "screen_library",
         collectionTag = "library_grid",
         layout = GalleryLayout.Grid,
@@ -94,43 +95,38 @@ fun LibraryScreen(
             onAnalyzeImages(selectedImages)
             selectionViewModel.clear()
         },
-        onMoveToPrivateSelection = if (privateMode) null else { selectedImages ->
+        onMoveToPrivateSelection = if (!allowMoveToPrivate) null else { selectedImages ->
             onMoveToPrivateImages(selectedImages)
             selectionViewModel.clear()
         },
-        topBarAction = {
-            IconButton(onClick = { sourceMenuExpanded = true }) {
-                Icon(Icons.Outlined.FilterList, stringResource(R.string.library_filter_groups))
-            }
-            DropdownMenu(
-                expanded = sourceMenuExpanded,
-                onDismissRequest = { sourceMenuExpanded = false },
-            ) {
-                if (privateMode) {
-                    DropdownMenuItem(
-                        text = { Text("隐私分区") },
-                        onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.Private) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("无法分析") },
-                        onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.PrivateUnanalyzable) },
-                    )
-                } else {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_group_default)) },
-                        onClick = { sourceMenuExpanded = false; viewModel.showSource(null) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_group_unanalyzed)) },
-                        onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.Unanalyzed) },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.library_group_rejected)) },
-                        onClick = { sourceMenuExpanded = false; viewModel.showSource(GallerySource.Rejected) },
-                    )
-                }
-            }
-        },
+        contentHeader = if (privateMode) {
+            { PrivateGallerySectionSelector(currentSource, viewModel::showSource) }
+        } else contentHeader,
         onNavigateBack = onBack,
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PrivateGallerySectionSelector(
+    currentSource: GallerySource,
+    onSourceSelected: (GallerySource) -> Unit,
+) {
+    val sections = listOf(
+        GallerySource.Private to "隐私图片",
+        GallerySource.PrivateUnanalyzable to "无法分析",
+    )
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        sections.forEachIndexed { index, (source, label) ->
+            SegmentedButton(
+                selected = currentSource == source,
+                onClick = { onSourceSelected(source) },
+                shape = SegmentedButtonDefaults.itemShape(index, sections.size),
+            ) {
+                Text(label)
+            }
+        }
+    }
 }

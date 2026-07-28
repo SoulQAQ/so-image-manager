@@ -5,7 +5,6 @@ import cn.soul2.imageai.analysis.EffectiveImageMetadata
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import cn.soul2.imageai.data.db.entity.ImagePartition
 
 data class GalleryStatus(val totalCount: Int, val analyzedCount: Int)
 
@@ -13,6 +12,11 @@ interface GalleryRepository {
     fun observe(query: GalleryQuery): Flow<PagingData<GalleryImage>>
     fun observeCount(): Flow<Int>
     fun observeStatus(): Flow<GalleryStatus> = observeCount().map { GalleryStatus(it, it) }
+    fun observeCollections(type: GalleryCollectionType): Flow<List<GalleryCollectionSummary>> =
+        flowOf(emptyList())
+    fun observeUnprocessedCount(): Flow<Int> = observeStatus().map { status ->
+        (status.totalCount - status.analyzedCount).coerceAtLeast(0)
+    }
     fun observeImage(localId: Long): Flow<GalleryImage?>
     fun observeImage(localId: Long, source: GallerySource): Flow<GalleryImage?> = observeImage(localId)
     fun observeEffectiveMetadata(localId: Long): Flow<EffectiveImageMetadata?> = flowOf(null)

@@ -49,6 +49,7 @@ fun TasksScreen(
     lastCompletedAt: Flow<Long?>,
     onRetry: () -> Unit,
     batchAnalysisRuns: Flow<BatchAnalysisRunEntity?>,
+    estimatedAnalysisCounts: Flow<Int>,
     onAnalyzeAll: () -> Unit,
 ) {
     val tasksViewModel: TasksViewModel = viewModel(
@@ -56,7 +57,8 @@ fun TasksScreen(
     )
     val uiState by tasksViewModel.uiState.collectAsStateWithLifecycle()
     val batchRun by batchAnalysisRuns.collectAsStateWithLifecycle(initialValue = null)
-    TasksContent(uiState, tasksViewModel::retry, batchRun, onAnalyzeAll)
+    val estimatedAnalysisCount by estimatedAnalysisCounts.collectAsStateWithLifecycle(initialValue = 0)
+    TasksContent(uiState, tasksViewModel::retry, batchRun, estimatedAnalysisCount, onAnalyzeAll)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,6 +67,7 @@ private fun TasksContent(
     uiState: TasksUiState,
     onRetry: () -> Unit,
     batchRun: BatchAnalysisRunEntity?,
+    estimatedAnalysisCount: Int,
     onAnalyzeAll: () -> Unit,
 ) {
     var confirmBatchAnalysis by remember { mutableStateOf(false) }
@@ -98,8 +101,7 @@ private fun TasksContent(
             }
             item {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                SectionLabel(R.string.batch_analysis_section)
-                val active = batchRun?.state == "QUEUED" || batchRun?.state == "RUNNING"
+                SectionLabel(R.string.batch_analysis_progress_section)
                 if (batchRun != null) {
                     KeyValueRow(
                         R.string.batch_analysis_progress,
@@ -110,7 +112,25 @@ private fun TasksContent(
                             batchRun.failedCount,
                         ),
                     )
+                } else {
+                    Text(
+                        text = stringResource(R.string.batch_analysis_no_run),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 9.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+            }
+            item {
+                HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                SectionLabel(R.string.batch_analysis_start_section)
+                Text(
+                    text = stringResource(R.string.batch_analysis_estimate, estimatedAnalysisCount),
+                    modifier = Modifier.padding(bottom = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val active = batchRun?.state == "QUEUED" || batchRun?.state == "RUNNING"
                 FilledTonalButton(onClick = { confirmBatchAnalysis = true }, enabled = !active) {
                     Text(stringResource(R.string.batch_analysis_all))
                 }

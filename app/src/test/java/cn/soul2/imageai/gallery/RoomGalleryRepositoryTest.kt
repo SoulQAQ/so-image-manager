@@ -8,6 +8,9 @@ import cn.soul2.imageai.analysis.EffectiveImageMetadata
 import cn.soul2.imageai.analysis.EffectiveMetadataReader
 import cn.soul2.imageai.data.db.AppDatabase
 import cn.soul2.imageai.data.db.entity.EffectiveCaptionSource
+import cn.soul2.imageai.data.db.entity.EffectiveImageTermEntity
+import cn.soul2.imageai.data.db.entity.EffectiveTermSource
+import cn.soul2.imageai.data.db.entity.AnalysisTermKind
 import cn.soul2.imageai.data.db.entity.ImageAvailability
 import cn.soul2.imageai.data.db.entity.ImageEntity
 import cn.soul2.imageai.data.db.entity.ImagePartition
@@ -238,6 +241,140 @@ class RoomGalleryRepositoryTest {
         assertEquals(listOf(9L), repository.observe(GalleryQuery(GallerySource.Private)).asSnapshot().map { it.localId })
     }
 
+    @Test
+    fun unprocessedCountAndDetailWindowExcludeEveryOtherPartition() = runTest {
+        database.imageDao().upsert(
+            listOf(
+                image(localId = 1L, mediaStoreId = 1L, sortTime = 400L),
+                image(localId = 2L, mediaStoreId = 2L, sortTime = 300L)
+                    .copy(partition = ImagePartition.UNPROCESSED),
+                image(localId = 3L, mediaStoreId = 3L, sortTime = 200L)
+                    .copy(partition = ImagePartition.UNPROCESSED),
+                image(localId = 4L, mediaStoreId = 4L, sortTime = 100L)
+                    .copy(partition = ImagePartition.PRIVATE),
+            ),
+        )
+
+        assertEquals(2, repository.observeUnprocessedCount().first())
+        assertEquals(
+            listOf(2L, 3L),
+            repository.observe(GalleryQuery(GallerySource.Unanalyzed)).asSnapshot().map { it.localId },
+        )
+        val window = requireNotNull(
+            repository.observeImageWindow(3L, GallerySource.Unanalyzed).first(),
+        )
+        assertEquals(2L, window.previous?.localId)
+        assertEquals(3L, window.current.localId)
+        assertEquals(null, window.next)
+    }
+
+    @Test
+    fun activeBatchHidesQueuedImagesAndLaterSelectionsJoinTheSameRun() = runTest {
+        database.imageDao().upsert(
+            listOf(
+                image(localId = 2L, mediaStoreId = 2L, sortTime = 300L)
+                    .copy(partition = ImagePartition.UNPROCESSED),
+                image(localId = 3L, mediaStoreId = 3L, sortTime = 200L)
+                    .copy(partition = ImagePartition.UNPROCESSED),
+            ),
+        )
+
+        val first = database.batchAnalysisDao().createRun(listOf(2L), 100L)
+        val second = database.batchAnalysisDao().createRun(listOf(3L), 200L)
+
+        assertEquals(1, first.addedCount)
+        assertEquals(1, second.addedCount)
+        assertEquals(first.run?.runId, second.run?.runId)
+        assertEquals(2, second.run?.totalCount)
+        assertEquals(
+            emptyList<Long>(),
+            repository.observe(GalleryQuery(GallerySource.Unanalyzed)).asSnapshot()
+                .map { it.localId },
+        )
+
+        database.batchAnalysisDao().pauseRun(requireNotNull(second.run).runId, 300L)
+
+        assertEquals(
+            listOf(2L, 3L),
+            repository.observe(GalleryQuery(GallerySource.Unanalyzed)).asSnapshot()
+                .map { it.localId },
+        )
+    }
+
+    @Test
+    fun albumTagAndCategoryCollectionsGroupOnlyMainPartitionImages() = runTest {
+        database.imageDao().upsert(
+            listOf(
+                image(localId = 1L, mediaStoreId = 1L, sortTime = 300L)
+                    .copy(bucketId = 10L, bucketName = "相机"),
+                image(localId = 2L, mediaStoreId = 2L, sortTime = 200L)
+                    .copy(bucketId = 20L, bucketName = "截图"),
+                image(localId = 3L, mediaStoreId = 3L, sortTime = 100L)
+                    .copy(bucketId = 10L, bucketName = "相机"),
+                image(localId = 4L, mediaStoreId = 4L, sortTime = 400L)
+                    .copy(bucketId = 10L, bucketName = "相机", partition = ImagePartition.PRIVATE),
+            ),
+        )
+        database.effectiveMetadataDao().upsertTerms(
+            listOf(
+                effectiveTerm(1L, AnalysisTermKind.TAG, "旅行", "旅行"),
+                effectiveTerm(2L, AnalysisTermKind.TAG, "旅行", "旅行"),
+                effectiveTerm(3L, AnalysisTermKind.TAG, "家人", "家人"),
+                effectiveTerm(4L, AnalysisTermKind.TAG, "隐私", "隐私"),
+                effectiveTerm(1L, AnalysisTermKind.CATEGORY, "照片", "照片"),
+                effectiveTerm(2L, AnalysisTermKind.CATEGORY, "截图", "截图"),
+                effectiveTerm(4L, AnalysisTermKind.CATEGORY, "隐私", "隐私"),
+            ),
+        )
+
+        val albums = repository.observeCollections(GalleryCollectionType.ALBUM).first()
+        val tags = repository.observeCollections(GalleryCollectionType.TAG).first()
+        val categories = repository.observeCollections(GalleryCollectionType.CATEGORY).first()
+
+        assertEquals(listOf("相机", "截图"), albums.map { it.displayName })
+        assertEquals(listOf(2, 1), albums.map { it.imageCount })
+        assertEquals("content://media/external/images/media/1", albums.first().coverUri)
+        assertEquals(listOf("旅行", "家人"), tags.map { it.displayName })
+        assertEquals(listOf(2, 1), tags.map { it.imageCount })
+        assertEquals(setOf("照片", "截图"), categories.map { it.displayName }.toSet())
+        assertEquals(
+            listOf(1L, 3L),
+            repository.observe(
+                GalleryQuery(GallerySource.Album(bucketId = 10L, bucketName = "相机")),
+            ).asSnapshot().map { it.localId },
+        )
+        assertEquals(
+            listOf(1L, 2L),
+            repository.observe(GalleryQuery(GallerySource.Tag("旅行"))).asSnapshot()
+                .map { it.localId },
+        )
+        assertEquals(
+            listOf(2L),
+            repository.observe(GalleryQuery(GallerySource.Category("截图"))).asSnapshot()
+                .map { it.localId },
+        )
+        val albumWindow = requireNotNull(
+            repository.observeImageWindow(
+                3L,
+                GallerySource.Album(bucketId = 10L, bucketName = "相机"),
+            ).first(),
+        )
+        assertEquals(1L, albumWindow.previous?.localId)
+        assertEquals(null, albumWindow.next)
+        val tagWindow = requireNotNull(
+            repository.observeImageWindow(2L, GallerySource.Tag("旅行")).first(),
+        )
+        assertEquals(1L, tagWindow.previous?.localId)
+        assertEquals(null, tagWindow.next)
+        assertEquals(
+            null,
+            repository.observeImage(
+                2L,
+                GallerySource.Album(bucketId = 10L, bucketName = "相机"),
+            ).first(),
+        )
+    }
+
     private fun image(
         localId: Long,
         mediaStoreId: Long,
@@ -268,5 +405,20 @@ class RoomGalleryRepositoryTest {
         lastSeenSyncRunId = null,
         missingCandidateSinceEpochMillis = null,
         missingObservationCount = 0,
+    )
+
+    private fun effectiveTerm(
+        imageLocalId: Long,
+        kind: AnalysisTermKind,
+        normalizedKey: String,
+        displayValue: String,
+    ) = EffectiveImageTermEntity(
+        imageLocalId = imageLocalId,
+        kind = kind,
+        normalizedKey = normalizedKey,
+        displayValue = displayValue,
+        source = EffectiveTermSource.AI,
+        confidence = null,
+        sourceAnalysisId = null,
     )
 }

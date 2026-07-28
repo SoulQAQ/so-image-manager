@@ -9,11 +9,15 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavHostController
@@ -25,11 +29,14 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import cn.soul2.imageai.data.db.entity.MediaSyncRunEntity
 import cn.soul2.imageai.data.db.entity.ImagePartition
+import cn.soul2.imageai.data.db.entity.BatchAnalysisEnqueueResult
 import cn.soul2.imageai.ai.config.AiConfigurationRepository
 import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
 import cn.soul2.imageai.analysis.CanonicalMetadataRepository
 import cn.soul2.imageai.gallery.GalleryImage
+import cn.soul2.imageai.gallery.GalleryCollectionSummary
+import cn.soul2.imageai.gallery.GalleryCollectionType
 import cn.soul2.imageai.gallery.GallerySelectionActions
 import cn.soul2.imageai.ai.batch.BatchAnalysisRepository
 import cn.soul2.imageai.gallery.GalleryRepository
@@ -47,6 +54,7 @@ import cn.soul2.imageai.ui.ai.AnalysisSettingsScreen
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingScreen
 import cn.soul2.imageai.ui.screens.HomeScreen
 import cn.soul2.imageai.ui.screens.LibraryScreen
+import cn.soul2.imageai.ui.screens.LibraryBrowserScreen
 import cn.soul2.imageai.ui.screens.SettingsScreen
 import cn.soul2.imageai.ui.screens.TasksScreen
 import cn.soul2.imageai.ui.search.SearchDestination
@@ -55,9 +63,42 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private object PrivateGalleryDestination {
     const val route = "private_gallery"
+}
+
+private object UnprocessedGalleryDestination {
+    const val route = "unprocessed_gallery"
+}
+
+private object LibraryCollectionDestination {
+    const val typeArgument = "type"
+    const val keyArgument = "key"
+    const val titleArgument = "title"
+    const val route = "library_collection/{$typeArgument}/{$keyArgument}/{$titleArgument}"
+
+    fun createRoute(type: GalleryCollectionType, collection: GalleryCollectionSummary): String =
+        "library_collection/${type.name}/${android.net.Uri.encode(collection.key)}/" +
+            android.net.Uri.encode(collection.displayName)
+}
+
+private object LibraryCollectionImageDestination {
+    const val localIdArgument = "localId"
+    const val typeArgument = "type"
+    const val keyArgument = "key"
+    const val titleArgument = "title"
+    const val route =
+        "library_collection_image/{$localIdArgument}/{$typeArgument}/{$keyArgument}/{$titleArgument}"
+
+    fun createRoute(
+        localId: Long,
+        type: GalleryCollectionType,
+        collectionKey: String,
+        title: String,
+    ): String = "library_collection_image/$localId/${type.name}/" +
+        "${android.net.Uri.encode(collectionKey)}/${android.net.Uri.encode(title)}"
 }
 
 private object PrivateImageDetailDestination {
@@ -101,6 +142,20 @@ fun SoImageManagerApp(
     onDeleteImages: (List<GalleryImage>) -> Unit = {},
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val analysisTaskSnackbar = remember { SnackbarHostState() }
+    val analyzeImages: (List<GalleryImage>) -> Unit = { images ->
+        coroutineScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
+                }
+            }
+            analysisTaskSnackbar.showSnackbar(
+                analysisEnqueueMessage(context, result.getOrNull(), result.isFailure),
+            )
+        }
+    }
     val deniedState = galleryAccessState as? GalleryAccessState.Denied
     if (showGalleryOnboarding && deniedState != null) {
         GalleryOnboardingScreen(
@@ -116,19 +171,29 @@ fun SoImageManagerApp(
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: AppDestination.start.route
-    val isImageDetail = currentRoute == ImageDetailDestination.route || currentRoute == PrivateImageDetailDestination.route
-    val isPrivateGallery = currentRoute == PrivateGalleryDestination.route
+    val isImageDetail = currentRoute == ImageDetailDestination.route ||
+        currentRoute == PrivateImageDetailDestination.route ||
+        currentRoute == LibraryCollectionImageDestination.route
+    val isSecondaryGallery = currentRoute == PrivateGalleryDestination.route ||
+        currentRoute == UnprocessedGalleryDestination.route ||
+        currentRoute == LibraryCollectionDestination.route
     val isSearch = currentRoute == SearchDestination.route
     val isAiSettings = currentRoute?.startsWith(AiSettingsDestination.baseRoute) == true
     val isModelProviders = currentRoute == ModelProvidersDestination.route
     val isAnalysisSettings = currentRoute == AnalysisSettingsDestination.route
-    val showBottomNavigation = !isImageDetail && !isPrivateGallery && !isSearch && !isAiSettings && !isModelProviders && !isAnalysisSettings
+    val showBottomNavigation = !isImageDetail && !isSecondaryGallery && !isSearch && !isAiSettings && !isModelProviders && !isAnalysisSettings
 
     Scaffold(
         contentWindowInsets = if (isImageDetail) {
             WindowInsets(0, 0, 0, 0)
         } else {
             ScaffoldDefaults.contentWindowInsets
+        },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = analysisTaskSnackbar,
+                modifier = Modifier.testTag("analysis_task_snackbar"),
+            )
         },
         bottomBar = {
             if (showBottomNavigation) {
@@ -188,11 +253,7 @@ fun SoImageManagerApp(
                                 gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
                             }
                         },
-                        onAnalyzeImages = { images ->
-                            coroutineScope.launch(Dispatchers.IO) {
-                                gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
-                            }
-                        },
+                        onAnalyzeImages = analyzeImages,
                         onMoveToPrivateImages = { images ->
                             coroutineScope.launch(Dispatchers.IO) {
                                 gallerySelectionActions?.moveToPrivate(images.map(GalleryImage::localId))
@@ -201,13 +262,18 @@ fun SoImageManagerApp(
                     )
                 }
                 composable(AppDestination.LIBRARY.route) {
-                    LibraryScreen(
+                    LibraryBrowserScreen(
                         repository = galleryRepository,
                         syncRuns = syncRuns,
                         runtimeSettings = aiConfigurationRepository?.runtimeSetting ?: flowOf(null),
                         galleryAccessState = galleryAccessState,
                         onImageClick = { localId ->
                             navController.navigate(ImageDetailDestination.createRoute(localId))
+                        },
+                        onOpenCollection = { type, collection ->
+                            navController.navigate(
+                                LibraryCollectionDestination.createRoute(type, collection),
+                            )
                         },
                         isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
                         onRequestGalleryPermission = onRequestGalleryPermission,
@@ -219,11 +285,71 @@ fun SoImageManagerApp(
                                 gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
                             }
                         },
-                        onAnalyzeImages = { images ->
+                        onAnalyzeImages = analyzeImages,
+                        onMoveToPrivateImages = { images ->
                             coroutineScope.launch(Dispatchers.IO) {
-                                gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
+                                gallerySelectionActions?.moveToPrivate(images.map(GalleryImage::localId))
                             }
                         },
+                    )
+                }
+                composable(
+                    route = LibraryCollectionDestination.route,
+                    arguments = listOf(
+                        navArgument(LibraryCollectionDestination.typeArgument) {
+                            type = NavType.StringType
+                        },
+                        navArgument(LibraryCollectionDestination.keyArgument) {
+                            type = NavType.StringType
+                        },
+                        navArgument(LibraryCollectionDestination.titleArgument) {
+                            type = NavType.StringType
+                        },
+                    ),
+                ) { entry ->
+                    val type = GalleryCollectionType.valueOf(
+                        requireNotNull(
+                            entry.arguments?.getString(LibraryCollectionDestination.typeArgument),
+                        ),
+                    )
+                    val key = requireNotNull(
+                        entry.arguments?.getString(LibraryCollectionDestination.keyArgument),
+                    )
+                    val title = requireNotNull(
+                        entry.arguments?.getString(LibraryCollectionDestination.titleArgument),
+                    )
+                    val source = galleryCollectionSource(type, key, title)
+                    LibraryScreen(
+                        repository = galleryRepository,
+                        syncRuns = syncRuns,
+                        runtimeSettings = aiConfigurationRepository?.runtimeSetting ?: flowOf(null),
+                        galleryAccessState = galleryAccessState,
+                        initialSource = source,
+                        onBack = navController::navigateUp,
+                        viewModelKey = "library_collection_${type.name}_$key",
+                        selectionKey = "library_collection_selection_${type.name}_$key",
+                        titleText = title,
+                        onImageClick = { localId ->
+                            navController.navigate(
+                                LibraryCollectionImageDestination.createRoute(
+                                    localId,
+                                    type,
+                                    key,
+                                    title,
+                                ),
+                            )
+                        },
+                        isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
+                        onRequestGalleryPermission = onRequestGalleryPermission,
+                        onOpenAppSettings = onOpenAppSettings,
+                        onShareImages = onShareImages,
+                        onDeleteImages = onDeleteImages,
+                        onRemoveImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
+                            }
+                        },
+                        onAnalyzeImages = analyzeImages,
                         onMoveToPrivateImages = { images ->
                             coroutineScope.launch(Dispatchers.IO) {
                                 gallerySelectionActions?.moveToPrivate(images.map(GalleryImage::localId))
@@ -237,9 +363,21 @@ fun SoImageManagerApp(
                         lastCompletedAt = lastSyncCompletedAt,
                         onRetry = onRetryGallerySync,
                         batchAnalysisRuns = batchAnalysisRepository?.observeLatest() ?: flowOf(null),
+                        estimatedAnalysisCounts = galleryRepository.observeUnprocessedCount(),
                         onAnalyzeAll = {
-                            coroutineScope.launch(Dispatchers.IO) {
-                                gallerySelectionActions?.analyzeAll()
+                            coroutineScope.launch {
+                                val result = runCatching {
+                                    withContext(Dispatchers.IO) {
+                                        gallerySelectionActions?.analyzeAll()
+                                    }
+                                }
+                                analysisTaskSnackbar.showSnackbar(
+                                    analysisEnqueueMessage(
+                                        context,
+                                        result.getOrNull(),
+                                        result.isFailure,
+                                    ),
+                                )
                             }
                         },
                     )
@@ -258,6 +396,36 @@ fun SoImageManagerApp(
                         onOpenGeneralSettings = { navController.navigate(AnalysisSettingsDestination.route) },
                         onOpenAiSettings = { navController.navigate(ModelProvidersDestination.route) },
                         onOpenPrivateGallery = { navController.navigate(PrivateGalleryDestination.route) },
+                        onOpenUnprocessedGallery = { navController.navigate(UnprocessedGalleryDestination.route) },
+                    )
+                }
+                composable(UnprocessedGalleryDestination.route) {
+                    LibraryScreen(
+                        repository = galleryRepository,
+                        syncRuns = syncRuns,
+                        runtimeSettings = aiConfigurationRepository?.runtimeSetting ?: flowOf(null),
+                        galleryAccessState = galleryAccessState,
+                        initialSource = GallerySource.Unanalyzed,
+                        allowMoveToPrivate = false,
+                        onBack = navController::navigateUp,
+                        viewModelKey = "unprocessed_gallery",
+                        selectionKey = "unprocessed_gallery_selection",
+                        titleRes = cn.soul2.imageai.R.string.unprocessed_gallery_title,
+                        onImageClick = {},
+                        onImageClickWithSource = { localId, source ->
+                            navController.navigate(PrivateImageDetailDestination.createRoute(localId, source))
+                        },
+                        isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
+                        onRequestGalleryPermission = onRequestGalleryPermission,
+                        onOpenAppSettings = onOpenAppSettings,
+                        onShareImages = onShareImages,
+                        onDeleteImages = onDeleteImages,
+                        onRemoveImages = { images ->
+                            coroutineScope.launch(Dispatchers.IO) {
+                                gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
+                            }
+                        },
+                        onAnalyzeImages = analyzeImages,
                     )
                 }
                 composable(PrivateGalleryDestination.route) {
@@ -286,11 +454,7 @@ fun SoImageManagerApp(
                                 gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
                             }
                         },
-                        onAnalyzeImages = { images ->
-                            coroutineScope.launch(Dispatchers.IO) {
-                                gallerySelectionActions?.analyze(images.map(GalleryImage::localId))
-                            }
-                        },
+                        onAnalyzeImages = analyzeImages,
                     )
                 }
                 composable(AnalysisSettingsDestination.route) {
@@ -381,6 +545,46 @@ fun SoImageManagerApp(
                     )
                 }
                 composable(
+                    route = LibraryCollectionImageDestination.route,
+                    arguments = listOf(
+                        navArgument(LibraryCollectionImageDestination.localIdArgument) {
+                            type = NavType.LongType
+                        },
+                        navArgument(LibraryCollectionImageDestination.typeArgument) {
+                            type = NavType.StringType
+                        },
+                        navArgument(LibraryCollectionImageDestination.keyArgument) {
+                            type = NavType.StringType
+                        },
+                        navArgument(LibraryCollectionImageDestination.titleArgument) {
+                            type = NavType.StringType
+                        },
+                    ),
+                ) { entry ->
+                    val localId = requireNotNull(
+                        entry.arguments?.getLong(LibraryCollectionImageDestination.localIdArgument),
+                    )
+                    val type = GalleryCollectionType.valueOf(
+                        requireNotNull(
+                            entry.arguments?.getString(LibraryCollectionImageDestination.typeArgument),
+                        ),
+                    )
+                    val key = requireNotNull(
+                        entry.arguments?.getString(LibraryCollectionImageDestination.keyArgument),
+                    )
+                    val title = requireNotNull(
+                        entry.arguments?.getString(LibraryCollectionImageDestination.titleArgument),
+                    )
+                    ImageDetailScreen(
+                        repository = galleryRepository,
+                        singleImageAnalyzer = singleImageAnalyzer,
+                        canonicalMetadataRepository = canonicalMetadataRepository,
+                        localId = localId,
+                        source = galleryCollectionSource(type, key, title),
+                        onBack = navController::navigateUp,
+                    )
+                }
+                composable(
                     route = ImageDetailDestination.route,
                     arguments = listOf(
                         navArgument(ImageDetailDestination.localIdArgument) {
@@ -404,7 +608,22 @@ fun SoImageManagerApp(
     }
 }
 
+internal fun analysisEnqueueMessage(
+    context: android.content.Context,
+    result: BatchAnalysisEnqueueResult?,
+    failed: Boolean,
+): String = when {
+    failed || result == null -> context.getString(cn.soul2.imageai.R.string.analysis_task_start_failed)
+    result.addedCount > 0 -> context.getString(
+        cn.soul2.imageai.R.string.analysis_task_started,
+        result.addedCount,
+    )
+    result.run != null -> context.getString(cn.soul2.imageai.R.string.analysis_task_already_queued)
+    else -> context.getString(cn.soul2.imageai.R.string.analysis_task_nothing_to_add)
+}
+
 private fun GallerySource.routeName(): String = when (this) {
+    GallerySource.Unanalyzed -> "unprocessed"
     GallerySource.PrivateUnanalyzable,
     GallerySource.Rejected,
     -> "unanalyzable"
@@ -412,6 +631,21 @@ private fun GallerySource.routeName(): String = when (this) {
 }
 
 private fun privateSourceFromRoute(value: String): GallerySource = when (value) {
+    "unprocessed" -> GallerySource.Unanalyzed
     "unanalyzable" -> GallerySource.PrivateUnanalyzable
     else -> GallerySource.Private
+}
+
+private fun galleryCollectionSource(
+    type: GalleryCollectionType,
+    key: String,
+    title: String,
+): GallerySource = when (type) {
+    GalleryCollectionType.ALBUM -> if (key.startsWith("name:")) {
+        GallerySource.Album(bucketId = null, bucketName = key.removePrefix("name:"))
+    } else {
+        GallerySource.Album(bucketId = key.toLong(), bucketName = title)
+    }
+    GalleryCollectionType.TAG -> GallerySource.Tag(key)
+    GalleryCollectionType.CATEGORY -> GallerySource.Category(key)
 }

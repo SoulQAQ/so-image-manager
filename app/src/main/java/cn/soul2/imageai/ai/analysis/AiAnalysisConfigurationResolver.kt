@@ -52,7 +52,7 @@ class RepositoryAiAnalysisConfigurationResolver(
     override suspend fun resolveCandidates(partition: ImagePartition): List<ResolvedAiAnalysisConfiguration> {
         val runtime = repository.getRuntimeSetting()
             ?: unavailable(AiConfigurationFailure.RUNTIME_MISSING)
-        val routedProviderIds = repository.getEnabledProviderIds(partition)
+        val routedProviderIds = repository.getEnabledProviderIds(partition.routePartition())
         if (routedProviderIds.isEmpty()) {
             unavailable(AiConfigurationFailure.DEFAULT_MODEL_MISSING)
         }
@@ -98,4 +98,9 @@ class RepositoryAiAnalysisConfigurationResolver(
 
     private fun unavailable(failure: AiConfigurationFailure): Nothing =
         throw AiConfigurationResolutionException(failure)
+}
+
+private fun ImagePartition.routePartition(): ImagePartition = when (this) {
+    ImagePartition.UNPROCESSED -> ImagePartition.MAIN
+    else -> this
 }

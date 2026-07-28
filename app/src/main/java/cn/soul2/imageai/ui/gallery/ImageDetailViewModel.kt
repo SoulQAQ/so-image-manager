@@ -62,7 +62,7 @@ class ImageDetailViewModel(
 
     val uiState = selectedLocalId
         .flatMapLatest { localId ->
-            if (source.isPrivateSource()) repository.observeImageWindow(localId, source)
+            if (source.isScopedSource()) repository.observeImageWindow(localId, source)
             else repository.observeImageWindow(localId)
         }
         .map { window -> window?.let(ImageDetailUiState::Ready) ?: ImageDetailUiState.Missing }
@@ -106,7 +106,7 @@ class ImageDetailViewModel(
         val targetLocalId = selectedLocalId.value
         mutableAnalysisState.value = ImageAnalysisUiState.Running(targetLocalId)
         viewModelScope.launch {
-            val image = if (source.isPrivateSource()) {
+            val image = if (source.isScopedSource()) {
                 repository.observeImage(targetLocalId, source).first()
             } else {
                 repository.observeImage(targetLocalId).first()
@@ -182,8 +182,17 @@ private fun GallerySource.analysisPartition(): ImagePartition = when (this) {
     else -> ImagePartition.MAIN
 }
 
-private fun GallerySource.isPrivateSource(): Boolean = this in setOf(
+private fun GallerySource.isScopedSource(): Boolean = when (this) {
+    GallerySource.Unanalyzed,
     GallerySource.Private,
     GallerySource.PrivateUnanalyzable,
     GallerySource.Rejected,
-)
+    is GallerySource.Album,
+    is GallerySource.Tag,
+    is GallerySource.Category,
+    -> true
+    GallerySource.Recent,
+    GallerySource.All,
+    GallerySource.Analyzed,
+    -> false
+}

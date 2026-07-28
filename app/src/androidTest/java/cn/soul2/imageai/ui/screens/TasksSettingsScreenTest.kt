@@ -62,6 +62,11 @@ class TasksSettingsScreenTest {
         composeRule.onNodeWithText("17").assertIsDisplayed()
         composeRule.onNodeWithText("2").assertIsDisplayed()
         composeRule.onNodeWithText("设备图库读取失败").assertIsDisplayed()
+        composeRule.onNodeWithText("AI 分析进度").assertIsDisplayed()
+        composeRule.onNodeWithText("暂无分析任务").assertIsDisplayed()
+        composeRule.onNodeWithText("全图库分析").assertIsDisplayed()
+        composeRule.onNodeWithText("分析全部图库").assertIsDisplayed()
+        composeRule.onNodeWithText("预计将分析 17 张图片。").assertIsDisplayed()
         composeRule.onNodeWithText("最近完成", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("重试任务").performClick()
         composeRule.runOnIdle { assertEquals(1, retries) }
@@ -91,7 +96,7 @@ class TasksSettingsScreenTest {
                     galleryUnavailableCounts = unavailableCounts,
                     galleryAccessState = shellAccessState.value,
                     galleryAccessStates = accessStates,
-                    onRequestGalleryReselection = { actions += "reselect" },
+                    onSelectDocumentImages = { actions += "import" },
                     onRequestGalleryReconciliation = { actions += "rescan" },
                     onOpenAppSettings = { actions += "settings" },
                 )
@@ -101,30 +106,25 @@ class TasksSettingsScreenTest {
         composeRule.onNodeWithTag("destination_settings").performClick()
 
         composeRule.onNodeWithTag("screen_settings").assertIsDisplayed()
-        composeRule.onNodeWithText("部分访问").assertIsDisplayed()
+        composeRule.onNodeWithText("重新选择照片").assertDoesNotExist()
+        composeRule.onNodeWithText("添加图片").assertIsDisplayed()
+        composeRule.onNodeWithText("未处理图片").assertIsDisplayed()
         composeRule.onNodeWithText("12").assertIsDisplayed()
         composeRule.onNodeWithText("3").assertIsDisplayed()
-        listOf("重新选择照片", "重新扫描", "前往系统设置").forEach { action ->
+        listOf("添加图片", "重新扫描", "前往系统设置").forEach { action ->
             composeRule.onNodeWithText(action).assertIsDisplayed().performClick()
         }
         composeRule.onNodeWithText("已请求重新扫描").assertIsDisplayed()
         composeRule.runOnIdle {
-            assertEquals(listOf("reselect", "rescan", "settings"), actions)
+            assertEquals(listOf("import", "rescan", "settings"), actions)
             shellAccessState.value = GalleryAccessState.Full
             accessStates.value = GalleryAccessState.Full
             repository.count.value = 14
             unavailableCounts.value = 1
         }
 
-        composeRule.onNodeWithText("完整访问").assertIsDisplayed()
         composeRule.onNodeWithText("14").assertIsDisplayed()
         composeRule.onNodeWithText("1").assertIsDisplayed()
-
-        composeRule.runOnIdle {
-            shellAccessState.value = GalleryAccessState.Denied(canRequestAgain = false)
-            accessStates.value = GalleryAccessState.Denied(canRequestAgain = false)
-        }
-        composeRule.onNodeWithText("未授权").assertIsDisplayed()
     }
 
     @Test
@@ -183,6 +183,8 @@ class TasksSettingsScreenTest {
             flowOf(PagingData.empty())
 
         override fun observeCount(): Flow<Int> = count
+
+        override fun observeUnprocessedCount(): Flow<Int> = count
 
         override fun observeImage(localId: Long): Flow<GalleryImage?> = flowOf(null)
     }

@@ -2,6 +2,7 @@ package cn.soul2.imageai.ui.gallery
 
 import android.net.Uri
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,9 +13,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BrokenImage
+import androidx.compose.material.icons.outlined.ZoomOutMap
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
-import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -45,7 +49,9 @@ fun GalleryImageTile(
     layout: GalleryTileLayout,
     onClick: (Long) -> Unit,
     onLongClick: ((GalleryImage) -> Unit)? = null,
+    onPreview: ((Long) -> Unit)? = null,
     selected: Boolean = false,
+    selectionMode: Boolean = selected,
     modifier: Modifier = Modifier,
 ) {
     val aspectRatio = galleryTileAspectRatio(image, layout)
@@ -90,18 +96,63 @@ fun GalleryImageTile(
         if (selected) {
             Box(
                 modifier = Modifier
-                    .align(androidx.compose.ui.Alignment.TopEnd)
+                    .matchParentSize()
+                    .background(Color.White.copy(alpha = 0.24f))
+                    .testTag("gallery_selection_scrim_${image.localId}"),
+            )
+        }
+        if (selectionMode) {
+            SelectionIndicator(
+                selected = selected,
+                modifier = Modifier.align(androidx.compose.ui.Alignment.TopEnd)
                     .padding(6.dp)
-                    .size(30.dp)
+                    .testTag("gallery_selection_indicator_${image.localId}"),
+            )
+        }
+        if (selected && onPreview != null) {
+            IconButton(
+                onClick = { onPreview(image.localId) },
+                modifier = Modifier.align(androidx.compose.ui.Alignment.BottomStart)
+                    .padding(6.dp)
+                    .size(36.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-                contentAlignment = androidx.compose.ui.Alignment.Center,
+                    .background(Color.Black.copy(alpha = 0.62f))
+                    .testTag("gallery_preview_${image.localId}"),
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.CheckCircle,
-                    contentDescription = null,
+                    imageVector = Icons.Outlined.ZoomOutMap,
+                    contentDescription = "全屏预览",
                     tint = Color.White,
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(19.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectionIndicator(
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.size(28.dp),
+        shape = CircleShape,
+        color = if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            Color.Black.copy(alpha = 0.32f)
+        },
+        border = BorderStroke(2.dp, Color.White),
+        shadowElevation = if (selected) 2.dp else 0.dp,
+    ) {
+        if (selected) {
+            Box(contentAlignment = androidx.compose.ui.Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.Check,
+                    contentDescription = "已选择",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp),
                 )
             }
         }

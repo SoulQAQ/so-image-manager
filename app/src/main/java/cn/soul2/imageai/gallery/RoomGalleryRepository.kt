@@ -9,6 +9,7 @@ import cn.soul2.imageai.analysis.EffectiveMetadataReader
 import cn.soul2.imageai.data.db.dao.ImageDao
 import cn.soul2.imageai.data.db.entity.ImageEntity
 import cn.soul2.imageai.data.db.entity.ImagePartition
+import cn.soul2.imageai.data.db.entity.AnalysisTermKind
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
@@ -32,6 +33,18 @@ class RoomGalleryRepository(
                 GallerySource.Private -> imageDao.pagingPrivate()
                 GallerySource.PrivateUnanalyzable -> imageDao.pagingPrivateUnanalyzable()
                 GallerySource.Rejected -> imageDao.pagingRejected()
+                is GallerySource.Album -> imageDao.pagingAlbum(
+                    query.source.bucketId,
+                    query.source.bucketName,
+                )
+                is GallerySource.Tag -> imageDao.pagingTerm(
+                    AnalysisTermKind.TAG,
+                    query.source.normalizedKey,
+                )
+                is GallerySource.Category -> imageDao.pagingTerm(
+                    AnalysisTermKind.CATEGORY,
+                    query.source.normalizedKey,
+                )
             }
         },
     ).flow.map { pagingData -> pagingData.map(ImageEntity::toGalleryImage) }
@@ -43,12 +56,21 @@ class RoomGalleryRepository(
         imageDao.observeAvailableCount(),
     ) { total, analyzed -> GalleryStatus(total, analyzed) }
 
+    override fun observeUnprocessedCount(): Flow<Int> = imageDao.observeUnprocessedCount()
+
+    override fun observeCollections(
+        type: GalleryCollectionType,
+    ): Flow<List<GalleryCollectionSummary>> = when (type) {
+        GalleryCollectionType.ALBUM -> imageDao.observeAlbumCollections()
+        GalleryCollectionType.TAG -> imageDao.observeTermCollections(AnalysisTermKind.TAG)
+        GalleryCollectionType.CATEGORY -> imageDao.observeTermCollections(AnalysisTermKind.CATEGORY)
+    }
+
     override fun observeImage(localId: Long): Flow<GalleryImage?> =
         imageDao.observeAvailableById(localId).map { entity -> entity?.toGalleryImage() }
 
     override fun observeImage(localId: Long, source: GallerySource): Flow<GalleryImage?> {
-        val partition = source.partitionOrNull() ?: ImagePartition.MAIN
-        return imageDao.observeAvailableByIdInPartition(localId, partition).map { it?.toGalleryImage() }
+        return observeSourceImage(localId, source).map { it?.toGalleryImage() }
     }
 
     override fun observeEffectiveMetadata(localId: Long): Flow<EffectiveImageMetadata?> =
@@ -83,14 +105,107 @@ class RoomGalleryRepository(
         }
 
     override fun observeImageWindow(localId: Long, source: GallerySource): Flow<GalleryImageWindow?> {
-        val partition = source.partitionOrNull() ?: ImagePartition.MAIN
-        return imageDao.observeAvailableByIdInPartition(localId, partition).flatMapLatest { current ->
-            if (current == null) flowOf(null) else combine(
-                imageDao.observePreviousInPartition(current.sortTimeEpochMillis, current.mediaStoreId, current.volumeName, current.localId, partition),
-                imageDao.observeNextInPartition(current.sortTimeEpochMillis, current.mediaStoreId, current.volumeName, current.localId, partition),
-            ) { previous, next -> GalleryImageWindow(previous?.toGalleryImage(), current.toGalleryImage(), next?.toGalleryImage()) }
+        return observeSourceImage(localId, source).flatMapLatest { current ->
+            if (current == null) {
+                flowOf(null)
+            } else {
+                val neighbors = sourceNeighborFlows(current, source)
+                combine(neighbors.first, neighbors.second) { previous, next ->
+                    GalleryImageWindow(
+                        previous?.toGalleryImage(),
+                        current.toGalleryImage(),
+                        next?.toGalleryImage(),
+                    )
+                }
+            }
         }
     }
+
+    private fun observeSourceImage(localId: Long, source: GallerySource): Flow<ImageEntity?> =
+        when (source) {
+            is GallerySource.Album -> imageDao.observeAlbumImage(
+                localId,
+                source.bucketId,
+                source.bucketName,
+            )
+            is GallerySource.Tag -> imageDao.observeTermImage(
+                localId,
+                AnalysisTermKind.TAG,
+                source.normalizedKey,
+            )
+            is GallerySource.Category -> imageDao.observeTermImage(
+                localId,
+                AnalysisTermKind.CATEGORY,
+                source.normalizedKey,
+            )
+            else -> imageDao.observeAvailableByIdInPartition(
+                localId,
+                source.partitionOrNull() ?: ImagePartition.MAIN,
+            )
+        }
+
+    private fun sourceNeighborFlows(
+        image: ImageEntity,
+        source: GallerySource,
+    ): Pair<Flow<ImageEntity?>, Flow<ImageEntity?>> = when (source) {
+        is GallerySource.Album -> imageDao.observePreviousInAlbum(
+            image.sortTimeEpochMillis,
+            image.mediaStoreId,
+            image.volumeName,
+            image.localId,
+            source.bucketId,
+            source.bucketName,
+        ) to imageDao.observeNextInAlbum(
+            image.sortTimeEpochMillis,
+            image.mediaStoreId,
+            image.volumeName,
+            image.localId,
+            source.bucketId,
+            source.bucketName,
+        )
+        is GallerySource.Tag -> termNeighborFlows(image, AnalysisTermKind.TAG, source.normalizedKey)
+        is GallerySource.Category -> termNeighborFlows(
+            image,
+            AnalysisTermKind.CATEGORY,
+            source.normalizedKey,
+        )
+        else -> {
+            val partition = source.partitionOrNull() ?: ImagePartition.MAIN
+            imageDao.observePreviousInPartition(
+                image.sortTimeEpochMillis,
+                image.mediaStoreId,
+                image.volumeName,
+                image.localId,
+                partition,
+            ) to imageDao.observeNextInPartition(
+                image.sortTimeEpochMillis,
+                image.mediaStoreId,
+                image.volumeName,
+                image.localId,
+                partition,
+            )
+        }
+    }
+
+    private fun termNeighborFlows(
+        image: ImageEntity,
+        kind: AnalysisTermKind,
+        normalizedKey: String,
+    ): Pair<Flow<ImageEntity?>, Flow<ImageEntity?>> = imageDao.observePreviousInTerm(
+        image.sortTimeEpochMillis,
+        image.mediaStoreId,
+        image.volumeName,
+        image.localId,
+        kind,
+        normalizedKey,
+    ) to imageDao.observeNextInTerm(
+        image.sortTimeEpochMillis,
+        image.mediaStoreId,
+        image.volumeName,
+        image.localId,
+        kind,
+        normalizedKey,
+    )
 
     companion object {
         internal val PAGING_CONFIG = PagingConfig(
@@ -119,6 +234,7 @@ private fun ImageEntity.toGalleryImage() = GalleryImage(
 )
 
 private fun GallerySource.partitionOrNull(): ImagePartition? = when (this) {
+    GallerySource.Unanalyzed -> ImagePartition.UNPROCESSED
     GallerySource.Private -> ImagePartition.PRIVATE
     GallerySource.PrivateUnanalyzable,
     GallerySource.Rejected,

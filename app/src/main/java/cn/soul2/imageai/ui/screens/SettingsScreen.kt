@@ -63,6 +63,7 @@ fun SettingsScreen(
     onOpenGeneralSettings: () -> Unit,
     onOpenAiSettings: () -> Unit,
     onOpenPrivateGallery: () -> Unit,
+    onOpenUnprocessedGallery: () -> Unit,
 ) {
     val viewModel: SettingsViewModel = viewModel(
         factory = SettingsViewModel.factory(galleryAccessStates, repository, unavailableCounts),
@@ -99,9 +100,9 @@ fun SettingsScreen(
             onProviders = onOpenAiSettings,
             onImport = viewModel::selectDocumentImages,
             onRescan = viewModel::rescan,
-            onReselect = viewModel::reselectPhotos,
             onSystemSettings = viewModel::openSystemSettings,
             onPrivateGallery = onOpenPrivateGallery,
+            onUnprocessedGallery = onOpenUnprocessedGallery,
         )
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
@@ -115,9 +116,9 @@ private fun SettingsContent(
     onProviders: () -> Unit,
     onImport: () -> Unit,
     onRescan: () -> Unit,
-    onReselect: () -> Unit,
     onSystemSettings: () -> Unit,
     onPrivateGallery: () -> Unit,
+    onUnprocessedGallery: () -> Unit,
 ) {
     val context = LocalContext.current
     val versionName = remember(context) {
@@ -164,7 +165,7 @@ private fun SettingsContent(
 
             item { SectionHeader("图库设置") }
             item {
-                SettingsRow(Icons.Outlined.FolderOpen, "从文件管理器选择图片", "导入应用可持续访问的图片", onImport)
+                SettingsRow(Icons.Outlined.AddPhotoAlternate, "添加图片", "从文件管理器添加 SoIM 可持续访问的图片", onImport)
             }
             item {
                 SettingsRow(Icons.Outlined.Sync, "重新扫描", "重新同步系统图库与索引状态", onRescan)
@@ -172,16 +173,11 @@ private fun SettingsContent(
             item {
                 SettingsRow(Icons.Outlined.FolderOpen, "隐私分区", "查看仅在本机保存的隐私图片", onPrivateGallery)
             }
+            item {
+                SettingsRow(Icons.Outlined.FolderOpen, "未处理图片", "查看尚未经过 AI 分析的图片", onUnprocessedGallery)
+            }
 
             item { SectionHeader("APP 权限") }
-            item {
-                SettingsRow(
-                    Icons.Outlined.AddPhotoAlternate,
-                    "重新选择照片",
-                    state.permissionLabel?.displayName() ?: "读取中",
-                    onReselect,
-                )
-            }
             item {
                 SettingsRow(Icons.Outlined.Settings, "前往系统设置", "管理照片和后台运行权限", onSystemSettings)
             }
@@ -231,10 +227,4 @@ private fun SettingsRow(
         supportingContent = { Text(subtitle, maxLines = 2) },
         trailingContent = { Icon(Icons.Outlined.ChevronRight, null, Modifier.size(18.dp)) },
     )
-}
-
-private fun SettingsPermissionLabel.displayName(): String = when (this) {
-    SettingsPermissionLabel.Full -> "完整访问"
-    SettingsPermissionLabel.Partial -> "部分访问"
-    SettingsPermissionLabel.Denied -> "未授权"
 }

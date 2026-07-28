@@ -226,6 +226,19 @@ class AiConfigurationRepositoryTest {
         assertEquals(listOf("second", "gpt-image-reader"), candidates.map { it.model.modelId })
     }
 
+    @Test
+    fun resolverUsesMainRouteForUnprocessedImages() = runTest {
+        repository.saveProvider(provider())
+        repository.saveModel(model())
+        repository.saveRuntimeSetting(runtimeSetting())
+        repository.addProviderToRoute(ImagePartition.MAIN, PROVIDER_ID)
+
+        val candidates = RepositoryAiAnalysisConfigurationResolver(repository)
+            .resolveCandidates(ImagePartition.UNPROCESSED)
+
+        assertEquals(listOf("gpt-image-reader"), candidates.map { it.model.modelId })
+    }
+
     private suspend fun assertValidationFails(block: suspend () -> Unit) {
         assertThrows(AiConfigurationValidationException::class.java) {
             kotlinx.coroutines.runBlocking { block() }

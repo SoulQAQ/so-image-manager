@@ -1,6 +1,7 @@
 package cn.soul2.imageai.ui.ai
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -41,6 +42,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -80,9 +82,13 @@ fun AiSettingsScreen(
     )
     val state by viewModel.uiState.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val savedMessage = stringResource(R.string.ai_settings_saved)
     LaunchedEffect(state.saveGeneration) {
-        if (state.saveGeneration > 0) snackbar.showSnackbar(savedMessage)
+        if (state.saveGeneration > 0) {
+            keyboardController?.hide()
+            snackbar.showSnackbar(savedMessage)
+        }
     }
     LaunchedEffect(state.deleteGeneration) {
         if (state.deleteGeneration > 0) onBack()
@@ -112,51 +118,58 @@ internal fun AiSettingsContent(
     partitionLabel: String? = null,
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
-    Scaffold(
-        modifier = Modifier.testTag("screen_ai_settings"),
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            TopAppBar(
-                title = { Text(if (isNew) "新增模型" else "编辑模型") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Outlined.ArrowBack,
-                            contentDescription = stringResource(R.string.image_detail_back),
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = onSave,
-                        enabled = !state.loading && !state.saving,
-                    ) {
-                        Icon(Icons.Outlined.Save, contentDescription = "保存")
-                    }
-                },
-                windowInsets = WindowInsets(0, 0, 0, 0),
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
-        if (state.loading) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                CircularProgressIndicator()
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize().testTag("screen_ai_settings"),
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                TopAppBar(
+                    title = { Text(if (isNew) "新增模型" else "编辑模型") },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(R.string.image_detail_back),
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = onSave,
+                            enabled = !state.loading && !state.saving,
+                        ) {
+                            Icon(Icons.Outlined.Save, contentDescription = "保存")
+                        }
+                    },
+                    windowInsets = WindowInsets(0, 0, 0, 0),
+                )
+            },
+        ) { padding ->
+            if (state.loading) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                AiSettingsFormContent(
+                    state = state,
+                    onFormChange = onFormChange,
+                    onSave = onSave,
+                    onDelete = { confirmDelete = true },
+                    partitionLabel = partitionLabel,
+                    modifier = Modifier.padding(padding),
+                )
             }
-        } else {
-            AiSettingsFormContent(
-                state = state,
-                onFormChange = onFormChange,
-                onSave = onSave,
-                onDelete = { confirmDelete = true },
-                partitionLabel = partitionLabel,
-                modifier = Modifier.padding(padding),
-            )
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.TopCenter)
+                .padding(horizontal = 16.dp, vertical = 64.dp)
+                .testTag("ai_settings_snackbar"),
+        )
     }
     if (confirmDelete) {
         AlertDialog(

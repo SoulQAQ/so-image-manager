@@ -1,10 +1,13 @@
 package cn.soul2.imageai.ui.ai
 
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTopPositionInRootIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -12,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.ui.theme.SoImageManagerTheme
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -67,5 +71,26 @@ class AiSettingsScreenTest {
 
         composeRule.onNodeWithTag("ai_settings_error").assertIsDisplayed()
         composeRule.onNodeWithText("已安全保存，留空则不修改").assertIsDisplayed()
+    }
+
+    @Test
+    fun saveConfirmationIsDisplayedBelowTheTopBar() {
+        composeRule.setContent {
+            SoImageManagerTheme {
+                val snackbar = remember { SnackbarHostState() }
+                LaunchedEffect(Unit) { snackbar.showSnackbar("配置已保存") }
+                AiSettingsContent(
+                    state = AiSettingsUiState(loading = false),
+                    snackbarHostState = snackbar,
+                    onFormChange = {},
+                    onSave = {},
+                    onBack = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("配置已保存").assertIsDisplayed()
+        composeRule.onNodeWithTag("ai_settings_snackbar")
+            .assertTopPositionInRootIsEqualTo(64.dp)
     }
 }

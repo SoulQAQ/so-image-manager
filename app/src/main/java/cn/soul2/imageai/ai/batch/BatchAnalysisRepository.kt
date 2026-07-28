@@ -5,6 +5,7 @@ import cn.soul2.imageai.ai.analysis.SingleImageAnalysisResult
 import cn.soul2.imageai.ai.analysis.SingleImageAnalyzer
 import cn.soul2.imageai.data.db.dao.BatchAnalysisDao
 import cn.soul2.imageai.data.db.dao.ImageDao
+import cn.soul2.imageai.data.db.entity.BatchAnalysisEnqueueResult
 import cn.soul2.imageai.data.db.entity.BatchAnalysisRunEntity
 import cn.soul2.imageai.data.db.entity.ImagePartition
 import kotlinx.coroutines.flow.Flow
@@ -17,9 +18,9 @@ class BatchAnalysisRepository(
 ) {
     fun observeLatest(): Flow<BatchAnalysisRunEntity?> = dao.observeLatest()
 
-    suspend fun enqueueAll(): BatchAnalysisRunEntity? = enqueue(imageDao.allUnanalyzedAvailableIds())
+    suspend fun enqueueAll(): BatchAnalysisEnqueueResult = enqueue(imageDao.allUnanalyzedAvailableIds())
 
-    suspend fun enqueue(imageIds: List<Long>): BatchAnalysisRunEntity? =
+    suspend fun enqueue(imageIds: List<Long>): BatchAnalysisEnqueueResult =
         dao.createRun(imageIds, now())
 
     suspend fun runOne(): BatchSliceResult {

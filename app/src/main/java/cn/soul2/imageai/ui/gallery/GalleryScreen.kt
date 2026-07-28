@@ -54,6 +54,7 @@ import cn.soul2.imageai.media.permission.GalleryAccessState
 @Composable
 internal fun GalleryScreen(
     @StringRes titleRes: Int,
+    titleText: String? = null,
     screenTag: String,
     collectionTag: String,
     layout: GalleryLayout,
@@ -73,12 +74,13 @@ internal fun GalleryScreen(
     onAnalyzeSelection: (List<GalleryImage>) -> Unit = {},
     onMoveToPrivateSelection: ((List<GalleryImage>) -> Unit)? = null,
     topBarAction: @Composable (() -> Unit)? = null,
+    contentHeader: @Composable (() -> Unit)? = null,
     onNavigateBack: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxSize().testTag(screenTag)) {
         TopAppBar(
             title = {
-                if (selectedImages.isEmpty()) Text(stringResource(titleRes))
+                if (selectedImages.isEmpty()) Text(titleText ?: stringResource(titleRes))
                 else Text(
                     text = stringResource(R.string.gallery_selection_count_compact, selectedImages.size),
                     maxLines = 1,
@@ -99,34 +101,39 @@ internal fun GalleryScreen(
             actions = { if (selectedImages.isEmpty()) topBarAction?.invoke() },
             windowInsets = WindowInsets(0, 0, 0, 0),
         )
-        when (val contentState = uiState.contentState(galleryAccessState)) {
-            GalleryContentState.Loading -> CenteredContent {
-                CircularProgressIndicator()
-            }
-            GalleryContentState.NoPermission -> PermissionEmptyState(
-                deniedState = galleryAccessState as GalleryAccessState.Denied,
-                requestInFlight = isPermissionRequestInFlight,
-                onRequestPermission = onRequestGalleryPermission,
-                onOpenSettings = onOpenAppSettings,
-            )
-            is GalleryContentState.Syncing -> SyncingEmptyState(contentState.indexedCount)
-            GalleryContentState.Empty -> CenteredContent {
-                Text(
-                    text = stringResource(R.string.gallery_empty_index),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-            }
-            GalleryContentState.Content -> {
-                GalleryCollection(
-                    images = images,
-                    layout = layout,
-                    collectionTag = collectionTag,
-                    onImageClick = onImageClick,
-                    selectedImages = selectedImages,
-                    onToggleSelection = onToggleSelection,
-                    modifier = Modifier.weight(1f),
-                )
+        Column(Modifier.weight(1f).fillMaxWidth()) {
+            contentHeader?.invoke()
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (val contentState = uiState.contentState(galleryAccessState)) {
+                    GalleryContentState.Loading -> CenteredContent {
+                        CircularProgressIndicator()
+                    }
+                    GalleryContentState.NoPermission -> PermissionEmptyState(
+                        deniedState = galleryAccessState as GalleryAccessState.Denied,
+                        requestInFlight = isPermissionRequestInFlight,
+                        onRequestPermission = onRequestGalleryPermission,
+                        onOpenSettings = onOpenAppSettings,
+                    )
+                    is GalleryContentState.Syncing -> SyncingEmptyState(contentState.indexedCount)
+                    GalleryContentState.Empty -> CenteredContent {
+                        Text(
+                            text = stringResource(R.string.gallery_empty_index),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                    GalleryContentState.Content -> {
+                        GalleryCollection(
+                            images = images,
+                            layout = layout,
+                            collectionTag = collectionTag,
+                            onImageClick = onImageClick,
+                            selectedImages = selectedImages,
+                            onToggleSelection = onToggleSelection,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
         }
         if (selectedImages.isNotEmpty()) {
@@ -157,21 +164,46 @@ private fun SelectionActionBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SelectionAction(Icons.Outlined.AutoAwesome, R.string.gallery_selection_analyze) {
+            SelectionAction(
+                Icons.Outlined.AutoAwesome,
+                R.string.gallery_selection_analyze,
+                "gallery_selection_action_analyze",
+                Modifier.weight(1f),
+            ) {
                 onAnalyze(selected)
             }
-            SelectionAction(Icons.Outlined.Share, R.string.gallery_selection_share) {
+            SelectionAction(
+                Icons.Outlined.Share,
+                R.string.gallery_selection_share,
+                "gallery_selection_action_share",
+                Modifier.weight(1f),
+            ) {
                 onShare(selected)
             }
             if (onMoveToPrivate != null) {
-                SelectionAction(Icons.Outlined.Lock, R.string.gallery_selection_private) {
+                SelectionAction(
+                    Icons.Outlined.Lock,
+                    R.string.gallery_selection_private,
+                    "gallery_selection_action_private",
+                    Modifier.weight(1f),
+                ) {
                     onMoveToPrivate(selected)
                 }
             }
-            SelectionAction(Icons.Outlined.VisibilityOff, R.string.gallery_selection_remove) {
+            SelectionAction(
+                Icons.Outlined.VisibilityOff,
+                R.string.gallery_selection_remove,
+                "gallery_selection_action_remove",
+                Modifier.weight(1f),
+            ) {
                 onRemove(selected)
             }
-            SelectionAction(Icons.Outlined.Delete, R.string.gallery_selection_delete) {
+            SelectionAction(
+                Icons.Outlined.Delete,
+                R.string.gallery_selection_delete,
+                "gallery_selection_action_delete",
+                Modifier.weight(1f),
+            ) {
                 onDelete(selected)
             }
         }
@@ -182,9 +214,14 @@ private fun SelectionActionBar(
 private fun SelectionAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     @StringRes label: Int,
+    testTag: String,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        modifier = modifier.testTag(testTag),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
             Icon(icon, contentDescription = stringResource(label))
         }
@@ -305,6 +342,8 @@ private fun GalleryCollection(
                                 else onToggleSelection?.invoke(image)
                             },
                             onLongClick = onToggleSelection,
+                            onPreview = onImageClick,
+                            selectionMode = selectedImages.isNotEmpty(),
                             selected = selectedImages.containsKey(image.localId),
                         )
                     }
@@ -330,6 +369,8 @@ private fun GalleryCollection(
                                 else onToggleSelection?.invoke(image)
                             },
                             onLongClick = onToggleSelection,
+                            onPreview = onImageClick,
+                            selectionMode = selectedImages.isNotEmpty(),
                             selected = selectedImages.containsKey(image.localId),
                         )
                     }

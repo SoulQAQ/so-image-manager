@@ -6,6 +6,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 import cn.soul2.imageai.data.db.entity.BatchAnalysisItemEntity
+import cn.soul2.imageai.data.db.entity.BatchAnalysisEnqueueResult
 import cn.soul2.imageai.data.db.entity.BatchAnalysisRunEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -44,6 +45,9 @@ abstract class BatchAnalysisDao {
     @Insert
     protected abstract suspend fun insertItems(items: List<BatchAnalysisItemEntity>)
 
+    @Query("SELECT image_local_id FROM batch_analysis_item WHERE run_id = :runId AND image_local_id IN (:imageIds)")
+    protected abstract suspend fun existingItemIds(runId: Long, imageIds: List<Long>): List<Long>
+
     @Upsert
     abstract suspend fun upsertRun(run: BatchAnalysisRunEntity)
 
@@ -51,17 +55,28 @@ abstract class BatchAnalysisDao {
     abstract suspend fun pauseRun(runId: Long, now: Long): Int
 
     @Transaction
-    open suspend fun createRun(imageIds: List<Long>, now: Long): BatchAnalysisRunEntity? {
+    open suspend fun createRun(imageIds: List<Long>, now: Long): BatchAnalysisEnqueueResult {
         val ids = imageIds.distinct().filter { it > 0L }
-        if (ids.isEmpty()) return null
-        activeRun()?.let { return it }
+        if (ids.isEmpty()) return BatchAnalysisEnqueueResult(null, 0)
+        activeRun()?.let { active ->
+            val existingIds = existingItemIds(active.runId, ids).toHashSet()
+            val addedIds = ids.filterNot(existingIds::contains)
+            if (addedIds.isEmpty()) return BatchAnalysisEnqueueResult(active, 0)
+            insertItems(addedIds.map { BatchAnalysisItemEntity(active.runId, it, "QUEUED") })
+            val updated = active.copy(
+                totalCount = active.totalCount + addedIds.size,
+                updatedAtEpochMillis = now,
+            )
+            upsertRun(updated)
+            return BatchAnalysisEnqueueResult(updated, addedIds.size)
+        }
         val run = BatchAnalysisRunEntity(
             state = "QUEUED", totalCount = ids.size, completedCount = 0, failedCount = 0,
             createdAtEpochMillis = now, updatedAtEpochMillis = now, completedAtEpochMillis = null,
         )
         val runId = insertRun(run)
         insertItems(ids.map { BatchAnalysisItemEntity(runId, it, "QUEUED") })
-        return run.copy(runId = runId)
+        return BatchAnalysisEnqueueResult(run.copy(runId = runId), ids.size)
     }
 
     @Transaction

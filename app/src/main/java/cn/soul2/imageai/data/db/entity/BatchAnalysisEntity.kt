@@ -44,3 +44,8 @@ data class BatchAnalysisItemEntity(
     val state: String,
     @ColumnInfo(name = "failure_code") val failureCode: String? = null,
 )
+
+data class BatchAnalysisEnqueueResult(
+    val run: BatchAnalysisRunEntity?,
+    val addedCount: Int,
+)
