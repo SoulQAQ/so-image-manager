@@ -57,6 +57,8 @@ import cn.soul2.imageai.R
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.media.permission.GalleryAccessState
 import cn.soul2.imageai.update.AppUpdateState
+import cn.soul2.imageai.update.ReleaseNotesBlock
+import cn.soul2.imageai.update.ReleaseNotesMarkdown
 import cn.soul2.imageai.update.UpdateRelease
 import java.io.File
 import kotlinx.coroutines.flow.Flow
@@ -271,7 +273,8 @@ internal fun UpdateDialog(
                     LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
                     Text("${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}")
                     Text(
-                        "下载完成后会先校验安装包，再交给 Android 系统安装。",
+                        state.bytesPerSecond?.let { "下载速度：${formatTransferRate(it)}" }
+                            ?: "正在连接…",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -331,12 +334,55 @@ private fun ReleaseDialog(
             ) {
                 Text("安装包大小：${formatBytes(release.asset.sizeBytes)}")
                 supportingText?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                if (release.notes.isNotBlank()) Text(release.notes)
+                if (release.notes.isNotBlank()) {
+                    ReleaseNotesMarkdownContent(release.notes, release.tagName)
+                }
             }
         },
         confirmButton = { Button(onClick = onConfirm) { Text(confirmLabel) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("稍后") } },
     )
+}
+
+@Composable
+internal fun ReleaseNotesMarkdownContent(
+    markdown: String,
+    leadingHeadingToOmit: String? = null,
+) {
+    val blocks = remember(markdown, leadingHeadingToOmit) {
+        ReleaseNotesMarkdown.parse(markdown).let { parsed ->
+            if (
+                parsed.firstOrNull() is ReleaseNotesBlock.Heading &&
+                (parsed.first() as ReleaseNotesBlock.Heading).text.equals(
+                    leadingHeadingToOmit,
+                    ignoreCase = true,
+                )
+            ) {
+                parsed.drop(1)
+            } else {
+                parsed
+            }
+        }
+    }
+    blocks.forEach { block ->
+        when (block) {
+            is ReleaseNotesBlock.Heading -> Text(
+                text = block.text,
+                style = when (block.level) {
+                    1 -> MaterialTheme.typography.titleLarge
+                    2 -> MaterialTheme.typography.titleMedium
+                    else -> MaterialTheme.typography.titleSmall
+                },
+            )
+            is ReleaseNotesBlock.Bullet -> Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(block.ordinal?.let { "$it." } ?: "•")
+                Text(block.text, modifier = Modifier.weight(1f))
+            }
+            is ReleaseNotesBlock.Paragraph -> Text(block.text)
+        }
+    }
 }
 
 private fun AppUpdateState.subtitle(currentVersion: String): String = when (this) {
@@ -353,6 +399,13 @@ private fun formatBytes(bytes: Long): String = when {
     bytes <= 0L -> "0 MB"
     bytes >= 1024L * 1024L -> "%.1f MB".format(bytes.toDouble() / (1024L * 1024L))
     else -> "%.1f KB".format(bytes.toDouble() / 1024L)
+}
+
+private fun formatTransferRate(bytesPerSecond: Long): String = when {
+    bytesPerSecond >= 1024L * 1024L ->
+        "%.1f MB/s".format(bytesPerSecond.toDouble() / (1024L * 1024L))
+    bytesPerSecond >= 1024L -> "%.1f KB/s".format(bytesPerSecond.toDouble() / 1024L)
+    else -> "$bytesPerSecond B/s"
 }
 
 @Composable

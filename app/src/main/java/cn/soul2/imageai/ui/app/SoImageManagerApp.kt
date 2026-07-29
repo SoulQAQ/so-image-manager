@@ -69,6 +69,7 @@ import cn.soul2.imageai.ui.screens.LibraryBrowserScreen
 import cn.soul2.imageai.ui.screens.SettingsScreen
 import cn.soul2.imageai.ui.screens.TasksScreen
 import cn.soul2.imageai.ui.screens.UpdateDialog
+import cn.soul2.imageai.ui.screens.ReleaseNotesMarkdownContent
 import cn.soul2.imageai.ui.search.SearchDestination
 import cn.soul2.imageai.ui.search.SearchScreen
 import cn.soul2.imageai.update.AppUpdateState
@@ -680,10 +681,14 @@ private fun InstalledUpdateNoticeDialog(
                 if (notice.releaseName.isNotBlank() && notice.releaseName != notice.tagName) {
                     Text(notice.releaseName, style = MaterialTheme.typography.titleSmall)
                 }
-                Text(
-                    notice.notes.ifBlank { "此版本没有附加更新说明。" },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (notice.notes.isBlank()) {
+                    Text(
+                        "此版本没有附加更新说明。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    ReleaseNotesMarkdownContent(notice.notes, notice.tagName)
+                }
             }
         },
         confirmButton = { Button(onClick = onDismiss) { Text("知道了") } },

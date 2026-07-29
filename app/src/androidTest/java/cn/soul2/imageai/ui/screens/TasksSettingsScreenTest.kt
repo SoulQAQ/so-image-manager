@@ -188,7 +188,7 @@ class TasksSettingsScreenTest {
             version = SemanticVersion(0, 17, 0),
             tagName = "v0.17.0",
             releaseName = "SoIM v0.17.0",
-            notes = "新增应用内更新。",
+            notes = "## v0.17.0\n\n### 功能\n- 新增应用内更新。",
             publishedAt = "2026-07-29T00:00:00Z",
             pageUrl = "https://github.com/SoulQAQ/so-image-manager/releases/tag/v0.17.0",
             asset = UpdateAsset(
@@ -215,7 +215,12 @@ class TasksSettingsScreenTest {
                     },
                     onDownloadUpdate = {
                         actions += "download"
-                        updateState.value = AppUpdateState.Downloading(release, 50L, 100L)
+                        updateState.value = AppUpdateState.Downloading(
+                            release,
+                            50L,
+                            100L,
+                            bytesPerSecond = 2_048L,
+                        )
                     },
                     onInstallUpdate = { file ->
                         actions += "install:${file.name}"
@@ -227,9 +232,15 @@ class TasksSettingsScreenTest {
         composeRule.onNodeWithTag("destination_settings").performClick()
         composeRule.onNodeWithText("检查更新").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("发现新版本 v0.17.0").assertIsDisplayed()
+        composeRule.onNodeWithText("v0.17.0").assertDoesNotExist()
+        composeRule.onNodeWithText("功能").assertIsDisplayed()
         composeRule.onNodeWithText("新增应用内更新。").assertIsDisplayed()
+        composeRule.onNodeWithText("### 功能").assertDoesNotExist()
         composeRule.onNodeWithText("下载更新").performClick()
         composeRule.onNodeWithText("正在下载 v0.17.0").assertIsDisplayed()
+        composeRule.onNodeWithText("下载速度：2.0 KB/s").assertIsDisplayed()
+        composeRule.onNodeWithText("下载完成后会先校验安装包，再交给 Android 系统安装。")
+            .assertDoesNotExist()
 
         composeRule.runOnIdle { updateState.value = AppUpdateState.Ready(release, apk) }
         composeRule.onNodeWithText("更新已准备完成").assertIsDisplayed()
@@ -249,7 +260,7 @@ class TasksSettingsScreenTest {
                 version = SemanticVersion(0, 17, 1),
                 tagName = "v0.17.1",
                 releaseName = "SoIM v0.17.1",
-                notes = "自动检查更新，并在更新后展示本次更新内容。",
+                notes = "### 更新内容\n\n- 自动检查更新，并在更新后展示本次更新内容。",
             ),
         )
         composeRule.setContent {
@@ -266,8 +277,10 @@ class TasksSettingsScreenTest {
         }
 
         composeRule.onNodeWithText("已更新到 v0.17.1").assertIsDisplayed()
+        composeRule.onNodeWithText("更新内容").assertIsDisplayed()
         composeRule.onNodeWithText("自动检查更新，并在更新后展示本次更新内容。")
             .assertIsDisplayed()
+        composeRule.onNodeWithText("### 更新内容").assertDoesNotExist()
         composeRule.onNodeWithText("知道了").performClick()
         composeRule.onNodeWithText("已更新到 v0.17.1").assertDoesNotExist()
     }

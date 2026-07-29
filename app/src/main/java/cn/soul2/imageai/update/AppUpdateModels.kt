@@ -60,6 +60,7 @@ sealed interface AppUpdateState {
         val release: UpdateRelease,
         val downloadedBytes: Long,
         val totalBytes: Long,
+        val bytesPerSecond: Long? = null,
     ) : AppUpdateState
     data class Ready(val release: UpdateRelease, val apk: File) : AppUpdateState
     data class Failed(val message: String, val release: UpdateRelease? = null) : AppUpdateState

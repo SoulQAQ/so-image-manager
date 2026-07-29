@@ -143,6 +143,7 @@ class AppUpdateManager(
 
     private suspend fun monitorLoop(pending: PendingUpdate) {
         val release = pending.release
+        val speedEstimator = DownloadSpeedEstimator()
         while (kotlin.coroutines.coroutineContext.isActive) {
             when (val status = downloads.status(pending.downloadId)) {
                 is UpdateDownloadStatus.Active -> {
@@ -150,6 +151,10 @@ class AppUpdateManager(
                         release = release,
                         downloadedBytes = status.downloadedBytes,
                         totalBytes = status.totalBytes.takeIf { it > 0L } ?: release.asset.sizeBytes,
+                        bytesPerSecond = speedEstimator.observe(
+                            downloadedBytes = status.downloadedBytes,
+                            observedAtMillis = nowEpochMillis(),
+                        ),
                     )
                     delay(DOWNLOAD_POLL_INTERVAL_MILLIS)
                 }
