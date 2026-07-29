@@ -285,6 +285,46 @@ class TasksSettingsScreenTest {
         composeRule.onNodeWithText("已更新到 v0.17.1").assertDoesNotExist()
     }
 
+    @Test
+    fun installationFailureExplainsTheProblemAndKeepsRetryAvailable() {
+        val release = UpdateRelease(
+            version = SemanticVersion(0, 17, 3),
+            tagName = "v0.17.3",
+            releaseName = "SoIM v0.17.3",
+            notes = "修复更新恢复。",
+            publishedAt = "2026-07-29T00:00:00Z",
+            pageUrl = "https://github.com/SoulQAQ/so-image-manager/releases/tag/v0.17.3",
+            asset = UpdateAsset(
+                name = "soim-v0.17.3-debug.apk",
+                downloadUrl = "https://github.com/SoulQAQ/so-image-manager/releases/download/v0.17.3/soim-v0.17.3-debug.apk",
+                sizeBytes = 100L,
+                sha256 = "a".repeat(64),
+            ),
+        )
+        val apk = File("C:/tmp/soim-v0.17.3-debug.apk")
+        val updateState = MutableStateFlow<AppUpdateState>(
+            AppUpdateState.InstallationFailed(release, apk, "需要允许 SoIM 安装应用。"),
+        )
+        var retried: File? = null
+        composeRule.setContent {
+            SoImageManagerTheme {
+                SoImageManagerApp(
+                    galleryRepository = MutableGalleryRepository(0),
+                    syncRuns = flowOf(null),
+                    galleryAccessState = GalleryAccessState.Full,
+                    galleryAccessStates = flowOf(GalleryAccessState.Full),
+                    appUpdateState = updateState,
+                    onInstallUpdate = { retried = it },
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("无法安装更新").assertIsDisplayed()
+        composeRule.onNodeWithText("需要允许 SoIM 安装应用。").assertIsDisplayed()
+        composeRule.onNodeWithText("重试安装").performClick()
+        composeRule.runOnIdle { assertEquals(apk, retried) }
+    }
+
     private class MutableGalleryRepository(initialCount: Int) : GalleryRepository {
         val count = MutableStateFlow(initialCount)
 

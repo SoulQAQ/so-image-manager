@@ -174,6 +174,7 @@ fun SoImageManagerApp(
     val updatePromptKey = when (val current = updateState) {
         is AppUpdateState.Available -> "available:${current.release.tagName}"
         is AppUpdateState.Ready -> "ready:${current.release.tagName}"
+        is AppUpdateState.InstallationFailed -> "install-failed:${current.release.tagName}"
         else -> null
     }
     LaunchedEffect(updatePromptKey) {
@@ -655,7 +656,12 @@ fun SoImageManagerApp(
             state = updateState,
             onDismiss = {
                 showUpdateDialog = false
-                if (updateState is AppUpdateState.Failed) onDismissUpdateFailure()
+                if (
+                    updateState is AppUpdateState.Failed ||
+                    updateState is AppUpdateState.InstallationFailed
+                ) {
+                    onDismissUpdateFailure()
+                }
             },
             onCheck = onCheckForUpdate,
             onDownload = onDownloadUpdate,

@@ -129,10 +129,13 @@ fun SettingsScreen(
                     AppUpdateState.Idle,
                     is AppUpdateState.UpToDate,
                     -> onCheckForUpdate()
-                    AppUpdateState.Checking -> Unit
+                    AppUpdateState.Checking,
+                    is AppUpdateState.Restoring,
+                    -> Unit
                     is AppUpdateState.Available,
                     is AppUpdateState.Downloading,
                     is AppUpdateState.Ready,
+                    is AppUpdateState.InstallationFailed,
                     is AppUpdateState.Failed,
                     -> onOpenUpdateDetails()
                 }
@@ -251,6 +254,7 @@ internal fun UpdateDialog(
     when (state) {
         AppUpdateState.Idle,
         AppUpdateState.Checking,
+        is AppUpdateState.Restoring,
         is AppUpdateState.UpToDate,
         -> Unit
         is AppUpdateState.Available -> ReleaseDialog(
@@ -298,6 +302,15 @@ internal fun UpdateDialog(
             onConfirm = { onInstall(state.apk) },
             onDismiss = onDismiss,
             supportingText = "安装包已通过 SHA-256、包名、版本和签名校验。",
+        )
+        is AppUpdateState.InstallationFailed -> AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("无法安装更新") },
+            text = { Text(state.message) },
+            confirmButton = {
+                Button(onClick = { onInstall(state.apk) }) { Text("重试安装") }
+            },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("稍后") } },
         )
         is AppUpdateState.Failed -> AlertDialog(
             onDismissRequest = onDismiss,
@@ -388,10 +401,12 @@ internal fun ReleaseNotesMarkdownContent(
 private fun AppUpdateState.subtitle(currentVersion: String): String = when (this) {
     AppUpdateState.Idle -> "当前 v$currentVersion，点击检查 GitHub Release"
     AppUpdateState.Checking -> "正在检查 GitHub Release…"
+    is AppUpdateState.Restoring -> "正在恢复 ${release.tagName} 的安装状态"
     is AppUpdateState.UpToDate -> "已是最新版本 v$currentVersion"
     is AppUpdateState.Available -> "发现 ${release.tagName}，点击查看"
     is AppUpdateState.Downloading -> "正在下载 ${release.tagName}"
     is AppUpdateState.Ready -> "${release.tagName} 已下载，点击安装"
+    is AppUpdateState.InstallationFailed -> "${release.tagName} 安装未完成，点击重试"
     is AppUpdateState.Failed -> "更新失败，点击查看"
 }
 

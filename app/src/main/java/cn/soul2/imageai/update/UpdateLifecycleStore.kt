@@ -52,12 +52,13 @@ class SharedPreferencesUpdateLifecycleStore(context: Context) : UpdateLifecycleS
     }
 
     override fun savePreparedRelease(release: UpdateRelease) {
-        preferences.edit()
+        val saved = preferences.edit()
             .putString(KEY_PREPARED_VERSION, release.version.toString())
             .putString(KEY_PREPARED_TAG, release.tagName)
             .putString(KEY_PREPARED_NAME, release.releaseName)
             .putString(KEY_PREPARED_NOTES, release.notes)
-            .apply()
+            .commit()
+        if (!saved) throw AppUpdateException("无法保存更新说明")
     }
 
     override fun loadUnseenInstalledNotice(

@@ -55,7 +55,7 @@ class AppUpdateManagerTest {
         runCurrent()
 
         assertTrue(manager.state.value is AppUpdateState.Ready)
-        assertEquals(null, store.pending)
+        assertEquals(PersistedUpdateStage.VERIFIED_READY, store.pending?.stage)
     }
 
     @Test
@@ -103,7 +103,83 @@ class AppUpdateManagerTest {
         runCurrent()
 
         assertTrue(manager.state.value is AppUpdateState.Ready)
+        assertEquals(PersistedUpdateStage.VERIFIED_READY, store.pending?.stage)
+    }
+
+    @Test
+    fun restoresVerifiedReadyUpdateAfterProcessRecreation() = runTest {
+        val release = release()
+        val persisted = PendingUpdate(7L, release, PersistedUpdateStage.VERIFIED_READY)
+        val store = MemoryPendingStore().apply { pending = persisted }
+        val downloads = FakeDownloads()
+        val manager = AppUpdateManager(
+            context = context,
+            scope = this,
+            source = ReleaseUpdateSource { release },
+            downloads = downloads,
+            verifier = FakeVerifier(SemanticVersion(0, 16, 0)),
+            pendingStore = store,
+        )
+
+        assertEquals(AppUpdateState.Restoring(release), manager.state.value)
+        runCurrent()
+
+        assertTrue(manager.state.value is AppUpdateState.Ready)
+        assertEquals(persisted, store.pending)
+        assertTrue(downloads.cleanupRequests.contains(release.asset.name))
+    }
+
+    @Test
+    fun installedTargetCleansPersistedDownloadAndLegacyArtifacts() = runTest {
+        val release = release()
+        val store = MemoryPendingStore().apply {
+            pending = PendingUpdate(7L, release, PersistedUpdateStage.VERIFIED_READY)
+        }
+        val downloads = FakeDownloads()
+        val manager = AppUpdateManager(
+            context = context,
+            scope = this,
+            source = ReleaseUpdateSource { release },
+            downloads = downloads,
+            verifier = FakeVerifier(release.version),
+            pendingStore = store,
+        )
+
+        runCurrent()
+
+        assertEquals(AppUpdateState.Idle, manager.state.value)
         assertEquals(null, store.pending)
+        assertEquals(listOf(7L), downloads.cancelledIds)
+        assertTrue(downloads.cleanupRequests.contains(null))
+    }
+
+    @Test
+    fun reportsInstallationFailureAndKeepsVerifiedApkRetryable() = runTest {
+        val release = release()
+        val store = MemoryPendingStore().apply {
+            pending = PendingUpdate(7L, release, PersistedUpdateStage.VERIFIED_READY)
+        }
+        val downloads = FakeDownloads()
+        val manager = AppUpdateManager(
+            context = context,
+            scope = this,
+            source = ReleaseUpdateSource { release },
+            downloads = downloads,
+            verifier = FakeVerifier(SemanticVersion(0, 16, 0)),
+            pendingStore = store,
+        )
+        runCurrent()
+        val apk = downloads.fileFor(release.asset)
+
+        manager.reportInstallationFailure(apk, "需要安装权限")
+        assertEquals(
+            AppUpdateState.InstallationFailed(release, apk, "需要安装权限"),
+            manager.state.value,
+        )
+
+        manager.dismissFailure()
+        assertEquals(AppUpdateState.Ready(release, apk), manager.state.value)
+        assertEquals(PersistedUpdateStage.VERIFIED_READY, store.pending?.stage)
     }
 
     @Test
@@ -219,6 +295,25 @@ class AppUpdateManagerTest {
         assertEquals(null, store.loadUnseenInstalledNotice(target.version))
     }
 
+    @Test
+    fun sharedPreferencesPendingStorePersistsVerifiedReadyStage() {
+        context.getSharedPreferences("app_update_download", Context.MODE_PRIVATE)
+            .edit()
+            .clear()
+            .commit()
+        val expected = PendingUpdate(
+            downloadId = 42L,
+            release = release(),
+            stage = PersistedUpdateStage.VERIFIED_READY,
+        )
+        val store = SharedPreferencesPendingUpdateStore(context)
+
+        store.save(expected)
+
+        assertEquals(expected, SharedPreferencesPendingUpdateStore(context).load())
+        store.clear()
+    }
+
     private class FakeVerifier(private val installed: SemanticVersion) : UpdateArtifactVerifier {
         override fun installedVersion() = InstalledAppVersion(installed, installed.toString(), 21L)
         override fun verify(file: File, release: UpdateRelease): File = file
@@ -228,11 +323,18 @@ class AppUpdateManagerTest {
         private val statuses: ArrayDeque<UpdateDownloadStatus> = ArrayDeque(),
     ) : UpdateDownloadGateway {
         private val file = File("build/test-update.apk")
+        val cancelledIds = mutableListOf<Long>()
+        val cleanupRequests = mutableListOf<String?>()
         override fun enqueue(release: UpdateRelease): Long = 7L
         override fun status(downloadId: Long): UpdateDownloadStatus =
             if (statuses.isEmpty()) UpdateDownloadStatus.Missing else statuses.removeFirst()
-        override fun cancel(downloadId: Long) = Unit
+        override fun cancel(downloadId: Long) {
+            cancelledIds += downloadId
+        }
         override fun fileFor(asset: UpdateAsset): File = file
+        override fun cleanupArtifacts(exceptAssetName: String?) {
+            cleanupRequests += exceptAssetName
+        }
     }
 
     private class MemoryPendingStore : PendingUpdateStore {

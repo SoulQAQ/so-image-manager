@@ -2,6 +2,7 @@ package cn.soul2.imageai
 
 import android.content.Intent
 import android.content.ClipData
+import android.content.ActivityNotFoundException
 import android.app.RecoverableSecurityException
 import android.net.Uri
 import android.os.Environment
@@ -139,13 +140,20 @@ class MainActivity : ComponentActivity() {
             ActivityResultContracts.StartActivityForResult(),
         ) {
             val pending = pendingUpdatePath?.let(::File)
-            pendingUpdatePath = null
-            if (
-                pending != null &&
-                (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())
-            ) {
-                openUpdateInstaller(pending)
+            if (pending != null) {
+                if (
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                    packageManager.canRequestPackageInstalls()
+                ) {
+                    openUpdateInstaller(pending)
+                } else {
+                    container.appUpdateManager.reportInstallationFailure(
+                        pending,
+                        "需要允许 SoIM 安装应用，才能继续更新。",
+                    )
+                }
             }
+            pendingUpdatePath = null
         }
         var pendingDeleteImages by remember { mutableStateOf<List<GalleryImage>>(emptyList()) }
         var deleteNeedsRetry by remember { mutableStateOf(false) }
@@ -206,12 +214,26 @@ class MainActivity : ComponentActivity() {
         val installUpdate: (File) -> Unit = { apk ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
                 pendingUpdatePath = apk.absolutePath
-                installPermissionLauncher.launch(
-                    Intent(
-                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:$packageName"),
-                    ),
-                )
+                try {
+                    installPermissionLauncher.launch(
+                        Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:$packageName"),
+                        ),
+                    )
+                } catch (_: ActivityNotFoundException) {
+                    pendingUpdatePath = null
+                    container.appUpdateManager.reportInstallationFailure(
+                        apk,
+                        "无法打开安装应用权限设置，请在系统设置中允许 SoIM 安装应用。",
+                    )
+                } catch (_: SecurityException) {
+                    pendingUpdatePath = null
+                    container.appUpdateManager.reportInstallationFailure(
+                        apk,
+                        "系统拒绝打开安装应用权限设置。",
+                    )
+                }
             } else {
                 openUpdateInstaller(apk)
             }
@@ -343,16 +365,54 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openUpdateInstaller(apk: File) {
-        val downloadsRoot = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
-        val updateDirectory = File(downloadsRoot, "updates").canonicalFile
-        val verifiedApk = apk.canonicalFile
-        if (verifiedApk.parentFile != updateDirectory || !verifiedApk.isFile) return
-        val uri = FileProvider.getUriForFile(this, "$packageName.updates", verifiedApk)
-        startActivity(
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, AndroidUpdateDownloadGateway.APK_MIME_TYPE)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            },
-        )
+        val downloadsRoot = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        if (downloadsRoot == null) {
+            container.appUpdateManager.invalidateReadyUpdate(
+                "更新安装目录不可用，请重新下载。",
+            )
+            return
+        }
+        val updateDirectory = runCatching { File(downloadsRoot, "updates").canonicalFile }
+            .getOrElse {
+                container.appUpdateManager.invalidateReadyUpdate(
+                    "无法访问更新安装目录，请重新下载。",
+                )
+                return
+            }
+        val verifiedApk = runCatching { apk.canonicalFile }.getOrElse {
+            container.appUpdateManager.invalidateReadyUpdate(
+                "无法访问已下载的更新安装包，请重新下载。",
+            )
+            return
+        }
+        if (verifiedApk.parentFile != updateDirectory || !verifiedApk.isFile) {
+            container.appUpdateManager.invalidateReadyUpdate(
+                "已下载的更新安装包已丢失，请重新下载。",
+            )
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.updates", verifiedApk)
+            startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, AndroidUpdateDownloadGateway.APK_MIME_TYPE)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
+        } catch (_: ActivityNotFoundException) {
+            container.appUpdateManager.reportInstallationFailure(
+                verifiedApk,
+                "系统中没有可用的 APK 安装器。",
+            )
+        } catch (_: SecurityException) {
+            container.appUpdateManager.reportInstallationFailure(
+                verifiedApk,
+                "系统拒绝打开更新安装包，请检查安装应用权限。",
+            )
+        } catch (_: IllegalArgumentException) {
+            container.appUpdateManager.invalidateReadyUpdate(
+                "更新安装包无法共享给系统安装器，请重新下载。",
+            )
+        }
     }
 }

@@ -19,6 +19,7 @@ interface UpdateDownloadGateway {
     fun status(downloadId: Long): UpdateDownloadStatus
     fun cancel(downloadId: Long)
     fun fileFor(asset: UpdateAsset): File
+    fun cleanupArtifacts(exceptAssetName: String? = null)
 }
 
 class AndroidUpdateDownloadGateway(context: Context) : UpdateDownloadGateway {
@@ -65,6 +66,14 @@ class AndroidUpdateDownloadGateway(context: Context) : UpdateDownloadGateway {
             throw AppUpdateException("Release APK 文件名不安全")
         }
         return destination
+    }
+
+    override fun cleanupArtifacts(exceptAssetName: String?) {
+        val root = applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
+        val updateDirectory = File(root, "updates").canonicalFile
+        updateDirectory.listFiles().orEmpty()
+            .filter { file -> file.isFile && file.name != exceptAssetName }
+            .forEach { file -> runCatching { file.delete() } }
     }
 
     private fun Cursor.toStatus(): UpdateDownloadStatus {
