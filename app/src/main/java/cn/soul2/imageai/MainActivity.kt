@@ -276,6 +276,7 @@ class MainActivity : ComponentActivity() {
                 onCheckForUpdate = container.appUpdateManager::checkForUpdate,
                 onDownloadUpdate = container.appUpdateManager::downloadUpdate,
                 onCancelUpdateDownload = container.appUpdateManager::cancelDownload,
+                onDiscardReadyUpdate = container.appUpdateManager::discardReadyUpdate,
                 onDismissUpdateFailure = container.appUpdateManager::dismissFailure,
                 onDismissInstalledUpdateNotice =
                     container.appUpdateManager::dismissInstalledUpdateNotice,

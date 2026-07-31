@@ -249,6 +249,7 @@ internal fun UpdateDialog(
     onCheck: () -> Unit,
     onDownload: () -> Unit,
     onCancelDownload: () -> Unit,
+    onDiscardReadyUpdate: () -> Unit,
     onInstall: (File) -> Unit,
 ) {
     when (state) {
@@ -301,7 +302,8 @@ internal fun UpdateDialog(
             confirmLabel = "安装",
             onConfirm = { onInstall(state.apk) },
             onDismiss = onDismiss,
-            supportingText = "安装包已通过 SHA-256、包名、版本和签名校验。",
+            secondaryLabel = "删除并跳过",
+            onSecondary = onDiscardReadyUpdate,
         )
         is AppUpdateState.InstallationFailed -> AlertDialog(
             onDismissRequest = onDismiss,
@@ -310,7 +312,12 @@ internal fun UpdateDialog(
             confirmButton = {
                 Button(onClick = { onInstall(state.apk) }) { Text("重试安装") }
             },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("稍后") } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = onDiscardReadyUpdate) { Text("删除并跳过") }
+                    TextButton(onClick = onDismiss) { Text("稍后") }
+                }
+            },
         )
         is AppUpdateState.Failed -> AlertDialog(
             onDismissRequest = onDismiss,
@@ -336,6 +343,8 @@ private fun ReleaseDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     supportingText: String? = null,
+    secondaryLabel: String? = null,
+    onSecondary: (() -> Unit)? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -353,7 +362,14 @@ private fun ReleaseDialog(
             }
         },
         confirmButton = { Button(onClick = onConfirm) { Text(confirmLabel) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("稍后") } },
+        dismissButton = {
+            Row {
+                if (secondaryLabel != null && onSecondary != null) {
+                    TextButton(onClick = onSecondary) { Text(secondaryLabel) }
+                }
+                TextButton(onClick = onDismiss) { Text("稍后") }
+            }
+        },
     )
 }
 

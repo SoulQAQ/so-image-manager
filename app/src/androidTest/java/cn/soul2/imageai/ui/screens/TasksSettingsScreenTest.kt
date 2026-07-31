@@ -244,6 +244,7 @@ class TasksSettingsScreenTest {
 
         composeRule.runOnIdle { updateState.value = AppUpdateState.Ready(release, apk) }
         composeRule.onNodeWithText("更新已准备完成").assertIsDisplayed()
+        composeRule.onNodeWithText("删除并跳过").assertIsDisplayed()
         composeRule.onNodeWithText("安装").performClick()
         composeRule.runOnIdle {
             assertEquals(

@@ -183,6 +183,49 @@ class AppUpdateManagerTest {
     }
 
     @Test
+    fun discardsReadyUpdateAndSkipsOnlyAutomaticPromptForThatVersion() = runTest {
+        val release = release()
+        var latest = release
+        val store = MemoryPendingStore().apply {
+            pending = PendingUpdate(7L, release, PersistedUpdateStage.VERIFIED_READY)
+        }
+        val lifecycle = MemoryLifecycleStore()
+        val downloads = FakeDownloads()
+        val manager = AppUpdateManager(
+            context = context,
+            scope = this,
+            source = ReleaseUpdateSource { latest },
+            downloads = downloads,
+            verifier = FakeVerifier(SemanticVersion(0, 16, 0)),
+            pendingStore = store,
+            lifecycleStore = lifecycle,
+        )
+        runCurrent()
+
+        manager.discardReadyUpdate()
+        runCurrent()
+
+        assertEquals(AppUpdateState.Idle, manager.state.value)
+        assertEquals(null, store.pending)
+        assertEquals(release.version, lifecycle.skippedVersion())
+        assertEquals(listOf(7L), downloads.cancelledIds)
+        assertTrue(downloads.cleanupRequests.contains(null))
+
+        manager.checkForUpdate(manual = false)
+        advanceUntilIdle()
+        assertEquals(AppUpdateState.Idle, manager.state.value)
+
+        manager.checkForUpdate()
+        advanceUntilIdle()
+        assertEquals(AppUpdateState.Available(release), manager.state.value)
+
+        latest = release(SemanticVersion(0, 17, 1))
+        manager.checkForUpdate(manual = false)
+        advanceUntilIdle()
+        assertEquals(AppUpdateState.Available(latest), manager.state.value)
+    }
+
+    @Test
     fun automaticCheckRunsOncePerDayAndOnlyAfterMoreThanTwoDays() = runTest {
         val dayMillis = 24L * 60L * 60L * 1_000L
         var now = 10L * dayMillis
@@ -228,6 +271,40 @@ class AppUpdateManagerTest {
     }
 
     @Test
+    fun failedAutomaticCheckRetriesOnNextDailyStart() = runTest {
+        val dayMillis = 24L * 60L * 60L * 1_000L
+        var now = 10L * dayMillis
+        var requests = 0
+        val lifecycle = MemoryLifecycleStore()
+        val manager = AppUpdateManager(
+            context = context,
+            scope = this,
+            source = ReleaseUpdateSource {
+                requests += 1
+                if (requests == 1) throw AppUpdateException("网络不可用")
+                release(SemanticVersion(0, 16, 0))
+            },
+            downloads = FakeDownloads(),
+            verifier = FakeVerifier(SemanticVersion(0, 17, 0)),
+            pendingStore = MemoryPendingStore(),
+            lifecycleStore = lifecycle,
+            nowEpochMillis = { now },
+            epochDayAt = { it / dayMillis },
+        )
+
+        manager.onAppStarted()
+        advanceUntilIdle()
+        assertEquals(AppUpdateState.Failed("网络不可用"), manager.state.value)
+
+        now += dayMillis
+        manager.onAppStarted()
+        advanceUntilIdle()
+
+        assertEquals(2, requests)
+        assertEquals(AppUpdateState.UpToDate("0.17.0"), manager.state.value)
+    }
+
+    @Test
     fun preparedReleaseNotesAppearOnceAfterTargetVersionIsInstalled() = runTest {
         val target = release()
         val lifecycle = MemoryLifecycleStore()
@@ -268,9 +345,12 @@ class AppUpdateManagerTest {
     @Test
     fun automaticCheckRequiresStrictlyMoreThanTwoDays() {
         val interval = AutomaticUpdateCheckPolicy.MINIMUM_INTERVAL_MILLIS
-        assertEquals(false, AutomaticUpdateCheckPolicy.isDue(1_000L, 1_000L + interval))
-        assertEquals(true, AutomaticUpdateCheckPolicy.isDue(1_000L, 1_001L + interval))
-        assertEquals(true, AutomaticUpdateCheckPolicy.isDue(2_000L, 1_000L))
+        assertEquals(false, AutomaticUpdateCheckPolicy.isDue(1_000L, 1_000L, 1_000L + interval))
+        assertEquals(true, AutomaticUpdateCheckPolicy.isDue(1_000L, 1_000L, 1_001L + interval))
+        assertEquals(true, AutomaticUpdateCheckPolicy.isDue(2_000L, 2_000L, 1_000L))
+
+        assertEquals(false, AutomaticUpdateCheckPolicy.isDue(2_000L, 1_000L, 2_000L))
+        assertEquals(true, AutomaticUpdateCheckPolicy.isDue(2_000L, 1_000L, 2_001L))
     }
 
     @Test
@@ -285,12 +365,20 @@ class AppUpdateManagerTest {
         assertTrue(store.markFirstStartOfDay(42L))
         assertEquals(false, store.markFirstStartOfDay(42L))
         store.recordCheckStarted(123_456L)
-        assertEquals(123_456L, store.lastCheckAtMillis())
+        assertEquals(123_456L, store.lastCheckAttemptAtMillis())
+        assertEquals(null, store.lastSuccessfulCheckAtMillis())
+        store.recordCheckSucceeded(123_789L)
+        assertEquals(123_789L, store.lastSuccessfulCheckAtMillis())
 
         store.savePreparedRelease(target)
         assertEquals(null, store.loadUnseenInstalledNotice(SemanticVersion(0, 16, 0)))
         assertEquals(target.notes, store.loadUnseenInstalledNotice(target.version)?.notes)
 
+        store.markReleaseSkipped(target.version)
+        assertEquals(target.version, store.skippedVersion())
+        assertEquals(null, store.loadUnseenInstalledNotice(target.version))
+
+        store.savePreparedRelease(target)
         store.markNoticeShown(target.version)
         assertEquals(null, store.loadUnseenInstalledNotice(target.version))
     }
@@ -350,7 +438,9 @@ class AppUpdateManagerTest {
 
     private class MemoryLifecycleStore : UpdateLifecycleStore {
         private var lastStartDay: Long? = null
-        private var lastCheckAt: Long? = null
+        private var lastCheckAttemptAt: Long? = null
+        private var lastCheckSucceededAt: Long? = null
+        private var skipped: SemanticVersion? = null
         private var prepared: InstalledUpdateNotice? = null
         private var shownVersion: SemanticVersion? = null
 
@@ -360,10 +450,23 @@ class AppUpdateManagerTest {
             return true
         }
 
-        override fun lastCheckAtMillis(): Long? = lastCheckAt
+        override fun lastCheckAttemptAtMillis(): Long? = lastCheckAttemptAt
+
+        override fun lastSuccessfulCheckAtMillis(): Long? = lastCheckSucceededAt
 
         override fun recordCheckStarted(atEpochMillis: Long) {
-            lastCheckAt = atEpochMillis
+            lastCheckAttemptAt = atEpochMillis
+        }
+
+        override fun recordCheckSucceeded(atEpochMillis: Long) {
+            lastCheckAttemptAt = atEpochMillis
+            lastCheckSucceededAt = atEpochMillis
+        }
+
+        override fun skippedVersion(): SemanticVersion? = skipped
+
+        override fun markReleaseSkipped(version: SemanticVersion) {
+            skipped = version
         }
 
         override fun savePreparedRelease(release: UpdateRelease) {

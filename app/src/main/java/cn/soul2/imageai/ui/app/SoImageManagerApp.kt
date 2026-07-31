@@ -160,6 +160,7 @@ fun SoImageManagerApp(
     onCheckForUpdate: () -> Unit = {},
     onDownloadUpdate: () -> Unit = {},
     onCancelUpdateDownload: () -> Unit = {},
+    onDiscardReadyUpdate: () -> Unit = {},
     onDismissUpdateFailure: () -> Unit = {},
     onDismissInstalledUpdateNotice: () -> Unit = {},
     onInstallUpdate: (File) -> Unit = {},
@@ -666,6 +667,10 @@ fun SoImageManagerApp(
             onCheck = onCheckForUpdate,
             onDownload = onDownloadUpdate,
             onCancelDownload = onCancelUpdateDownload,
+            onDiscardReadyUpdate = {
+                onDiscardReadyUpdate()
+                showUpdateDialog = false
+            },
             onInstall = onInstallUpdate,
         )
     }

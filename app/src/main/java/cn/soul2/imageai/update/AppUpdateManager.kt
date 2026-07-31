@@ -2,6 +2,7 @@ package cn.soul2.imageai.update
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.SystemClock
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
@@ -25,6 +26,7 @@ class AppUpdateManager(
     private val pendingStore: PendingUpdateStore = SharedPreferencesPendingUpdateStore(context),
     private val lifecycleStore: UpdateLifecycleStore = SharedPreferencesUpdateLifecycleStore(context),
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
+    private val nowElapsedRealtimeMillis: () -> Long = SystemClock::elapsedRealtime,
     private val epochDayAt: (Long) -> Long = { epochMillis ->
         Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate().toEpochDay()
     },
@@ -55,8 +57,14 @@ class AppUpdateManager(
         }
         val now = nowEpochMillis()
         if (!lifecycleStore.markFirstStartOfDay(epochDayAt(now))) return
-        if (AutomaticUpdateCheckPolicy.isDue(lifecycleStore.lastCheckAtMillis(), now)) {
-            checkForUpdate()
+        if (
+            AutomaticUpdateCheckPolicy.isDue(
+                lifecycleStore.lastCheckAttemptAtMillis(),
+                lifecycleStore.lastSuccessfulCheckAtMillis(),
+                now,
+            )
+        ) {
+            checkForUpdate(manual = false)
         }
     }
 
@@ -65,7 +73,7 @@ class AppUpdateManager(
         mutableInstalledUpdateNotice.value = null
     }
 
-    fun checkForUpdate() {
+    fun checkForUpdate(manual: Boolean = true) {
         if (
             mutableState.value is AppUpdateState.Downloading ||
             mutableState.value is AppUpdateState.Restoring ||
@@ -80,8 +88,14 @@ class AppUpdateManager(
             try {
                 val installed = verifier.installedVersion()
                 val latest = source.latestRelease()
-                mutableState.value = if (latest.version > installed.version) {
+                lifecycleStore.recordCheckSucceeded(nowEpochMillis())
+                mutableState.value = if (
+                    latest.version > installed.version &&
+                    (manual || latest.version != lifecycleStore.skippedVersion())
+                ) {
                     AppUpdateState.Available(latest)
+                } else if (!manual && latest.version == lifecycleStore.skippedVersion()) {
+                    AppUpdateState.Idle
                 } else {
                     AppUpdateState.UpToDate(installed.versionName)
                 }
@@ -145,6 +159,29 @@ class AppUpdateManager(
         runCatching { downloads.cleanupArtifacts() }
         pendingStore.clear()
         mutableState.value = AppUpdateState.Available(release)
+    }
+
+    fun discardReadyUpdate() {
+        val persisted = pendingStore.load()
+            ?.takeIf { it.stage == PersistedUpdateStage.VERIFIED_READY }
+        val release = persisted?.release ?: when (val current = mutableState.value) {
+            is AppUpdateState.Ready -> current.release
+            is AppUpdateState.InstallationFailed -> current.release
+            else -> null
+        } ?: return
+        launchOperation {
+            try {
+                lifecycleStore.markReleaseSkipped(release.version)
+                persisted?.let(::cleanupPersistedUpdate) ?: run {
+                    runCatching { downloads.fileFor(release.asset).delete() }
+                    runCatching { downloads.cleanupArtifacts() }
+                    pendingStore.clear()
+                }
+                mutableState.value = AppUpdateState.Idle
+            } catch (error: AppUpdateException) {
+                mutableState.value = AppUpdateState.Failed(error.message.orEmpty(), release)
+            }
+        }
     }
 
     fun dismissFailure() {
@@ -235,7 +272,7 @@ class AppUpdateManager(
                         totalBytes = status.totalBytes.takeIf { it > 0L } ?: release.asset.sizeBytes,
                         bytesPerSecond = speedEstimator.observe(
                             downloadedBytes = status.downloadedBytes,
-                            observedAtMillis = nowEpochMillis(),
+                            observedAtMillis = nowElapsedRealtimeMillis(),
                         ),
                     )
                     delay(DOWNLOAD_POLL_INTERVAL_MILLIS)

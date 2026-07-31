@@ -36,7 +36,19 @@ class UpdatePresentationTest {
 
         assertEquals(null, estimator.observe(1_000L, 10_000L))
         assertEquals(2_000L, estimator.observe(2_500L, 10_750L))
-        assertEquals(0L, estimator.observe(2_500L, 11_500L))
+        assertEquals(1_000L, estimator.observe(2_500L, 11_500L))
         assertEquals(null, estimator.observe(100L, 12_250L))
+    }
+
+    @Test
+    fun smoothsSpeedOverFiveSecondMonotonicWindowAndResetsWhenClockMovesBack() {
+        val estimator = DownloadSpeedEstimator()
+
+        assertEquals(null, estimator.observe(0L, 1_000L))
+        assertEquals(1_000L, estimator.observe(1_000L, 2_000L))
+        assertEquals(2_500L, estimator.observe(5_000L, 3_000L))
+        assertEquals(1_400L, estimator.observe(8_000L, 7_000L))
+        assertEquals(1_000L, estimator.observe(10_000L, 8_000L))
+        assertEquals(null, estimator.observe(11_000L, 7_500L))
     }
 }
