@@ -337,7 +337,7 @@ class AppUpdateManager(
     }
 
     companion object {
-        private const val DOWNLOAD_POLL_INTERVAL_MILLIS = 750L
+        private const val DOWNLOAD_POLL_INTERVAL_MILLIS = 500L
     }
 }
 

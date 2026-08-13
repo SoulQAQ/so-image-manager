@@ -1,5 +1,7 @@
 package cn.soul2.imageai.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -360,16 +362,21 @@ internal fun UpdateDialog(
             title = { Text("正在下载 ${state.release.tagName}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val progress = if (state.totalBytes > 0L) {
+                    val targetProgress = if (state.totalBytes > 0L) {
                         (state.downloadedBytes.toFloat() / state.totalBytes).coerceIn(0f, 1f)
                     } else {
                         0f
                     }
+                    val progress by animateFloatAsState(
+                        targetValue = targetProgress,
+                        animationSpec = tween(durationMillis = 450),
+                        label = "update_download_progress",
+                    )
                     LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
                     Text("${formatBytes(state.downloadedBytes)} / ${formatBytes(state.totalBytes)}")
                     Text(
                         state.bytesPerSecond?.let { "下载速度：${formatTransferRate(it)}" }
-                            ?: "正在连接…",
+                            ?: if (state.downloadedBytes > 0L) "下载速度：计算中…" else "正在连接…",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }

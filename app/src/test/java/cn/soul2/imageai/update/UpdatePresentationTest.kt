@@ -36,8 +36,19 @@ class UpdatePresentationTest {
 
         assertEquals(null, estimator.observe(1_000L, 10_000L))
         assertEquals(2_000L, estimator.observe(2_500L, 10_750L))
-        assertEquals(1_000L, estimator.observe(2_500L, 11_500L))
+        assertEquals(2_000L, estimator.observe(2_500L, 11_500L))
         assertEquals(null, estimator.observe(100L, 12_250L))
+    }
+
+    @Test
+    fun keepsTheLastTrustedSpeedAcrossShortDownloadManagerPlateaus() {
+        val estimator = DownloadSpeedEstimator(staleAfterMillis = 3_000L)
+
+        assertEquals(null, estimator.observe(0L, 1_000L))
+        assertEquals(2_000L, estimator.observe(2_000L, 2_000L))
+        assertEquals(2_000L, estimator.observe(2_000L, 2_500L))
+        assertEquals(2_000L, estimator.observe(2_000L, 4_999L))
+        assertEquals(null, estimator.observe(2_000L, 5_001L))
     }
 
     @Test

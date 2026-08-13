@@ -51,7 +51,7 @@ class AppUpdateManagerTest {
         runCurrent()
         assertEquals(AppUpdateState.Downloading(release, 25L, 100L), manager.state.value)
         assertEquals(7L, store.pending?.downloadId)
-        advanceTimeBy(751L)
+        advanceTimeBy(501L)
         runCurrent()
 
         assertTrue(manager.state.value is AppUpdateState.Ready)
