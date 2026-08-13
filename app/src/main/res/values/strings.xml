@@ -172,6 +172,9 @@
     <string name="ai_settings_model_name">模型名称</string>
     <string name="ai_settings_model_id">模型 ID</string>
     <string name="ai_settings_protocol_responses">OpenAI Responses</string>
+    <string name="ai_settings_protocol_chat_completions">OpenAI Chat Completions</string>
+    <string name="ai_settings_protocol_anthropic">Anthropic Messages</string>
+    <string name="ai_settings_protocol_gemini">Gemini generateContent</string>
     <string name="ai_settings_protocol_custom">自定义 JSON</string>
     <string name="ai_settings_prompt">图片分析 Prompt</string>
     <string name="ai_settings_protocol_name">协议名称</string>

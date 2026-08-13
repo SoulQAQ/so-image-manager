@@ -22,6 +22,15 @@ internal data class AnalysisHistoryRow(
 
 @Dao
 internal interface AnalysisDao {
+    @Query("SELECT * FROM image_analysis ORDER BY completed_at_epoch_millis ASC, analysis_id ASC")
+    suspend fun getAllAnalyses(): List<ImageAnalysisEntity>
+
+    @Query("SELECT * FROM analysis_term ORDER BY analysis_id ASC, kind ASC, normalized_key ASC")
+    suspend fun getAllTerms(): List<AnalysisTermEntity>
+
+    @Query("SELECT * FROM active_image_analysis ORDER BY image_local_id ASC")
+    suspend fun getAllActive(): List<ActiveImageAnalysisEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAnalysis(analysis: ImageAnalysisEntity): Long
 

@@ -8,6 +8,9 @@ import androidx.room.PrimaryKey
 
 enum class ModelProtocolType {
     OPENAI_RESPONSES,
+    OPENAI_CHAT_COMPLETIONS,
+    ANTHROPIC_MESSAGES,
+    GEMINI_GENERATE_CONTENT,
     CUSTOM_JSON,
 }
 

@@ -25,6 +25,7 @@ class CanonicalStorageBoundaryContractTest {
         val allowed = setOf(
             "cn/soul2/imageai/AppContainer.kt",
             "cn/soul2/imageai/analysis/CanonicalMetadataRepository.kt",
+            "cn/soul2/imageai/backup/SoimBackupService.kt",
             "cn/soul2/imageai/data/db/AppDatabase.kt",
             "cn/soul2/imageai/search/SearchIndexBackfill.kt",
         )

@@ -21,6 +21,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -144,6 +145,28 @@ class SecureAiHttpTransportTest {
         val recorded = server.takeRequest(1, TimeUnit.SECONDS)
         assertEquals("Bearer test-secret", recorded?.getHeader("Authorization"))
         assertTrue(credentialStore.lastReturned?.all { it == '\u0000' } == true)
+    }
+
+    @Test
+    fun protocolTraceHidesImagePayloadAndCredentialValues() {
+        credentialStore.secret = "trace-secret".toCharArray()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{\"ok\":true}"))
+        val provider = provider(
+            authMode = ProviderAuthMode.BEARER,
+            credentialId = CREDENTIAL_ID,
+        )
+        var trace: AiHttpTrace? = null
+        val body = """{"image":"data:image/jpeg;base64,very-sensitive-image","prompt":"short"}"""
+
+        transport(provider).execute(
+            request(provider).copy(body = body.toByteArray(), traceSink = { trace = it }),
+        )
+
+        val captured = requireNotNull(trace)
+        assertTrue(captured.redactedRequestBody.orEmpty().contains("<图片数据已隐藏>"))
+        assertFalse(captured.redactedRequestBody.orEmpty().contains("very-sensitive-image"))
+        assertFalse(captured.redactedRequestBody.orEmpty().contains("trace-secret"))
+        assertEquals(listOf("Authorization"), captured.headerNames)
     }
 
     @Test

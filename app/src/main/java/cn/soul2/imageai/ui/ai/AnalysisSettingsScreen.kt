@@ -50,6 +50,15 @@ private data class AnalysisSettingsDraft(
     val globalRequestsPerMinute: String = "30",
     val globalRequestsPerDay: String = "1000",
     val dailyImageLimit: String = "0",
+    val dailyTokenLimit: String = "0",
+    val wifiOnly: Boolean = false,
+    val chargingOnly: Boolean = false,
+    val batteryNotLow: Boolean = true,
+    val startHour: String = "0",
+    val endHour: String = "0",
+    val retryLimit: String = "4",
+    val circuitThreshold: String = "5",
+    val cooldownMinutes: String = "30",
     val onlyShowAnalyzed: Boolean = false,
     val prompt: String = AiSettingsForm.DEFAULT_PROMPT,
 )
@@ -74,6 +83,15 @@ fun AnalysisSettingsScreen(
                     globalRequestsPerMinute = it.globalRequestsPerMinute.toString(),
                     globalRequestsPerDay = it.globalRequestsPerDay.toString(),
                     dailyImageLimit = it.dailyImageLimit.toString(),
+                    dailyTokenLimit = it.dailyTokenLimit.toString(),
+                    wifiOnly = it.wifiOnly,
+                    chargingOnly = it.chargingOnly,
+                    batteryNotLow = it.batteryNotLow,
+                    startHour = (it.executionStartMinute / 60).toString(),
+                    endHour = (it.executionEndMinute / 60).toString(),
+                    retryLimit = it.retryLimit.toString(),
+                    circuitThreshold = it.circuitBreakerThreshold.toString(),
+                    cooldownMinutes = it.circuitBreakerCooldownMinutes.toString(),
                     onlyShowAnalyzed = it.onlyShowAnalyzed,
                     prompt = it.promptText,
                 )
@@ -87,27 +105,41 @@ fun AnalysisSettingsScreen(
         val perMinute = draft.globalRequestsPerMinute.toIntOrNull()
         val perDay = draft.globalRequestsPerDay.toIntOrNull()
         val dailyImages = draft.dailyImageLimit.toIntOrNull()
-        if (concurrency == null || perMinute == null || perDay == null || dailyImages == null) {
+        val dailyTokens = draft.dailyTokenLimit.toLongOrNull()
+        val startHour = draft.startHour.toIntOrNull()
+        val endHour = draft.endHour.toIntOrNull()
+        val retryLimit = draft.retryLimit.toIntOrNull()
+        val threshold = draft.circuitThreshold.toIntOrNull()
+        val cooldown = draft.cooldownMinutes.toIntOrNull()
+        if (listOf(concurrency, perMinute, perDay, dailyImages, startHour, endHour, retryLimit, threshold, cooldown).any { it == null } || dailyTokens == null) {
             scope.launch { snackbar.showSnackbar("请检查数值设置") }
             return
         }
+        val validated = AiRuntimeSettingEntity(
+            defaultModelProfileId = runtime?.defaultModelProfileId,
+            globalMaxConcurrency = checkNotNull(concurrency),
+            globalRequestsPerMinute = checkNotNull(perMinute),
+            globalRequestsPerDay = checkNotNull(perDay),
+            dailyImageLimit = checkNotNull(dailyImages),
+            dailyTokenLimit = dailyTokens,
+            wifiOnly = draft.wifiOnly,
+            chargingOnly = draft.chargingOnly,
+            batteryNotLow = draft.batteryNotLow,
+            executionStartMinute = checkNotNull(startHour) * 60,
+            executionEndMinute = checkNotNull(endHour) * 60,
+            retryLimit = checkNotNull(retryLimit),
+            circuitBreakerThreshold = checkNotNull(threshold),
+            circuitBreakerCooldownMinutes = checkNotNull(cooldown),
+            onlyShowAnalyzed = draft.onlyShowAnalyzed,
+            automaticFailoverEnabled = true,
+            promptText = draft.prompt.trim(),
+            updatedAtEpochMillis = System.currentTimeMillis(),
+        )
         saving = true
         scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    repository.saveRuntimeSetting(
-                        AiRuntimeSettingEntity(
-                            defaultModelProfileId = runtime?.defaultModelProfileId,
-                            globalMaxConcurrency = concurrency,
-                            globalRequestsPerMinute = perMinute,
-                            globalRequestsPerDay = perDay,
-                            dailyImageLimit = dailyImages,
-                            onlyShowAnalyzed = draft.onlyShowAnalyzed,
-                            automaticFailoverEnabled = true,
-                            promptText = draft.prompt.trim(),
-                            updatedAtEpochMillis = System.currentTimeMillis(),
-                        ),
-                    )
+                    repository.saveRuntimeSetting(validated)
                 }
             }
             saving = false
@@ -159,6 +191,22 @@ fun AnalysisSettingsScreen(
                     draft = draft.copy(dailyImageLimit = it)
                 }
             }
+            item {
+                NumericSettingRow("每日 Token 上限", "按供应方实际返回用量统计，0 表示不限制", draft.dailyTokenLimit) {
+                    draft = draft.copy(dailyTokenLimit = it)
+                }
+            }
+            item { SettingsSectionTitle("设备条件") }
+            item { ToggleSettingRow("仅 Wi-Fi", "等待不计费网络后执行", draft.wifiOnly) { draft = draft.copy(wifiOnly = it) } }
+            item { ToggleSettingRow("仅充电时", "接入电源后执行批量分析", draft.chargingOnly) { draft = draft.copy(chargingOnly = it) } }
+            item { ToggleSettingRow("电量充足", "低电量时暂停后台分析", draft.batteryNotLow) { draft = draft.copy(batteryNotLow = it) } }
+            item { SettingsSectionTitle("执行时段") }
+            item { NumericSettingRow("开始小时", "0-23；与结束相同表示全天", draft.startHour) { draft = draft.copy(startHour = it) } }
+            item { NumericSettingRow("结束小时", "跨午夜时会自动识别", draft.endHour) { draft = draft.copy(endHour = it) } }
+            item { SettingsSectionTitle("故障恢复") }
+            item { NumericSettingRow("单图重试次数", "网络、限流和服务临时故障", draft.retryLimit) { draft = draft.copy(retryLimit = it) } }
+            item { NumericSettingRow("熔断阈值", "连续失败达到此次数后冷却", draft.circuitThreshold) { draft = draft.copy(circuitThreshold = it) } }
+            item { NumericSettingRow("冷却时间（分钟）", "冷却结束后自动恢复", draft.cooldownMinutes) { draft = draft.copy(cooldownMinutes = it) } }
             item { SettingsSectionTitle("图库显示") }
             item {
                 ListItem(
@@ -184,6 +232,20 @@ fun AnalysisSettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun ToggleSettingRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(description) },
+        trailingContent = { Switch(checked = checked, onCheckedChange = onCheckedChange) },
+    )
 }
 
 @Composable

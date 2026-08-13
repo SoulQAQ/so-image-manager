@@ -15,8 +15,25 @@ abstract class BatchAnalysisDao {
     @Query("SELECT * FROM batch_analysis_run ORDER BY run_id DESC LIMIT 1")
     abstract fun observeLatest(): Flow<BatchAnalysisRunEntity?>
 
-    @Query("SELECT * FROM batch_analysis_run WHERE state IN ('QUEUED', 'RUNNING') ORDER BY run_id ASC LIMIT 1")
-    abstract suspend fun activeRun(): BatchAnalysisRunEntity?
+    @Query("SELECT * FROM batch_analysis_run WHERE state IN ('QUEUED', 'RUNNING', 'PAUSED') ORDER BY run_id ASC LIMIT 1")
+    protected abstract suspend fun openRun(): BatchAnalysisRunEntity?
+
+    @Query("UPDATE batch_analysis_run SET state = 'QUEUED', pause_reason = NULL, resume_at_epoch_millis = NULL, updated_at_epoch_millis = :now WHERE run_id = :runId AND state = 'PAUSED' AND resume_at_epoch_millis IS NOT NULL AND resume_at_epoch_millis <= :now")
+    protected abstract suspend fun resumeTimedRun(runId: Long, now: Long): Int
+
+    @Transaction
+    open suspend fun runnableRun(now: Long): BatchAnalysisRunEntity? {
+        val run = openRun() ?: return null
+        if (run.state != "PAUSED") return run
+        val resumeAt = run.resumeAtEpochMillis ?: return null
+        if (resumeAt > now || resumeTimedRun(run.runId, now) != 1) return null
+        return run.copy(
+            state = "QUEUED",
+            pauseReason = null,
+            resumeAtEpochMillis = null,
+            updatedAtEpochMillis = now,
+        )
+    }
 
     @Query("SELECT image_local_id FROM batch_analysis_item WHERE run_id = :runId AND state = 'QUEUED' ORDER BY image_local_id ASC LIMIT 1")
     abstract suspend fun nextQueuedImageId(runId: Long): Long?
@@ -24,11 +41,17 @@ abstract class BatchAnalysisDao {
     @Query("UPDATE batch_analysis_item SET state = 'QUEUED' WHERE run_id = :runId AND state = 'RUNNING'")
     abstract suspend fun recoverInterruptedItem(runId: Long): Int
 
-    @Query("UPDATE batch_analysis_item SET state = 'RUNNING' WHERE run_id = :runId AND image_local_id = :imageLocalId AND state = 'QUEUED'")
+    @Query("UPDATE batch_analysis_item SET state = 'RUNNING', attempt_count = attempt_count + 1 WHERE run_id = :runId AND image_local_id = :imageLocalId AND state = 'QUEUED'")
     abstract suspend fun claimItem(runId: Long, imageLocalId: Long): Int
 
     @Query("UPDATE batch_analysis_item SET state = :state, failure_code = :failureCode WHERE run_id = :runId AND image_local_id = :imageLocalId")
     abstract suspend fun finishItem(runId: Long, imageLocalId: Long, state: String, failureCode: String?): Int
+
+    @Query("UPDATE batch_analysis_item SET state = 'QUEUED', failure_code = :failureCode WHERE run_id = :runId AND image_local_id = :imageLocalId")
+    abstract suspend fun requeueItem(runId: Long, imageLocalId: Long, failureCode: String?): Int
+
+    @Query("SELECT attempt_count FROM batch_analysis_item WHERE run_id = :runId AND image_local_id = :imageLocalId LIMIT 1")
+    abstract suspend fun attemptCount(runId: Long, imageLocalId: Long): Int
 
     @Query("SELECT COUNT(*) FROM batch_analysis_item WHERE run_id = :runId AND state = 'QUEUED'")
     abstract suspend fun queuedCount(runId: Long): Int
@@ -51,14 +74,17 @@ abstract class BatchAnalysisDao {
     @Upsert
     abstract suspend fun upsertRun(run: BatchAnalysisRunEntity)
 
-    @Query("UPDATE batch_analysis_run SET state = 'PAUSED', updated_at_epoch_millis = :now WHERE run_id = :runId")
-    abstract suspend fun pauseRun(runId: Long, now: Long): Int
+    @Query("UPDATE batch_analysis_run SET state = 'PAUSED', pause_reason = :reason, resume_at_epoch_millis = :resumeAt, updated_at_epoch_millis = :now WHERE run_id = :runId")
+    abstract suspend fun pauseRun(runId: Long, now: Long, reason: String? = null, resumeAt: Long? = null): Int
+
+    @Query("UPDATE batch_analysis_run SET last_provider_id = :providerId, updated_at_epoch_millis = :now WHERE run_id = :runId")
+    abstract suspend fun recordProvider(runId: Long, providerId: String?, now: Long): Int
 
     @Transaction
     open suspend fun createRun(imageIds: List<Long>, now: Long): BatchAnalysisEnqueueResult {
         val ids = imageIds.distinct().filter { it > 0L }
         if (ids.isEmpty()) return BatchAnalysisEnqueueResult(null, 0)
-        activeRun()?.let { active ->
+        openRun()?.let { active ->
             val existingIds = existingItemIds(active.runId, ids).toHashSet()
             val addedIds = ids.filterNot(existingIds::contains)
             if (addedIds.isEmpty()) return BatchAnalysisEnqueueResult(active, 0)

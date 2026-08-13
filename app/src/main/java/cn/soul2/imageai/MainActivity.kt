@@ -47,6 +47,10 @@ import cn.soul2.imageai.ui.theme.SoImageManagerTheme
 import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.data.db.entity.ImageSource
 import cn.soul2.imageai.update.AndroidUpdateDownloadGateway
+import cn.soul2.imageai.backup.SoimBackupService
+import cn.soul2.imageai.backup.readForSizeValidation
+import cn.soul2.imageai.ai.debug.AiProtocolDebugReport
+import java.nio.charset.StandardCharsets
 import java.io.File
 import kotlinx.coroutines.launch
 
@@ -78,6 +82,10 @@ class MainActivity : ComponentActivity() {
         val uiState by accessViewModel.uiState.collectAsStateWithLifecycle()
         val coroutineScope = rememberCoroutineScope()
         var documentImportNotice by remember { mutableStateOf<String?>(null) }
+        var backupNotice by remember { mutableStateOf<String?>(null) }
+        var protocolDebugRequest by remember {
+            mutableStateOf<Triple<String, cn.soul2.imageai.data.db.entity.ImagePartition, (Result<AiProtocolDebugReport>) -> Unit>?>(null)
+        }
         var pendingUpdatePath by rememberSaveable { mutableStateOf<String?>(null) }
         val permissionRequestCoordinator = remember { GalleryPermissionRequestCoordinator() }
         val permissionRequestInFlight by
@@ -132,6 +140,61 @@ class MainActivity : ComponentActivity() {
                         R.string.settings_document_import_result,
                         imported.importedCount,
                         imported.rejectedCount,
+                    )
+                }
+            }
+        }
+        val backupExportLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument(SoimBackupService.MIME_TYPE),
+        ) { uri ->
+            if (uri != null) {
+                coroutineScope.launch {
+                    val result = runCatching {
+                        val (json, summary) = container.backupService.exportJson()
+                        contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                            output.write(json.toByteArray(StandardCharsets.UTF_8))
+                        } ?: error("无法写入备份文件")
+                        summary
+                    }
+                    backupNotice = result.fold(
+                        onSuccess = { "备份完成：${it.imageCount} 张图片，${it.analysisCount} 条分析记录" },
+                        onFailure = { "备份失败：${it.message ?: "无法写入文件"}" },
+                    )
+                }
+            }
+        }
+        val backupRestoreLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri != null) {
+                coroutineScope.launch {
+                    val result = runCatching {
+                        val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                            input.readForSizeValidation(MAX_BACKUP_BYTES)
+                        } ?: error("无法读取备份文件")
+                        require(bytes.size <= MAX_BACKUP_BYTES) { "备份文件超过 32 MB" }
+                        container.backupService.restoreJson(bytes.toString(StandardCharsets.UTF_8))
+                    }
+                    backupNotice = result.fold(
+                        onSuccess = {
+                            "恢复完成：关联 ${it.matchedImages} 张，未匹配 ${it.unmatchedImages} 张，恢复 ${it.restoredAnalyses} 条分析记录，冲突 ${it.conflicts} 条"
+                        },
+                        onFailure = { "恢复失败：${it.message ?: "备份内容无效"}" },
+                    )
+                }
+            }
+        }
+        val protocolDebugPicker = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            val request = protocolDebugRequest
+            protocolDebugRequest = null
+            if (uri != null && request != null) {
+                coroutineScope.launch {
+                    request.third(
+                        runCatching {
+                            container.aiProtocolDebugger.test(request.first, uri.toString(), request.second)
+                        },
                     )
                 }
             }
@@ -251,6 +314,8 @@ class MainActivity : ComponentActivity() {
                 aiCredentialStore = container.aiCredentialStore,
                 singleImageAnalyzer = container.singleImageAnalysisService,
                 canonicalMetadataRepository = container.canonicalMetadataRepository,
+                homeConfigurationRepository = container.homeConfigurationRepository,
+                appStorageService = container.appStorageService,
                 syncRuns = container.gallerySyncRuns,
                 lastSyncCompletedAt = container.galleryLastSyncCompletedAt,
                 galleryUnavailableCounts = container.galleryUnavailableCounts,
@@ -266,6 +331,18 @@ class MainActivity : ComponentActivity() {
                 onSelectDocumentImages = launchDocumentPicker,
                 documentImportNotice = documentImportNotice,
                 onDocumentImportNoticeConsumed = { documentImportNotice = null },
+                backupNotice = backupNotice,
+                onBackupNoticeConsumed = { backupNotice = null },
+                onExportBackup = {
+                    backupExportLauncher.launch(SoimBackupService.DEFAULT_FILE_NAME)
+                },
+                onRestoreBackup = {
+                    backupRestoreLauncher.launch(arrayOf(SoimBackupService.MIME_TYPE, "text/json"))
+                },
+                onDebugProtocol = { providerId, partition, callback ->
+                    protocolDebugRequest = Triple(providerId, partition, callback)
+                    protocolDebugPicker.launch(arrayOf("image/*"))
+                },
                 onRetryGallerySync = container.mediaSyncScheduler::retry,
                 onRequestGalleryReconciliation =
                     container.mediaSyncScheduler::requestReconciliation,
@@ -415,5 +492,9 @@ class MainActivity : ComponentActivity() {
                 "更新安装包无法共享给系统安装器，请重新下载。",
             )
         }
+    }
+
+    companion object {
+        private const val MAX_BACKUP_BYTES = 32 * 1024 * 1024
     }
 }

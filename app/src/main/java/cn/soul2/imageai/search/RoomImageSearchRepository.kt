@@ -12,6 +12,7 @@ import kotlin.math.max
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withTimeoutOrNull
+import androidx.sqlite.db.SimpleSQLiteQuery
 
 internal class RoomImageSearchRepository(
     private val dao: SearchIndexDao,
@@ -21,8 +22,10 @@ internal class RoomImageSearchRepository(
     override fun search(request: SearchRequest): Flow<SearchProgress> = flow {
         require(request.pageSize in 1..200) { "search pageSize must be between 1 and 200" }
         generationGuard.begin(request.generation)
-        val query = SearchTextNormalizer.normalizeQuery(request.rawQuery).text
-        if (query.isEmpty()) {
+        val structured = StructuredSearchParser.parse(request.rawQuery)
+        val query = SearchTextNormalizer.normalizeQuery(structured.freeText).text
+        val filterIds = if (structured.hasFilters) findStructuredIds(structured) else null
+        if (query.isEmpty() && filterIds == null) {
             emit(
                 SearchProgress(
                     generation = request.generation,
@@ -39,6 +42,18 @@ internal class RoomImageSearchRepository(
         val completed = linkedSetOf<SearchStage>()
         val partial = linkedSetOf<SearchPartialReason>()
         val overallDeadline = SearchDeadline(clock, TOTAL_BUDGET_MILLIS)
+
+        if (query.isEmpty() && filterIds != null) {
+            val images = dao.getImages(filterIds.take(SearchLimits.IMAGE_CANDIDATES))
+            val results = images.map { image ->
+                image.toResult(
+                    SearchTier.EXACT_STRUCTURED, SearchField.MEDIA_TEXT, 1.0, 1.0,
+                    "组合筛选命中",
+                )
+            }
+            emit(progress(request, results, setOf(SearchStage.STRUCTURED), emptySet(), false))
+            return@flow
+        }
 
         val structuredDeadline = SearchDeadline(clock, STRUCTURED_BUDGET_MILLIS)
         val structuredCompleted = withTimeoutOrNull(STRUCTURED_BUDGET_MILLIS) {
@@ -60,7 +75,7 @@ internal class RoomImageSearchRepository(
             partial += SearchPartialReason.STRUCTURED_TIMEOUT
         }
         generationGuard.checkpoint(request.generation)
-        emit(progress(request, candidates, completed, partial, isRefining = true))
+        emit(progress(request, candidates.filterByIds(filterIds), completed, partial, isRefining = true))
 
         if (!overallDeadline.expired()) {
             val substringDeadline = SearchDeadline(clock, SUBSTRING_BUDGET_MILLIS)
@@ -101,8 +116,31 @@ internal class RoomImageSearchRepository(
             partial += SearchPartialReason.FUZZY_TIMEOUT
         }
         generationGuard.checkpoint(request.generation)
-        emit(progress(request, candidates, completed, partial, isRefining = false))
+        emit(progress(request, candidates.filterByIds(filterIds), completed, partial, isRefining = false))
     }
+
+    private suspend fun findStructuredIds(query: StructuredSearchQuery): Set<Long> {
+        val sql = StringBuilder("SELECT i.local_id FROM image i WHERE i.availability = 'AVAILABLE' AND i.partition = 'MAIN'")
+        val args = mutableListOf<Any>()
+        query.tags.forEach { value ->
+            sql.append(" AND EXISTS (SELECT 1 FROM effective_image_term t WHERE t.image_local_id=i.local_id AND t.kind='TAG' AND t.normalized_key=?)")
+            args += value
+        }
+        query.categories.forEach { value ->
+            sql.append(" AND EXISTS (SELECT 1 FROM effective_image_term t WHERE t.image_local_id=i.local_id AND t.kind='CATEGORY' AND t.normalized_key=?)")
+            args += value
+        }
+        query.albums.forEach { value ->
+            sql.append(" AND COALESCE(i.bucket_name, '') = ?")
+            args += value
+        }
+        sql.append(" ORDER BY i.sort_time_epoch_millis DESC, i.local_id DESC LIMIT ?")
+        args += SearchLimits.IMAGE_CANDIDATES
+        return dao.findStructuredImageIds(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())).toSet()
+    }
+
+    private fun List<SearchResult>.filterByIds(ids: Set<Long>?): List<SearchResult> =
+        if (ids == null) this else filter { it.imageLocalId in ids }
 
     private suspend fun runStructuredAndFts(
         request: SearchRequest,

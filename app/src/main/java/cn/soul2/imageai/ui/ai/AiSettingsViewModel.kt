@@ -83,6 +83,7 @@ data class AiSettingsUiState(
     val deleting: Boolean = false,
     val deleteGeneration: Int = 0,
     val existingProvider: Boolean = false,
+    val savedProviderId: String? = null,
 )
 
 class AiSettingsViewModel(
@@ -129,6 +130,8 @@ class AiSettingsViewModel(
                     credentialConfigured = form.authMode != ProviderAuthMode.NONE,
                     error = null,
                     saveGeneration = mutableState.value.saveGeneration + 1,
+                    existingProvider = true,
+                    savedProviderId = providerId,
                 )
                 else -> mutableState.value.copy(saving = false, error = result)
             }
@@ -191,6 +194,7 @@ class AiSettingsViewModel(
             loading = false,
             credentialConfigured = credentialConfigured,
             existingProvider = snapshot.provider != null,
+            savedProviderId = snapshot.provider?.providerId,
         )
     }
 

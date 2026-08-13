@@ -82,7 +82,11 @@ class RepositoryAiAnalysisConfigurationResolver(
             ?: unavailable(AiConfigurationFailure.PROVIDER_MISSING)
         if (!provider.enabled) unavailable(AiConfigurationFailure.PROVIDER_DISABLED)
         val protocol = when (model.protocolType) {
-            ModelProtocolType.OPENAI_RESPONSES -> null
+            ModelProtocolType.OPENAI_RESPONSES,
+            ModelProtocolType.OPENAI_CHAT_COMPLETIONS,
+            ModelProtocolType.ANTHROPIC_MESSAGES,
+            ModelProtocolType.GEMINI_GENERATE_CONTENT,
+            -> null
             ModelProtocolType.CUSTOM_JSON -> {
                 val protocolId = model.protocolDefinitionId
                     ?: unavailable(AiConfigurationFailure.PROTOCOL_DEFINITION_MISSING)

@@ -15,6 +15,7 @@ import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_3_4
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_4_5
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_5_6
 import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_6_7
+import cn.soul2.imageai.data.db.AppDatabaseMigrations.MIGRATION_9_10
 import cn.soul2.imageai.data.db.entity.AppSettingEntity
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -288,6 +289,47 @@ class AppDatabaseMigrationTest {
             database.query("SELECT `source` FROM image LIMIT 1").close()
             database.query("SELECT * FROM batch_analysis_run").close()
             assertEquals(1, queryCount(database, "app_setting"))
+        }
+    }
+
+    @Test
+    fun migrationNineToTenAddsSchedulerProtectionWithConservativeDefaults() {
+        migrationHelper.createDatabase(TEST_DATABASE, 9).apply {
+            execSQL(
+                "INSERT INTO ai_runtime_setting (singleton_id, default_model_profile_id, " +
+                    "global_max_concurrency, global_requests_per_minute, global_requests_per_day, " +
+                    "daily_image_limit, only_show_analyzed, automatic_failover_enabled, " +
+                    "prompt_text, updated_at_epoch_millis) VALUES (1, NULL, 2, 30, 1000, 100, 0, 1, 'prompt', 1)",
+            )
+            execSQL(
+                "INSERT INTO batch_analysis_run (run_id, state, total_count, completed_count, " +
+                    "failed_count, created_at_epoch_millis, updated_at_epoch_millis, " +
+                    "completed_at_epoch_millis) VALUES (1, 'PAUSED', 3, 1, 1, 1, 2, NULL)",
+            )
+            close()
+        }
+
+        migrationHelper.runMigrationsAndValidate(
+            TEST_DATABASE,
+            10,
+            true,
+            MIGRATION_9_10,
+        ).use { database ->
+            database.query(
+                "SELECT daily_token_limit, wifi_only, charging_only, battery_not_low, " +
+                    "retry_limit, circuit_breaker_threshold, circuit_breaker_cooldown_minutes " +
+                    "FROM ai_runtime_setting WHERE singleton_id = 1",
+            ).use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0L, cursor.getLong(0))
+                assertEquals(0, cursor.getInt(1))
+                assertEquals(0, cursor.getInt(2))
+                assertEquals(1, cursor.getInt(3))
+                assertEquals(4, cursor.getInt(4))
+                assertEquals(5, cursor.getInt(5))
+                assertEquals(30, cursor.getInt(6))
+            }
+            assertEquals(1, queryCount(database, "batch_analysis_run"))
         }
     }
 

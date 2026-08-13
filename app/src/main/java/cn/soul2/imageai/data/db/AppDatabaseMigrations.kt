@@ -391,4 +391,24 @@ object AppDatabaseMigrations {
             ).forEach(database::execSQL)
         }
     }
+
+    val MIGRATION_9_10: Migration = object : Migration(9, 10) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            listOf(
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `daily_token_limit` INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `wifi_only` INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `charging_only` INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `battery_not_low` INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `execution_start_minute` INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `execution_end_minute` INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `retry_limit` INTEGER NOT NULL DEFAULT 4",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `circuit_breaker_threshold` INTEGER NOT NULL DEFAULT 5",
+                "ALTER TABLE `ai_runtime_setting` ADD COLUMN `circuit_breaker_cooldown_minutes` INTEGER NOT NULL DEFAULT 30",
+                "ALTER TABLE `batch_analysis_run` ADD COLUMN `pause_reason` TEXT",
+                "ALTER TABLE `batch_analysis_run` ADD COLUMN `resume_at_epoch_millis` INTEGER",
+                "ALTER TABLE `batch_analysis_run` ADD COLUMN `last_provider_id` TEXT",
+                "ALTER TABLE `batch_analysis_item` ADD COLUMN `attempt_count` INTEGER NOT NULL DEFAULT 0",
+            ).forEach(database::execSQL)
+        }
+    }
 }

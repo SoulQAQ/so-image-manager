@@ -7,14 +7,14 @@ import org.junit.Test
 
 class AiConfigurationSchemaContractTest {
     @Test
-    fun versionNineRetainsProviderModelProtocolAndRuntimeConfiguration() {
+    fun versionTenRetainsProviderModelProtocolAndRuntimeConfiguration() {
         val schema = projectFile(
-            "app/schemas/cn.soul2.imageai.data.db.AppDatabase/9.json",
+            "app/schemas/cn.soul2.imageai.data.db.AppDatabase/10.json",
         )
-        assertTrue("Room schema v9 must be exported", schema.isFile)
+        assertTrue("Room schema v10 must be exported", schema.isFile)
         val text = schema.readText()
 
-        assertTrue(Regex("\\\"version\\\"\\s*:\\s*9").containsMatchIn(text))
+        assertTrue(Regex("\\\"version\\\"\\s*:\\s*10").containsMatchIn(text))
         listOf(
             "provider_profile",
             "provider_route",
@@ -34,6 +34,13 @@ class AiConfigurationSchemaContractTest {
         listOf("daily_image_limit", "only_show_analyzed", "automatic_failover_enabled").forEach { column ->
             assertTrue("Missing AI runtime column: $column", text.contains("\"columnName\": \"$column\""))
         }
+        listOf(
+            "daily_token_limit", "wifi_only", "charging_only", "battery_not_low",
+            "execution_start_minute", "execution_end_minute", "retry_limit",
+            "circuit_breaker_threshold", "circuit_breaker_cooldown_minutes",
+        ).forEach { column ->
+            assertTrue("Missing scheduler runtime column: $column", text.contains("\"columnName\": \"$column\""))
+        }
     }
 
     @Test
@@ -47,6 +54,7 @@ class AiConfigurationSchemaContractTest {
         assertTrue(factory.contains("MIGRATION_6_7"))
         assertTrue(factory.contains("MIGRATION_7_8"))
         assertTrue(factory.contains("MIGRATION_8_9"))
+        assertTrue(factory.contains("MIGRATION_9_10"))
         assertFalse(factory.contains("fallbackToDestructiveMigration"))
     }
 

@@ -9,6 +9,7 @@ data class AiModelInvocation(
     val configuration: ResolvedAiAnalysisConfiguration,
     val quotaPolicy: AiQuotaPolicy,
     val image: PreparedImage,
+    val traceSink: ((cn.soul2.imageai.ai.transport.AiHttpTrace) -> Unit)? = null,
 )
 
 enum class AiModelFailure {
@@ -18,12 +19,16 @@ enum class AiModelFailure {
     QUOTA_REJECTED,
     NETWORK,
     PROVIDER_HTTP_ERROR,
+    PROVIDER_TEMPORARY,
+    PROVIDER_AUTH_ERROR,
     RESPONSE_INVALID,
 }
 
 class AiModelException(
     val failure: AiModelFailure,
     cause: Throwable? = null,
+    val retryAtEpochMillis: Long? = null,
+    val statusCode: Int? = null,
 ) : Exception("AI model call failed: $failure", cause)
 
 fun interface AiModelClient {

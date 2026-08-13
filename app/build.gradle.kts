@@ -28,6 +28,25 @@ val soimVersionCode = rawSoimVersionCode.toIntOrNull()
     ?: error("SoIM version code must be a positive integer")
 require(soimVersionCode > 0) { "SoIM version code must be a positive integer" }
 
+val releaseSigningProperties = Properties().apply {
+    val signingFile = rootProject.file("keystore.properties")
+    if (signingFile.isFile) signingFile.inputStream().use(::load)
+}
+fun signingValue(property: String, environment: String): String? =
+    (releaseSigningProperties.getProperty(property) ?: System.getenv(environment))
+        ?.trim()
+        ?.takeIf(String::isNotEmpty)
+val releaseStoreFile = signingValue("storeFile", "SOIM_SIGNING_STORE_FILE")
+val releaseStorePassword = signingValue("storePassword", "SOIM_SIGNING_STORE_PASSWORD")
+val releaseKeyAlias = signingValue("keyAlias", "SOIM_SIGNING_KEY_ALIAS")
+val releaseKeyPassword = signingValue("keyPassword", "SOIM_SIGNING_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { it != null }
+
 ksp {
     arg("room.schemaLocation", file("$projectDir/schemas").path)
     arg("room.incremental", "true")
@@ -55,6 +74,18 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        if (hasReleaseSigning) {
+            maybeCreate("release").apply {
+                storeFile = rootProject.file(checkNotNull(releaseStoreFile))
+                storePassword = checkNotNull(releaseStorePassword)
+                keyAlias = checkNotNull(releaseKeyAlias)
+                keyPassword = checkNotNull(releaseKeyPassword)
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
     }
 
     buildTypes {
@@ -64,6 +95,7 @@ android {
         release {
             isDebuggable = false
             isMinifyEnabled = false
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -147,4 +179,11 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.room.testing)
+}
+
+tasks.withType<Test>().configureEach {
+    systemProperty(
+        "soim.scaleBenchmark",
+        gradle.startParameter.projectProperties["soimScaleBenchmark"] ?: "false",
+    )
 }

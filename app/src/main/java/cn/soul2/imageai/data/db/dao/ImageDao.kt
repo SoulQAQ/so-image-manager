@@ -9,9 +9,37 @@ import cn.soul2.imageai.data.db.entity.ImageEntity
 import cn.soul2.imageai.data.db.entity.AnalysisTermKind
 import cn.soul2.imageai.gallery.GalleryCollectionSummary
 import kotlinx.coroutines.flow.Flow
+import androidx.room.RawQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 
 @Dao
 abstract class ImageDao {
+    @RawQuery(observedEntities = [ImageEntity::class])
+    abstract fun pagingSorted(query: SupportSQLiteQuery): PagingSource<Int, ImageEntity>
+    @Query("SELECT * FROM image WHERE availability != 'REMOVED_FROM_SOIM' ORDER BY local_id ASC")
+    abstract suspend fun getBackupCandidates(): List<ImageEntity>
+
+    @Query("UPDATE image SET partition = :partition WHERE local_id = :localId AND availability = 'AVAILABLE'")
+    protected abstract suspend fun restorePartitionInternal(
+        localId: Long,
+        partition: cn.soul2.imageai.data.db.entity.ImagePartition,
+    ): Int
+
+    @Query("SELECT EXISTS(SELECT 1 FROM search_document WHERE rowid = :localId)")
+    abstract suspend fun hasSearchDocument(localId: Long): Boolean
+
+    @Transaction
+    open suspend fun restorePartition(
+        localId: Long,
+        partition: cn.soul2.imageai.data.db.entity.ImagePartition,
+    ): Int {
+        if (localId <= 0L) return 0
+        if (partition != cn.soul2.imageai.data.db.entity.ImagePartition.MAIN) {
+            deleteSearchDocuments(listOf(localId))
+        }
+        return restorePartitionInternal(localId, partition)
+    }
+
     @Query(
         """
         SELECT COUNT(*) FROM image

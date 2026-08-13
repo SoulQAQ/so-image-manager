@@ -67,13 +67,24 @@ class SecureAiHttpTransport(
             val response = executeOnce(client, request, spec)
             if (!response.isRedirect) {
                 return response.use {
-                    AiHttpResponse(
+                    val result = AiHttpResponse(
                         statusCode = it.code,
                         headers = it.headers.toMultimap(),
                         body = readBoundedBody(it),
                         finalUrl = currentUrl.toString(),
                         redirectCount = redirectCount,
                     )
+                    spec.traceSink?.invoke(
+                        AiHttpTrace(
+                            method = method,
+                            url = currentUrl.toString(),
+                            headerNames = headers.names().sorted(),
+                            redactedRequestBody = spec.body?.let(::redactJsonBody),
+                            statusCode = result.statusCode,
+                            responseBody = result.body.toString(Charsets.UTF_8).take(MAX_TRACE_CHARS),
+                        ),
+                    )
+                    result
                 }
             }
 
@@ -312,6 +323,28 @@ class SecureAiHttpTransport(
         return output.toByteArray()
     }
 
+    private fun redactJsonBody(bytes: ByteArray): String {
+        val text = bytes.toString(Charsets.UTF_8)
+        return runCatching {
+            redactValue(org.json.JSONTokener(text).nextValue()).toString()
+        }.getOrDefault("<无法预览请求 JSON>").take(MAX_TRACE_CHARS)
+    }
+
+    private fun redactValue(value: Any?): Any = when (value) {
+        is JSONObject -> JSONObject().also { output ->
+            value.keys().forEach { key -> output.put(key, redactValue(value.opt(key))) }
+        }
+        is JSONArray -> JSONArray().also { output ->
+            repeat(value.length()) { output.put(redactValue(value.opt(it))) }
+        }
+        is String -> when {
+            value.startsWith("data:") && value.contains(";base64,") -> "<图片数据已隐藏>"
+            value.length > 1_024 -> "<长文本已隐藏>"
+            else -> value
+        }
+        else -> value ?: JSONObject.NULL
+    }
+
     private data class Origin(val scheme: String, val host: String, val port: Int)
 
     private fun HttpUrl.origin() = Origin(scheme, host, port)
@@ -323,6 +356,7 @@ class SecureAiHttpTransport(
         const val MAX_RESPONSE_BYTES = 2 * 1_024 * 1_024
         const val MAX_REQUEST_BODY_BYTES = 12 * 1_024 * 1_024
         const val READ_BUFFER_BYTES = 8 * 1_024
+        const val MAX_TRACE_CHARS = 32 * 1_024
         val SUPPORTED_METHODS = setOf("GET", "POST")
         val FORBIDDEN_HEADERS = setOf(
             "connection",

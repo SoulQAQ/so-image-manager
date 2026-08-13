@@ -1,118 +1,78 @@
 # SoIM
 
-SoIM 是一个本地优先的 Android 图片管理应用。它扫描设备图库并在本机保存索引；用户可以按时间浏览和搜索图片，也可以为单张图片调用自定义 AI 模型生成结构化描述、标签、分类和搜索关键词。
+SoIM 是一个本地优先的 Android AI 图片管理应用。它索引设备图库，不复制原图；AI 描述、标签、分类、搜索词和用户修正保存在本机，并通过结构化、全文、子串、拼音和有限拼写容错搜索。
 
-当前已发布版本：`v0.9.0`。
+当前已发布版本是 `v0.17.4`。当前开发基线包含下一测试版本的 Room v10、完整备份、协议预设、任务保护、动态首页和规模验收能力；发布状态以 GitHub Release 与版本记录为准。
 
-当前正在开发 `v0.10.0`：多供应商自动顺延、每日图片分析上限、已分析筛选与供应商拒绝分组。该版本仅在真机测试确认后才会发布。
+## 产品能力
 
-## 当前能力
+- Android 10（API 29）及以上的 MediaStore 全图库索引、增量同步、Paging 3 分页和任务恢复。
+- 主分区、未处理分区、隐私分区和隐私无法分析子类。AI 分析成功后进入主分区，明确拒绝进入隐私分区。
+- 主分区和隐私分区分别配置供应方顺序；供应方绑定一个 Base URL 和一个具体模型，支持启用、禁用、排序和自动顺延。
+- OpenAI Responses、OpenAI Chat Completions、Anthropic Messages、Gemini `generateContent` 和声明式自定义 JSON 协议。
+- 协议调试器可选择测试图片，展示脱敏请求、原始响应预览、映射结果和错误；不会持久化分析，也不会显示 API Key 或图片 Base64。
+- 全局、供应方和模型三级并发/RPM/每日请求限制；每日图片和 Token 上限、Wi-Fi、充电、电量、执行时段、指数退避、`Retry-After`、熔断和冷却。
+- 本地搜索支持文件名、相册、描述、标签、分类和搜索词，以及中文拼音、子串和有限错拼；支持 `标签:`、`分类:`、`相册:` 与明确中文自然语言筛选。
+- 保存搜索、用户主题、基于现有 AI 标签/分类的推荐主题和模块化首页。单模块为连续瀑布流，多模块支持横向/网格预览、排序和数量配置。
+- 完整 JSON 备份与恢复：导出图片引用、AI 历史、用户修正、供应方/模型/协议/路由和界面配置，不导出 API Key、原图、临时队列或额度账本。
+- 设置页显示数据库、缓存和临时文件占用，可安全清理可重建文件。
+- 图片详情保持沉浸式，文件名、时间、尺寸、格式、大小和相册信息按需展开。
+- App 从 GitHub Release 检查更新，支持下载进度/速度、SHA-256 与签名兼容校验、Ready 恢复、跳过、失败重试和安装错误反馈。
 
-- Android 10（API 29）及以上的 MediaStore 图片索引、增量同步与周期校准。
-- 首页瀑布流、图库时间网格、任务状态和权限管理。
-- 图片详情支持左右切图、双指缩放、双击缩放以及单击显示或隐藏信息与操作层。
-- 可从系统文件管理器多选图片并保留读取授权，作为 ColorOS 已选照片权限页的替代入口。
-- 本地搜索覆盖文件名、图集、AI 描述、标签、分类和搜索关键词，支持全文、包含、拼音和有限近似匹配。
-- 单图 AI 分析：结果以 canonical 数据保存，写入后立即可被搜索。
-- 完整 AI 结果支持查看全部文本、编辑描述、增删标签/分类和恢复 AI 原值；修正会立即更新搜索。
-- 开发中的批量任务会逐张复用现有 AI 配额限制，支持中断恢复和系统性配置/额度失败暂停；图库长按多选支持系统分享、本地移除、系统确认删除与分析/重新分析。
-- `openai-responses` 预设协议，以及受限、无脚本的声明式自定义 JSON 协议。
-- 全局、供应方、模型三级并发、每分钟请求数和每日请求数配置；开发中的每日图片分析上限与自动顺延仅在真机测试确认后发布。
-- API Key 使用 Android Keystore 加密保存；不会写入 Room 数据库、日志或 APK。
+## 备份语义
 
-## 使用 AI 分析
+恢复会先完整解析并验证备份，再与当前设备数据合并，不会先清空本机数据库。图片优先按 MediaStore volume + ID 关联，再使用唯一快速指纹；无法唯一关联的图片会报告为未匹配。现有本机凭据保留，新导入且本机不存在的供应方默认禁用且不带凭据。
 
-1. 首次启动时授权照片访问，等待图库建立索引。
-2. 打开“设置”中的“模型、协议与并发”。
-3. 配置供应方名称、Base URL、认证方式、API Key 和模型 ID；OpenAI 使用默认的 `https://api.openai.com/v1` 与 `OpenAI Responses` 协议。
-4. 根据账号额度设置全局、供应方和模型的并发、RPM 与每日上限。
-5. 打开图片，点击一次屏幕显示操作层，再点击“AI 分析”。分析完成后，描述和标签会显示在操作层并加入搜索。
-6. 点击“查看完整结果”可阅读完整描述；在该页面保存描述或增删标签/分类后，搜索索引会立即更新。
-
-本项目不在 APK 中提供 API Key。请使用自己拥有且允许调用的服务商凭据，并先以少量图片验证模型、账单和额度设置。
-
-## 照片权限
-
-- API 29–32：请求 `READ_EXTERNAL_STORAGE`。
-- API 33：请求 `READ_MEDIA_IMAGES`。
-- API 34+：支持完整访问或系统提供的已选照片访问。
-- SoIM 不申请写入权限，不复制、移动、重命名或删除原始图片。
-
-部分照片的选择界面由 Android 系统或 OEM 提供。ColorOS 等系统上的选择体验不能由应用重绘；可使用“设置 → 从文件管理器选择图片”作为替代入口。该入口通过 `ACTION_OPEN_DOCUMENT` 获取每张图片的持久读取授权，不依赖图库权限选择页。
+备份不是原图备份，也不是加密的密钥容器。跨设备或卸载前仍需自行保护原始图片，并妥善保管自己的 API Key。
 
 ## 架构
 
 - UI：Kotlin、Jetpack Compose、Material 3、Navigation Compose。
-- 本地数据：Room、SQLite FTS4、ngram/pinyin 索引和 Paging。
+- 数据：Room v10、SQLite FTS4、ngram/pinyin 索引和 Paging 3。
 - 图库：MediaStore、ContentObserver、WorkManager 分片同步。
-- 网络：OkHttp，显式限制重定向、请求/响应大小与请求额度。
-- 图片：Coil 显示；AI 请求前使用本地预处理限制尺寸和字节数。
+- AI：OkHttp 安全传输、Android Keystore 凭据、协议适配器、canonical 结果投影。
+- 更新：GitHub Release API、DownloadManager、PackageInstaller 系统流程。
 
-H5 目录仍保留历史管理界面，但当前主流程使用原生 Compose。
+Android 产品运行链路是纯 Compose。仓库根部 `h5/` 只保留为历史工程，不参与 APK 构建。
 
-## 开发环境
+## 构建与测试
 
-- JDK 17。
-- Android SDK Platform 36、Build Tools 36.0.0。
-- Android Gradle Plugin 8.7.3、Gradle 8.9。
-- 最低运行版本：Android 10（API 29）。
-
-在项目根目录创建 `local.properties`，至少包含 Android SDK 路径：
+需要 JDK 17、Android SDK Platform 36、Build Tools 36.0.0、Gradle 8.9。`local.properties` 至少包含：
 
 ```properties
 sdk.dir=C:\\Users\\YourName\\AppData\\Local\\Android\\Sdk
 ```
 
-## 构建与测试
-
-Windows PowerShell：
+常用门禁：
 
 ```powershell
 .\gradlew.bat testDebugUnitTest
 .\gradlew.bat lintDebug
 .\gradlew.bat compileDebugAndroidTestKotlin
-.\gradlew.bat assembleDebug
+.\gradlew.bat assembleDebug assembleRelease
 ```
 
-Debug APK 输出到：`app/build/outputs/apk/debug/app-debug.apk`。
-
-发布 Debug 测试包使用：
+显式运行 10k/50k/100k Room 规模基准：
 
 ```powershell
-.\scripts\publish-test-apk.ps1 -Bump patch -Notes path\to\release-notes.md
+.\gradlew.bat testDebugUnitTest -PsoimScaleBenchmark=true --tests cn.soul2.imageai.performance.GalleryRoomScaleBenchmarkTest --info
 ```
 
-该脚本会先执行 clean、Debug/Release 单元测试、Lint、AndroidTest 编译、Debug/Release 构建与 APK 元数据、签名和敏感内容检查；全部通过后才会推进 `version.properties`、`apk/current_version_is_*`、`apk/ver_change_log.md` 和版本化 APK。
+Debug APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。本地测试版本仍通过：
 
-## 版本规则
-
-SoIM 使用 `主版本号.次版本号.修订号`：
-
-- 主版本号：不兼容的 API 或数据契约修改。
-- 次版本号：向下兼容的功能新增。
-- 修订号：向下兼容的问题修复。
-
-发布前必须根据实际变更选择 `publish-test-apk.ps1` 的 `major`、`minor` 或 `patch` 参数，不能把功能新增作为修订号发布。
-
-## 目录
-
-```text
-app/                         Android 应用
-  src/main/java/cn/soul2/imageai/
-    ai/                      模型协议、额度、凭据、图片预处理
-    analysis/                canonical AI 结果与用户修正投影
-    gallery/                 图库读取模型
-    media/                   MediaStore 权限与同步
-    search/                  本地搜索索引与查询
-    ui/                      Compose 页面与主题
-apk/                         版本化测试 APK 与变更日志
-docs/                        设计、计划和安全说明
-scripts/publish-test-apk.ps1 测试包发布门禁
+```powershell
+.\scripts\publish-test-apk.ps1 -Bump minor -Notes docs\releases\v0.x.y.md
 ```
 
-## 发布说明
+正式签名与 GitHub Release 流程见 [release-signing.md](docs/security/release-signing.md)。
 
-`apk/` 下的 SoIM 安装包均为 Debug 测试包，使用 Android Debug 签名。正式生产发布必须使用独立发布证书重新签名。
+## 发布与迁移
+
+历史安装包使用 Android Debug 证书。新的长期 Release Key 不能直接覆盖这些安装；正式切换前必须通过“导出备份 → 卸载 Debug 版 → 安装正式版 → 恢复备份”完成真机迁移演练。长期私钥必须由项目所有者创建、离线备份和保管。
+
+在 v0.17.4 更新器完成真机矩阵、正式签名稳定且迁移演练通过前，仓库 `apk/` 中的 Debug 分发兜底暂不删除。之后再在 0.18/0.19 清理旧 APK，只保留必要版本记录并完全依靠 GitHub Release 分发。
+
+长期范围基线见 [重建设计](docs/superpowers/specs/2026-07-10-image-search-rebuild-design.md)，实际完成度见 [roadmap-status.md](docs/roadmap-status.md)。
 
 ## License
 

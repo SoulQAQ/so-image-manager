@@ -5,6 +5,7 @@ import cn.soul2.imageai.ai.image.ImagePreprocessor
 import cn.soul2.imageai.ai.output.CanonicalAiDraftContext
 import cn.soul2.imageai.ai.output.CanonicalAiOutputSchema
 import cn.soul2.imageai.ai.quota.AiQuotaPolicy
+import cn.soul2.imageai.ai.quota.AiTokenUsageLedger
 import cn.soul2.imageai.analysis.ActivationResult
 import cn.soul2.imageai.analysis.CanonicalMetadataRepository
 import cn.soul2.imageai.data.db.entity.ImagePartition
@@ -22,11 +23,15 @@ sealed interface SingleImageAnalysisResult {
     data class Success(
         val analysisId: String,
         val projectionGeneration: Long,
+        val providerId: String = "",
+        val usageTokens: Long? = null,
     ) : SingleImageAnalysisResult
 
     data class Failure(
         val reason: SingleImageAnalysisFailure,
         val detailCode: String? = null,
+        val retryAtEpochMillis: Long? = null,
+        val providerId: String? = null,
     ) : SingleImageAnalysisResult
 }
 
@@ -54,6 +59,7 @@ class SingleImageAnalysisService(
     private val imagePreprocessor: ImagePreprocessor,
     private val clients: AiModelClientRegistry,
     private val canonicalRepository: CanonicalMetadataRepository,
+    private val tokenUsageLedger: AiTokenUsageLedger? = null,
     private val nowEpochMillis: () -> Long = System::currentTimeMillis,
     private val newAnalysisId: () -> String = { UUID.randomUUID().toString() },
 ) : SingleImageAnalyzer {
@@ -75,6 +81,14 @@ class SingleImageAnalysisService(
             return SingleImageAnalysisResult.Failure(
                 SingleImageAnalysisFailure.REQUEST_LIMITED,
                 DAILY_IMAGE_LIMIT_DETAIL,
+            )
+        }
+        val dailyTokenLimit = configurations.first().runtime.dailyTokenLimit
+        if (dailyTokenLimit > 0L && tokenUsageLedger?.isLimitReached(dailyTokenLimit, startedAt) == true) {
+            return SingleImageAnalysisResult.Failure(
+                SingleImageAnalysisFailure.REQUEST_LIMITED,
+                DAILY_TOKEN_LIMIT_DETAIL,
+                retryAtEpochMillis = utcDayStart(startedAt) + MILLIS_PER_DAY,
             )
         }
         var lastFailure: SingleImageAnalysisResult.Failure? = null
@@ -101,7 +115,7 @@ class SingleImageAnalysisService(
                     AiModelInvocation(configuration, quotaPolicy, image),
                 )
             } catch (error: AiModelException) {
-                lastFailure = error.toAnalysisFailure()
+                lastFailure = error.toAnalysisFailure(configuration.provider.providerId)
                 null
             } catch (error: CancellationException) {
                 throw error
@@ -118,6 +132,7 @@ class SingleImageAnalysisService(
                 continue
             }
             val completedAt = nowEpochMillis().coerceAtLeast(startedAt)
+            tokenUsageLedger?.record(payload.usageTokens, completedAt)
             val analysisId = newAnalysisId()
             val protocolId = configuration.protocolDefinition?.protocolDefinitionId
                 ?: BUILTIN_OPENAI_RESPONSES_PROTOCOL_ID
@@ -139,11 +154,16 @@ class SingleImageAnalysisService(
                     if (target.partition == ImagePartition.UNPROCESSED) {
                         canonicalRepository.promoteUnprocessedToMain(target.imageLocalId)
                     }
-                    SingleImageAnalysisResult.Success(analysisId, activation.projectionGeneration)
+                    SingleImageAnalysisResult.Success(
+                        analysisId, activation.projectionGeneration,
+                        configuration.provider.providerId, payload.usageTokens,
+                    )
                 }
                     is ActivationResult.AlreadyActive -> SingleImageAnalysisResult.Success(
                         analysisId,
                         activation.projectionGeneration,
+                        configuration.provider.providerId,
+                        payload.usageTokens,
                     )
                     is ActivationResult.Blocked -> SingleImageAnalysisResult.Failure(
                         SingleImageAnalysisFailure.INDEX_PROJECTION_BLOCKED,
@@ -159,7 +179,7 @@ class SingleImageAnalysisService(
         return lastFailure ?: SingleImageAnalysisResult.Failure(SingleImageAnalysisFailure.CONFIGURATION_REQUIRED)
     }
 
-    private fun AiModelException.toAnalysisFailure() = SingleImageAnalysisResult.Failure(
+    private fun AiModelException.toAnalysisFailure(providerId: String) = SingleImageAnalysisResult.Failure(
         reason = when (failure) {
             AiModelFailure.UNSUPPORTED_PROTOCOL -> SingleImageAnalysisFailure.PROTOCOL_UNSUPPORTED
             AiModelFailure.CREDENTIAL_MISSING -> SingleImageAnalysisFailure.CREDENTIAL_REQUIRED
@@ -167,9 +187,13 @@ class SingleImageAnalysisService(
             AiModelFailure.QUOTA_REJECTED -> SingleImageAnalysisFailure.REQUEST_LIMITED
             AiModelFailure.NETWORK -> SingleImageAnalysisFailure.NETWORK_FAILED
             AiModelFailure.PROVIDER_HTTP_ERROR -> SingleImageAnalysisFailure.PROVIDER_REJECTED
+            AiModelFailure.PROVIDER_TEMPORARY -> SingleImageAnalysisFailure.NETWORK_FAILED
+            AiModelFailure.PROVIDER_AUTH_ERROR -> SingleImageAnalysisFailure.CREDENTIAL_UNAVAILABLE
             AiModelFailure.RESPONSE_INVALID -> SingleImageAnalysisFailure.RESPONSE_INVALID
         },
-        detailCode = failure.name,
+        detailCode = statusCode?.let { "${failure.name}:$it" } ?: failure.name,
+        retryAtEpochMillis = retryAtEpochMillis,
+        providerId = providerId,
     )
 
     private fun SingleImageAnalysisResult.Failure?.isFailoverEligible(): Boolean =
@@ -195,6 +219,7 @@ class SingleImageAnalysisService(
         const val BUILTIN_OPENAI_RESPONSES_PROTOCOL_ID = "builtin.openai-responses.v1"
         const val OUTPUT_SCHEMA_VERSION = CanonicalAiOutputSchema.VERSION
         const val DAILY_IMAGE_LIMIT_DETAIL = "DAILY_IMAGE_LIMIT"
+        const val DAILY_TOKEN_LIMIT_DETAIL = "DAILY_TOKEN_LIMIT"
         private const val MILLIS_PER_DAY = 86_400_000L
     }
 }

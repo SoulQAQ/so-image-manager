@@ -6,6 +6,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
+import androidx.room.RawQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 import cn.soul2.imageai.data.db.entity.ImageSearchTermEntity
 import cn.soul2.imageai.data.db.entity.ImageEntity
 import cn.soul2.imageai.data.db.entity.SearchDocumentEntity
@@ -35,6 +37,8 @@ internal data class SearchMappingCandidate(
 
 @Dao
 internal interface SearchIndexDao {
+    @RawQuery(observedEntities = [ImageEntity::class])
+    suspend fun findStructuredImageIds(query: SupportSQLiteQuery): List<Long>
     @Query("SELECT * FROM image WHERE local_id = :imageLocalId LIMIT 1")
     fun getImage(imageLocalId: Long): ImageEntity?
 

@@ -17,6 +17,11 @@ class BatchAnalysisWorker(
         is BatchSliceResult.Completed,
         BatchSliceResult.Paused,
         -> Result.success()
+        is BatchSliceResult.Deferred -> {
+            (applicationContext.applicationContext as SoImApplication)
+                .container.batchAnalysisScheduler.enqueue(result.resumeAtEpochMillis)
+            Result.success()
+        }
         BatchSliceResult.More -> {
             (applicationContext.applicationContext as SoImApplication)
                 .container.batchAnalysisScheduler.enqueue()

@@ -32,6 +32,24 @@ data class AiRuntimeSettingEntity(
     val globalRequestsPerDay: Int,
     @ColumnInfo(name = "daily_image_limit")
     val dailyImageLimit: Int = 0,
+    @ColumnInfo(name = "daily_token_limit")
+    val dailyTokenLimit: Long = 0L,
+    @ColumnInfo(name = "wifi_only")
+    val wifiOnly: Boolean = false,
+    @ColumnInfo(name = "charging_only")
+    val chargingOnly: Boolean = false,
+    @ColumnInfo(name = "battery_not_low")
+    val batteryNotLow: Boolean = true,
+    @ColumnInfo(name = "execution_start_minute")
+    val executionStartMinute: Int = 0,
+    @ColumnInfo(name = "execution_end_minute")
+    val executionEndMinute: Int = 0,
+    @ColumnInfo(name = "retry_limit")
+    val retryLimit: Int = 4,
+    @ColumnInfo(name = "circuit_breaker_threshold")
+    val circuitBreakerThreshold: Int = 5,
+    @ColumnInfo(name = "circuit_breaker_cooldown_minutes")
+    val circuitBreakerCooldownMinutes: Int = 30,
     @ColumnInfo(name = "only_show_analyzed")
     val onlyShowAnalyzed: Boolean = false,
     @ColumnInfo(name = "automatic_failover_enabled")
@@ -41,6 +59,15 @@ data class AiRuntimeSettingEntity(
     @ColumnInfo(name = "updated_at_epoch_millis")
     val updatedAtEpochMillis: Long,
 ) {
+    fun isWithinExecutionWindow(minuteOfDay: Int): Boolean {
+        if (executionStartMinute == executionEndMinute) return true
+        return if (executionStartMinute < executionEndMinute) {
+            minuteOfDay in executionStartMinute until executionEndMinute
+        } else {
+            minuteOfDay >= executionStartMinute || minuteOfDay < executionEndMinute
+        }
+    }
+
     companion object {
         const val SINGLETON_ID = 1
     }

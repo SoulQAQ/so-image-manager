@@ -13,7 +13,12 @@ import cn.soul2.imageai.ai.credential.AndroidKeystoreCredentialStore
 import cn.soul2.imageai.ai.image.ContentImagePreprocessor
 import cn.soul2.imageai.ai.protocol.CustomJsonAiModelClient
 import cn.soul2.imageai.ai.protocol.OpenAiResponsesAiModelClient
+import cn.soul2.imageai.ai.protocol.OpenAiChatCompletionsAiModelClient
+import cn.soul2.imageai.ai.protocol.AnthropicMessagesAiModelClient
+import cn.soul2.imageai.ai.protocol.GeminiGenerateContentAiModelClient
+import cn.soul2.imageai.ai.debug.AiProtocolDebugger
 import cn.soul2.imageai.ai.quota.AiQuotaCoordinator
+import cn.soul2.imageai.ai.quota.AiTokenUsageLedger
 import cn.soul2.imageai.ai.transport.SecureAiHttpTransport
 import cn.soul2.imageai.analysis.CanonicalMetadataRepository
 import cn.soul2.imageai.data.db.AppDatabase
@@ -40,6 +45,9 @@ import cn.soul2.imageai.search.ImageSearchRepository
 import cn.soul2.imageai.search.SearchIndexBackfill
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingRepository
 import cn.soul2.imageai.update.AppUpdateManager
+import cn.soul2.imageai.backup.SoimBackupService
+import cn.soul2.imageai.home.HomeConfigurationRepository
+import cn.soul2.imageai.storage.AppStorageService
 import kotlinx.coroutines.CoroutineScope
 
 class AppContainer(
@@ -54,9 +62,13 @@ class AppContainer(
     val imageSearchRepository: ImageSearchRepository =
         RoomImageSearchRepository(database.searchIndexDao())
     val canonicalMetadataRepository = CanonicalMetadataRepository(database, searchProjectionWriter)
+    val backupService = SoimBackupService(database, canonicalMetadataRepository)
+    val homeConfigurationRepository = HomeConfigurationRepository(database.appSettingDao())
+    val appStorageService = AppStorageService(applicationContext)
     val aiConfigurationRepository = AiConfigurationRepository(database)
     val aiCredentialStore: AiCredentialStore = AndroidKeystoreCredentialStore(applicationContext)
     val aiQuotaCoordinator = AiQuotaCoordinator(applicationContext)
+    val aiTokenUsageLedger = AiTokenUsageLedger(applicationContext)
     val appUpdateManager = AppUpdateManager(applicationContext, processScope)
     val aiHttpTransport = SecureAiHttpTransport(aiCredentialStore, aiQuotaCoordinator)
     val imagePreprocessor = ContentImagePreprocessor(applicationContext.contentResolver)
@@ -68,23 +80,35 @@ class AppContainer(
     private val aiModelClients = AiModelClientRegistry(
         mapOf(
             ModelProtocolType.OPENAI_RESPONSES to OpenAiResponsesAiModelClient(aiHttpTransport),
+            ModelProtocolType.OPENAI_CHAT_COMPLETIONS to OpenAiChatCompletionsAiModelClient(aiHttpTransport),
+            ModelProtocolType.ANTHROPIC_MESSAGES to AnthropicMessagesAiModelClient(aiHttpTransport),
+            ModelProtocolType.GEMINI_GENERATE_CONTENT to GeminiGenerateContentAiModelClient(aiHttpTransport),
             ModelProtocolType.CUSTOM_JSON to CustomJsonAiModelClient(aiHttpTransport),
         ),
     )
+    private val aiAnalysisConfigurationResolver = RepositoryAiAnalysisConfigurationResolver(
+        aiConfigurationRepository,
+    )
+    val aiProtocolDebugger = AiProtocolDebugger(
+        aiAnalysisConfigurationResolver, imagePreprocessor, aiModelClients,
+    )
     val singleImageAnalysisService = SingleImageAnalysisService(
-        configurationResolver = RepositoryAiAnalysisConfigurationResolver(
-            aiConfigurationRepository,
-        ),
+        configurationResolver = aiAnalysisConfigurationResolver,
         imagePreprocessor = imagePreprocessor,
         clients = aiModelClients,
         canonicalRepository = canonicalMetadataRepository,
+        tokenUsageLedger = aiTokenUsageLedger,
     )
     val batchAnalysisRepository = BatchAnalysisRepository(
         database.batchAnalysisDao(),
         database.imageDao(),
         singleImageAnalysisService,
+        aiConfigurationRepository,
     )
-    val batchAnalysisScheduler = BatchAnalysisScheduler(WorkManager.getInstance(applicationContext))
+    val batchAnalysisScheduler = BatchAnalysisScheduler(
+        WorkManager.getInstance(applicationContext),
+        runtimeSettings = aiConfigurationRepository::getRuntimeSetting,
+    )
     val gallerySelectionActions = GallerySelectionActions(
         database.imageDao(), batchAnalysisRepository, batchAnalysisScheduler,
     )

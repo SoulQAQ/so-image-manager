@@ -74,7 +74,10 @@ class SingleImageAnalysisServiceTest {
 
         val result = service.analyze(ImageAnalysisTarget(IMAGE_ID, CONTENT_URI))
 
-        assertEquals(SingleImageAnalysisResult.Success(ANALYSIS_ID, 1L), result)
+        assertEquals(
+            SingleImageAnalysisResult.Success(ANALYSIS_ID, 1L, PROVIDER_ID),
+            result,
+        )
         val metadata = requireNotNull(canonicalRepository.observeEffectiveMetadata(IMAGE_ID).first())
         assertEquals("雨夜中的城市街道", metadata.caption)
         assertEquals(
@@ -138,6 +141,7 @@ class SingleImageAnalysisServiceTest {
             SingleImageAnalysisResult.Failure(
                 SingleImageAnalysisFailure.REQUEST_LIMITED,
                 AiModelFailure.QUOTA_REJECTED.name,
+                providerId = PROVIDER_ID,
             ),
             limited,
         )

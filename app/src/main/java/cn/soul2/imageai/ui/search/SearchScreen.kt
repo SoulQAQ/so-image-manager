@@ -28,9 +28,20 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material.icons.outlined.BookmarkAdd
+import androidx.compose.material.icons.outlined.CollectionsBookmark
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import cn.soul2.imageai.home.HomeConfigurationRepository
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +66,10 @@ import cn.soul2.imageai.ui.gallery.GalleryImageTile
 import cn.soul2.imageai.ui.gallery.GalleryTileLayout
 
 object SearchDestination {
-    const val route = "search"
+    const val queryArgument = "query"
+    const val route = "search?query={query}"
+    const val baseRoute = "search"
+    fun createRoute(query: String = ""): String = "search?query=${android.net.Uri.encode(query)}"
 }
 
 @Composable
@@ -65,12 +79,19 @@ fun SearchScreen(
     onBack: () -> Unit,
     onImageClick: (Long) -> Unit,
     onRebuildIndex: () -> Unit,
+    homeConfigurationRepository: HomeConfigurationRepository? = null,
+    initialQuery: String = "",
 ) {
     val viewModel: SearchViewModel = viewModel(
         key = "image_search",
-        factory = SearchViewModel.factory(searchRepository, galleryRepository),
+        factory = SearchViewModel.factory(searchRepository, galleryRepository, homeConfigurationRepository),
     )
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    LaunchedEffect(initialQuery) {
+        if (initialQuery.isNotBlank() && uiState.query.isBlank()) viewModel.onQueryChanged(initialQuery)
+    }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     SearchScreenContent(
         uiState = uiState,
         onQueryChanged = viewModel::onQueryChanged,
@@ -78,6 +99,15 @@ fun SearchScreen(
         onBack = onBack,
         onImageClick = onImageClick,
         onRebuildIndex = onRebuildIndex,
+        snackbar = snackbar,
+        onSaveSearch = { asTheme ->
+            scope.launch {
+                val result = viewModel.saveCurrentSearch(asTheme)
+                snackbar.showSnackbar(if (result.isSuccess) {
+                    if (asTheme) "已保存为主题" else "已保存搜索"
+                } else "无法保存当前搜索")
+            }
+        },
     )
 }
 
@@ -90,11 +120,15 @@ internal fun SearchScreenContent(
     onBack: () -> Unit,
     onImageClick: (Long) -> Unit,
     onRebuildIndex: () -> Unit,
+    snackbar: SnackbarHostState = remember { SnackbarHostState() },
+    onSaveSearch: (Boolean) -> Unit = {},
 ) {
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().testTag("screen_search")) {
         TopAppBar(
             navigationIcon = {
@@ -131,6 +165,21 @@ internal fun SearchScreenContent(
                     },
                 )
             },
+            actions = {
+                if (uiState.query.isNotBlank()) {
+                    IconButton(onClick = { menuExpanded = true }) {
+                        Icon(Icons.Outlined.BookmarkAdd, contentDescription = "保存搜索")
+                    }
+                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        DropdownMenuItem(text = { Text("保存搜索") }, onClick = {
+                            menuExpanded = false; onSaveSearch(false)
+                        }, leadingIcon = { Icon(Icons.Outlined.BookmarkAdd, null) })
+                        DropdownMenuItem(text = { Text("保存为主题") }, onClick = {
+                            menuExpanded = false; onSaveSearch(true)
+                        }, leadingIcon = { Icon(Icons.Outlined.CollectionsBookmark, null) })
+                    }
+                }
+            },
             windowInsets = WindowInsets(0, 0, 0, 0),
         )
         Box(Modifier.fillMaxWidth().height(2.dp)) {
@@ -156,6 +205,8 @@ internal fun SearchScreenContent(
                 modifier = Modifier.weight(1f),
             )
         }
+    }
+    SnackbarHost(snackbar, Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
     }
 }
 

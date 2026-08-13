@@ -112,6 +112,17 @@ private fun TasksContent(
                             batchRun.failedCount,
                         ),
                     )
+                    batchRun.lastProviderId?.let { provider ->
+                        TaskTextRow("实际供应方", provider)
+                    }
+                    batchRun.pauseReason?.let { reason ->
+                        TaskTextRow("暂停原因", batchPauseReason(reason))
+                    }
+                    batchRun.resumeAtEpochMillis?.let { resumeAt ->
+                        val formatted = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                            .format(Date(resumeAt))
+                        TaskTextRow("预计恢复", formatted)
+                    }
                 } else {
                     Text(
                         text = stringResource(R.string.batch_analysis_no_run),
@@ -185,6 +196,26 @@ private fun TasksContent(
             }
         }
     }
+}
+
+@Composable
+private fun TaskTextRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value)
+    }
+}
+
+private fun batchPauseReason(value: String): String = when (value.substringBefore(':')) {
+    "CIRCUIT_BREAKER" -> "连续失败，已进入冷却"
+    "REQUEST_LIMITED" -> "等待供应方额度恢复"
+    "NETWORK_FAILED" -> "网络或供应方临时故障"
+    "CONFIGURATION_REQUIRED" -> "模型配置不完整"
+    "CREDENTIAL_REQUIRED", "CREDENTIAL_UNAVAILABLE" -> "凭据不可用"
+    else -> value
 }
 
 @Composable

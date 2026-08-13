@@ -17,6 +17,9 @@ data class BatchAnalysisRunEntity(
     @ColumnInfo(name = "created_at_epoch_millis") val createdAtEpochMillis: Long,
     @ColumnInfo(name = "updated_at_epoch_millis") val updatedAtEpochMillis: Long,
     @ColumnInfo(name = "completed_at_epoch_millis") val completedAtEpochMillis: Long?,
+    @ColumnInfo(name = "pause_reason") val pauseReason: String? = null,
+    @ColumnInfo(name = "resume_at_epoch_millis") val resumeAtEpochMillis: Long? = null,
+    @ColumnInfo(name = "last_provider_id") val lastProviderId: String? = null,
 )
 
 @Entity(
@@ -43,6 +46,7 @@ data class BatchAnalysisItemEntity(
     @ColumnInfo(name = "image_local_id") val imageLocalId: Long,
     val state: String,
     @ColumnInfo(name = "failure_code") val failureCode: String? = null,
+    @ColumnInfo(name = "attempt_count") val attemptCount: Int = 0,
 )
 
 data class BatchAnalysisEnqueueResult(

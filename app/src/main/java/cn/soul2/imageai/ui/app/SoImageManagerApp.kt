@@ -50,6 +50,10 @@ import cn.soul2.imageai.gallery.GalleryCollectionSummary
 import cn.soul2.imageai.gallery.GalleryCollectionType
 import cn.soul2.imageai.gallery.GallerySelectionActions
 import cn.soul2.imageai.ai.batch.BatchAnalysisRepository
+import cn.soul2.imageai.ai.debug.AiProtocolDebugReport
+import cn.soul2.imageai.home.HomeConfigurationRepository
+import cn.soul2.imageai.ui.home.HomeModulesDestination
+import cn.soul2.imageai.ui.home.HomeModulesScreen
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.gallery.GallerySource
 import cn.soul2.imageai.media.permission.GalleryAccessState
@@ -78,6 +82,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,6 +93,15 @@ private object PrivateGalleryDestination {
 
 private object UnprocessedGalleryDestination {
     const val route = "unprocessed_gallery"
+}
+
+private object HomeModuleGalleryDestination {
+    const val typeArgument = "type"
+    const val keyArgument = "key"
+    const val titleArgument = "title"
+    const val route = "home_module_gallery/{$typeArgument}/{$keyArgument}/{$titleArgument}"
+    fun createRoute(module: cn.soul2.imageai.home.HomeModule): String =
+        "home_module_gallery/${module.type.name}/${android.net.Uri.encode(module.sourceKey)}/${android.net.Uri.encode(module.title)}"
 }
 
 private object LibraryCollectionDestination {
@@ -136,6 +150,8 @@ fun SoImageManagerApp(
     aiCredentialStore: AiCredentialStore? = null,
     singleImageAnalyzer: SingleImageAnalyzer? = null,
     canonicalMetadataRepository: CanonicalMetadataRepository? = null,
+    homeConfigurationRepository: HomeConfigurationRepository? = null,
+    appStorageService: cn.soul2.imageai.storage.AppStorageService? = null,
     lastSyncCompletedAt: Flow<Long?> = flowOf(null),
     galleryUnavailableCounts: Flow<Int> = flowOf(0),
     navController: NavHostController = rememberNavController(),
@@ -151,6 +167,11 @@ fun SoImageManagerApp(
     onSelectDocumentImages: () -> Unit = {},
     documentImportNotice: String? = null,
     onDocumentImportNoticeConsumed: () -> Unit = {},
+    backupNotice: String? = null,
+    onBackupNoticeConsumed: () -> Unit = {},
+    onExportBackup: () -> Unit = {},
+    onRestoreBackup: () -> Unit = {},
+    onDebugProtocol: (String, ImagePartition, (Result<AiProtocolDebugReport>) -> Unit) -> Unit = { _, _, _ -> },
     onRetryGallerySync: () -> Unit = {},
     onRequestGalleryReconciliation: () -> Unit = {},
     gallerySelectionActions: GallerySelectionActions? = null,
@@ -283,7 +304,28 @@ fun SoImageManagerApp(
                         isPermissionRequestInFlight = isGalleryPermissionRequestInFlight,
                         onRequestGalleryPermission = onRequestGalleryPermission,
                         onOpenAppSettings = onOpenAppSettings,
-                        onSearchClick = { navController.navigate(SearchDestination.route) },
+                        onSearchClick = { navController.navigate(SearchDestination.createRoute()) },
+                        homeConfigurationRepository = homeConfigurationRepository,
+                        onOpenModule = { module ->
+                            if (module.type == cn.soul2.imageai.home.HomeModuleType.SAVED_SEARCH ||
+                                module.type == cn.soul2.imageai.home.HomeModuleType.THEME
+                            ) {
+                                coroutineScope.launch {
+                                    val query = if (module.type == cn.soul2.imageai.home.HomeModuleType.SAVED_SEARCH) {
+                                        homeConfigurationRepository?.savedSearches?.first()
+                                            ?.firstOrNull { it.id == module.sourceKey }?.query
+                                    } else {
+                                        homeConfigurationRepository?.themes?.first()
+                                            ?.firstOrNull { it.id == module.sourceKey }?.query
+                                    }
+                                    navController.navigate(SearchDestination.createRoute(query.orEmpty()))
+                                }
+                            } else {
+                                if (module.type != cn.soul2.imageai.home.HomeModuleType.RECENT) {
+                                    navController.navigate(HomeModuleGalleryDestination.createRoute(module))
+                                }
+                            }
+                        },
                         onShareImages = onShareImages,
                         onDeleteImages = onDeleteImages,
                         onRemoveImages = { images ->
@@ -429,12 +471,18 @@ fun SoImageManagerApp(
                         onSelectDocumentImages = onSelectDocumentImages,
                         documentImportNotice = documentImportNotice,
                         onDocumentImportNoticeConsumed = onDocumentImportNoticeConsumed,
+                        backupNotice = backupNotice,
+                        onBackupNoticeConsumed = onBackupNoticeConsumed,
+                        onExportBackup = onExportBackup,
+                        onRestoreBackup = onRestoreBackup,
                         onRescan = onRequestGalleryReconciliation,
                         onOpenSystemSettings = onOpenAppSettings,
                         onOpenGeneralSettings = { navController.navigate(AnalysisSettingsDestination.route) },
+                        onOpenHomeModules = { navController.navigate(HomeModulesDestination.route) },
                         onOpenAiSettings = { navController.navigate(ModelProvidersDestination.route) },
                         onOpenPrivateGallery = { navController.navigate(PrivateGalleryDestination.route) },
                         onOpenUnprocessedGallery = { navController.navigate(UnprocessedGalleryDestination.route) },
+                        storageService = appStorageService,
                         appUpdateState = appUpdateState,
                         onCheckForUpdate = onCheckForUpdate,
                         onOpenUpdateDetails = { showUpdateDialog = true },
@@ -466,6 +514,48 @@ fun SoImageManagerApp(
                                 gallerySelectionActions?.removeFromSoim(images.map(GalleryImage::localId))
                             }
                         },
+                        onAnalyzeImages = analyzeImages,
+                    )
+                }
+                composable(
+                    HomeModuleGalleryDestination.route,
+                    arguments = listOf(
+                        navArgument(HomeModuleGalleryDestination.typeArgument) { type = NavType.StringType },
+                        navArgument(HomeModuleGalleryDestination.keyArgument) { type = NavType.StringType },
+                        navArgument(HomeModuleGalleryDestination.titleArgument) { type = NavType.StringType },
+                    ),
+                ) { entry ->
+                    val type = cn.soul2.imageai.home.HomeModuleType.valueOf(
+                        requireNotNull(entry.arguments?.getString(HomeModuleGalleryDestination.typeArgument)),
+                    )
+                    val key = entry.arguments?.getString(HomeModuleGalleryDestination.keyArgument).orEmpty()
+                    val title = entry.arguments?.getString(HomeModuleGalleryDestination.titleArgument).orEmpty()
+                    val source = when (type) {
+                        cn.soul2.imageai.home.HomeModuleType.ALBUM -> if (key.startsWith("name:")) {
+                            GallerySource.Album(null, key.removePrefix("name:"))
+                        } else GallerySource.Album(key.toLong(), title)
+                        cn.soul2.imageai.home.HomeModuleType.TAG -> GallerySource.Tag(key)
+                        cn.soul2.imageai.home.HomeModuleType.CATEGORY -> GallerySource.Category(key)
+                        cn.soul2.imageai.home.HomeModuleType.THEME,
+                        cn.soul2.imageai.home.HomeModuleType.SAVED_SEARCH,
+                        cn.soul2.imageai.home.HomeModuleType.RECENT,
+                        -> GallerySource.Recent
+                    }
+                    LibraryScreen(
+                        repository = galleryRepository,
+                        syncRuns = syncRuns,
+                        galleryAccessState = galleryAccessState,
+                        initialSource = source,
+                        viewModelKey = "home_module_${type.name}_$key",
+                        selectionKey = "home_module_selection_${type.name}_$key",
+                        titleText = title,
+                        onBack = navController::navigateUp,
+                        onImageClick = { localId -> navController.navigate(ImageDetailDestination.createRoute(localId)) },
+                        onImageClickWithSource = { localId, gallerySource ->
+                            navController.navigate(PrivateImageDetailDestination.createRoute(localId, gallerySource))
+                        },
+                        onShareImages = onShareImages,
+                        onDeleteImages = onDeleteImages,
                         onAnalyzeImages = analyzeImages,
                     )
                 }
@@ -502,6 +592,12 @@ fun SoImageManagerApp(
                     val repository = aiConfigurationRepository
                     if (repository != null) {
                         AnalysisSettingsScreen(repository, navController::navigateUp)
+                    }
+                }
+                composable(HomeModulesDestination.route) {
+                    val configuration = homeConfigurationRepository
+                    if (configuration != null) {
+                        HomeModulesScreen(configuration, galleryRepository, navController::navigateUp)
                     }
                 }
                 composable(ModelProvidersDestination.route) {
@@ -544,6 +640,14 @@ fun SoImageManagerApp(
                                 )
                             }.getOrDefault(ImagePartition.MAIN),
                             onBack = navController::navigateUp,
+                            onDebugProtocol = { id, callback ->
+                                onDebugProtocol(id, runCatching {
+                                    ImagePartition.valueOf(
+                                        entry.arguments?.getString(AiSettingsDestination.partitionArgument)
+                                            ?: ImagePartition.MAIN.name,
+                                    )
+                                }.getOrDefault(ImagePartition.MAIN), callback)
+                            },
                         )
                     } else {
                         Column(
@@ -574,7 +678,13 @@ fun SoImageManagerApp(
                         onBack = navController::navigateUp,
                     )
                 }
-                composable(SearchDestination.route) {
+                composable(
+                    SearchDestination.route,
+                    arguments = listOf(navArgument(SearchDestination.queryArgument) {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    }),
+                ) { entry ->
                     SearchScreen(
                         searchRepository = imageSearchRepository,
                         galleryRepository = galleryRepository,
@@ -583,6 +693,8 @@ fun SoImageManagerApp(
                             navController.navigate(ImageDetailDestination.createRoute(localId))
                         },
                         onRebuildIndex = onRequestGalleryReconciliation,
+                        homeConfigurationRepository = homeConfigurationRepository,
+                        initialQuery = entry.arguments?.getString(SearchDestination.queryArgument).orEmpty(),
                     )
                 }
                 composable(

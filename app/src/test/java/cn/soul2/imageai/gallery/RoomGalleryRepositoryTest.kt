@@ -75,6 +75,32 @@ class RoomGalleryRepositoryTest {
     }
 
     @Test
+    fun customSortUsesWhitelistedNameAndSizeOrdersWithinMainPartition() = runTest {
+        database.imageDao().upsert(
+            listOf(
+                image(1L, 1L).copy(displayName = "z.jpg", sizeBytes = 100L),
+                image(2L, 2L).copy(displayName = "A.jpg", sizeBytes = 300L),
+                image(3L, 3L).copy(
+                    displayName = "private.jpg",
+                    sizeBytes = 999L,
+                    partition = ImagePartition.PRIVATE,
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(2L, 1L),
+            repository.observe(GalleryQuery(GallerySource.All, GallerySort.NAME))
+                .asSnapshot().map { it.localId },
+        )
+        assertEquals(
+            listOf(2L, 1L),
+            repository.observe(GalleryQuery(GallerySource.All, GallerySort.SIZE))
+                .asSnapshot().map { it.localId },
+        )
+    }
+
+    @Test
     fun pendingMissingImagesAreRetainedButHiddenFromGalleryAndDetail() = runTest {
         database.imageDao().upsert(
             listOf(
@@ -299,6 +325,26 @@ class RoomGalleryRepositoryTest {
             repository.observe(GalleryQuery(GallerySource.Unanalyzed)).asSnapshot()
                 .map { it.localId },
         )
+    }
+
+    @Test
+    fun timedBatchPauseResumesInPlaceAndUntimedPauseRemainsStopped() = runTest {
+        database.imageDao().upsert(
+            listOf(
+                image(8L, 8L).copy(partition = ImagePartition.UNPROCESSED),
+                image(9L, 9L).copy(partition = ImagePartition.UNPROCESSED),
+            ),
+        )
+        val created = requireNotNull(database.batchAnalysisDao().createRun(listOf(8L), 100L).run)
+        database.batchAnalysisDao().pauseRun(created.runId, 200L, "REQUEST_LIMITED", 500L)
+
+        assertEquals(null, database.batchAnalysisDao().runnableRun(499L))
+        assertEquals("QUEUED", database.batchAnalysisDao().runnableRun(500L)?.state)
+
+        database.batchAnalysisDao().pauseRun(created.runId, 600L, "CONFIGURATION_REQUIRED", null)
+        assertEquals(null, database.batchAnalysisDao().runnableRun(Long.MAX_VALUE))
+        val joined = database.batchAnalysisDao().createRun(listOf(9L), 700L)
+        assertEquals(created.runId, joined.run?.runId)
     }
 
     @Test

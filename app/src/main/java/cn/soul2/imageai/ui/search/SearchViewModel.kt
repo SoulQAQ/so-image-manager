@@ -15,6 +15,7 @@ import cn.soul2.imageai.search.SearchProgress
 import cn.soul2.imageai.search.SearchRequest
 import cn.soul2.imageai.search.SearchResult
 import cn.soul2.imageai.search.SearchValidationException
+import cn.soul2.imageai.home.HomeConfigurationRepository
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -70,6 +71,7 @@ class SearchViewModel(
     private val searchRepository: ImageSearchRepository,
     private val galleryRepository: GalleryRepository,
     workerDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val homeConfigurationRepository: HomeConfigurationRepository? = null,
 ) : ViewModel() {
     private val query = MutableStateFlow(savedStateHandle[QUERY_KEY] ?: "")
     private val generation = AtomicLong(0L)
@@ -114,6 +116,14 @@ class SearchViewModel(
     }
 
     fun clearQuery() = onQueryChanged("")
+
+    suspend fun saveCurrentSearch(asTheme: Boolean): Result<Unit> = runCatching {
+        val value = query.value.trim()
+        require(value.isNotBlank())
+        val repository = requireNotNull(homeConfigurationRepository)
+        if (asTheme) repository.saveTheme(value.take(32), value)
+        else repository.saveSearch(value.take(32), value)
+    }
 
     private fun executeSearch(rawQuery: String): Flow<SearchExecution> {
         val request = SearchRequest(
@@ -168,12 +178,15 @@ class SearchViewModel(
         fun factory(
             searchRepository: ImageSearchRepository,
             galleryRepository: GalleryRepository,
+            homeConfigurationRepository: HomeConfigurationRepository? = null,
         ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 SearchViewModel(
                     createSavedStateHandle(),
                     searchRepository,
                     galleryRepository,
+                    workerDispatcher = Dispatchers.Default,
+                    homeConfigurationRepository = homeConfigurationRepository,
                 )
             }
         }

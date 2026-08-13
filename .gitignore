@@ -34,3 +34,4 @@ Thumbs.db
 *.jks
 *.keystore
 secrets.properties
+keystore.properties

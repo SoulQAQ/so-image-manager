@@ -23,11 +23,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.BrokenImage
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.FilledTonalButton
@@ -122,6 +124,8 @@ fun ImageDetailScreen(
     val correctionState by viewModel.correctionState.collectAsState()
     var controlsVisible by remember { mutableStateOf(true) }
     var showFullAiResult by remember { mutableStateOf(false) }
+    var showImageInfo by remember { mutableStateOf(false) }
+    var currentImage by remember { mutableStateOf<GalleryImage?>(null) }
 
     Box(
         modifier = Modifier
@@ -143,6 +147,7 @@ fun ImageDetailScreen(
             is ImageDetailUiState.Ready -> {
                 LaunchedEffect(state.image.localId) {
                     controlsVisible = true
+                    currentImage = state.image
                 }
                 ImageDetailPager(
                     window = state.window,
@@ -153,6 +158,7 @@ fun ImageDetailScreen(
                     DetailTopBar(
                         image = state.image,
                         onBack = onBack,
+                        onShowInfo = { showImageInfo = true },
                         modifier = Modifier.align(Alignment.TopCenter),
                     )
                     DetailActionBar(
@@ -174,6 +180,9 @@ fun ImageDetailScreen(
             onCorrection = viewModel::applyCorrection,
             onDismiss = { showFullAiResult = false },
         )
+    }
+    if (showImageInfo && currentImage != null) {
+        ImageInfoSheet(requireNotNull(currentImage), onDismiss = { showImageInfo = false })
     }
     }
 }
@@ -376,14 +385,7 @@ private fun DetailActionBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = imageDetailSummary(image),
-                color = Color.White.copy(alpha = 0.76f),
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            Spacer(Modifier.weight(1f))
             FilledTonalButton(
                 onClick = onAnalyze,
                 enabled = currentAnalysis !is ImageAnalysisUiState.Running,
@@ -620,16 +622,9 @@ private fun EditableTermAdd(
 private fun DetailTopBar(
     image: GalleryImage,
     onBack: () -> Unit,
+    onShowInfo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val timestamp = image.capturedAtEpochMillis ?: image.modifiedAtEpochMillis
-    val formattedDate = remember(timestamp) {
-        DateFormat.getDateTimeInstance(
-            DateFormat.MEDIUM,
-            DateFormat.SHORT,
-            Locale.SIMPLIFIED_CHINESE,
-        ).format(Date(timestamp))
-    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -646,24 +641,50 @@ private fun DetailTopBar(
                 tint = Color.White,
             )
         }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = image.displayName,
-                color = Color.White,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                text = formattedDate,
-                color = Color.White.copy(alpha = 0.76f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
-            )
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = onShowInfo) {
+            Icon(Icons.Outlined.Info, contentDescription = "图片信息", tint = Color.White)
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ImageInfoSheet(image: GalleryImage, onDismiss: () -> Unit) {
+    val timestamp = image.capturedAtEpochMillis ?: image.modifiedAtEpochMillis
+    val formattedDate = remember(timestamp) {
+        DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, Locale.SIMPLIFIED_CHINESE)
+            .format(Date(timestamp))
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("图片信息", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            InfoRow("文件名", image.displayName)
+            InfoRow("时间", formattedDate)
+            InfoRow("尺寸", "${image.width} × ${image.height}")
+            InfoRow("格式", image.mimeType)
+            InfoRow("大小", formatImageBytes(image.sizeBytes))
+            image.bucketName?.takeIf(String::isNotBlank)?.let { InfoRow("相册", it) }
+            Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun InfoRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(label, modifier = Modifier.width(56.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, modifier = Modifier.weight(1f))
+    }
+}
+
+private fun formatImageBytes(bytes: Long): String = when {
+    bytes >= 1_048_576L -> "%.1f MB".format(bytes.toDouble() / 1_048_576.0)
+    bytes >= 1_024L -> "%.1f KB".format(bytes.toDouble() / 1_024.0)
+    else -> "$bytes B"
 }
 
 private fun imageDetailSummary(image: GalleryImage): String = buildString {

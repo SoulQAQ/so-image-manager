@@ -143,6 +143,30 @@ class CanonicalMetadataRepository(
         return result
     }
 
+    suspend fun importAnalysisHistory(draft: CanonicalAnalysisDraft): Boolean {
+        val validated = draft.validate()
+        return database.withTransaction {
+            if (database.imageDao().getById(validated.imageLocalId) == null) {
+                invalid("analysis image does not exist")
+            }
+            val expectedAnalysis = validated.toEntity()
+            val expectedTerms = validated.toTermEntities()
+            val existing = analysisDao.getAnalysis(validated.analysisId)
+            if (existing == null) {
+                check(analysisDao.insertAnalysis(expectedAnalysis) != -1L) {
+                    "analysis insert was unexpectedly ignored"
+                }
+                if (expectedTerms.isNotEmpty()) analysisDao.insertTerms(expectedTerms)
+                true
+            } else {
+                if (existing != expectedAnalysis || analysisDao.getTerms(validated.analysisId) != expectedTerms) {
+                    invalid("analysisId already exists with different canonical content")
+                }
+                false
+            }
+        }
+    }
+
     suspend fun getEffectiveSnapshot(imageLocalId: Long): EffectiveMetadataSnapshot? =
         database.withTransaction {
             val metadata = effectiveDao.getMetadata(imageLocalId) ?: return@withTransaction null

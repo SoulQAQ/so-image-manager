@@ -142,7 +142,11 @@ class AiConfigurationRepository(
             invalid("model providerId must match the saved provider")
         }
         when (model.protocolType) {
-            ModelProtocolType.OPENAI_RESPONSES -> if (protocol != null) {
+            ModelProtocolType.OPENAI_RESPONSES,
+            ModelProtocolType.OPENAI_CHAT_COMPLETIONS,
+            ModelProtocolType.ANTHROPIC_MESSAGES,
+            ModelProtocolType.GEMINI_GENERATE_CONTENT,
+            -> if (protocol != null) {
                 invalid("OPENAI_RESPONSES must not include a custom protocol definition")
             }
             ModelProtocolType.CUSTOM_JSON -> {
@@ -177,7 +181,11 @@ class AiConfigurationRepository(
             invalid("runtime default model must match the saved model")
         }
         when (model.protocolType) {
-            ModelProtocolType.OPENAI_RESPONSES -> if (
+            ModelProtocolType.OPENAI_RESPONSES,
+            ModelProtocolType.OPENAI_CHAT_COMPLETIONS,
+            ModelProtocolType.ANTHROPIC_MESSAGES,
+            ModelProtocolType.GEMINI_GENERATE_CONTENT,
+            -> if (
                 model.protocolDefinitionId != null || protocol != null
             ) {
                 invalid("OPENAI_RESPONSES must not include a custom protocol definition")
@@ -193,7 +201,7 @@ class AiConfigurationRepository(
         }
     }
 
-    private fun validateProtocol(protocol: ProtocolDefinitionEntity) {
+    internal fun validateProtocol(protocol: ProtocolDefinitionEntity) {
         validateId("protocolDefinitionId", protocol.protocolDefinitionId)
         validateDisplayName(protocol.displayName)
         requireTextLength(
@@ -214,8 +222,12 @@ class AiConfigurationRepository(
             invalid("providerId does not reference an existing provider")
         }
         when (model.protocolType) {
-            ModelProtocolType.OPENAI_RESPONSES -> if (model.protocolDefinitionId != null) {
-                invalid("OPENAI_RESPONSES must not reference a custom protocol definition")
+            ModelProtocolType.OPENAI_RESPONSES,
+            ModelProtocolType.OPENAI_CHAT_COMPLETIONS,
+            ModelProtocolType.ANTHROPIC_MESSAGES,
+            ModelProtocolType.GEMINI_GENERATE_CONTENT,
+            -> if (model.protocolDefinitionId != null) {
+                invalid("preset protocols must not reference a custom protocol definition")
             }
 
             ModelProtocolType.CUSTOM_JSON -> {
@@ -238,7 +250,7 @@ class AiConfigurationRepository(
         dao.upsertRuntimeSetting(setting)
     }
 
-    private fun validateRuntime(setting: AiRuntimeSettingEntity) {
+    internal fun validateRuntime(setting: AiRuntimeSettingEntity) {
         if (setting.singletonId != AiRuntimeSettingEntity.SINGLETON_ID) {
             invalid("singletonId must be ${AiRuntimeSettingEntity.SINGLETON_ID}")
         }
@@ -250,6 +262,19 @@ class AiConfigurationRepository(
         )
         if (setting.dailyImageLimit !in 0..100_000) {
             invalid("dailyImageLimit must be between 0 and 100000")
+        }
+        if (setting.dailyTokenLimit !in 0L..10_000_000_000L) {
+            invalid("dailyTokenLimit is outside the supported range")
+        }
+        if (setting.executionStartMinute !in 0..1_439 || setting.executionEndMinute !in 0..1_439) {
+            invalid("execution window minutes must be between 0 and 1439")
+        }
+        if (setting.retryLimit !in 0..10) invalid("retryLimit must be between 0 and 10")
+        if (setting.circuitBreakerThreshold !in 1..100) {
+            invalid("circuitBreakerThreshold must be between 1 and 100")
+        }
+        if (setting.circuitBreakerCooldownMinutes !in 1..1_440) {
+            invalid("circuitBreakerCooldownMinutes must be between 1 and 1440")
         }
         requireTextLength("promptText", setting.promptText, AiConfigurationLimits.PROMPT_LENGTH)
     }
@@ -276,7 +301,7 @@ class AiConfigurationRepository(
     suspend fun deleteProtocol(protocolDefinitionId: String): Boolean =
         dao.deleteProtocol(protocolDefinitionId) > 0
 
-    private fun validateProvider(provider: ProviderProfileEntity) {
+    internal fun validateProvider(provider: ProviderProfileEntity) {
         validateId("providerId", provider.providerId)
         validateDisplayName(provider.displayName)
         validateBaseUrl(provider.baseUrl, provider.cleartextApproved)
@@ -312,7 +337,7 @@ class AiConfigurationRepository(
         provider.authPrefix?.let { requireTextLength("authPrefix", it, 64, allowBlank = true) }
     }
 
-    private fun validateModel(model: ModelProfileEntity) {
+    internal fun validateModel(model: ModelProfileEntity) {
         validateId("modelProfileId", model.modelProfileId)
         validateId("providerId", model.providerId)
         validateDisplayName(model.displayName)

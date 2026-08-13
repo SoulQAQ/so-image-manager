@@ -11,6 +11,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 internal interface EffectiveMetadataDao {
+    @Query("SELECT * FROM image_user_correction ORDER BY image_local_id ASC")
+    suspend fun getAllCorrections(): List<ImageUserCorrectionEntity>
+
+    @Query("SELECT * FROM user_term_override ORDER BY image_local_id ASC, kind ASC, normalized_key ASC")
+    suspend fun getAllOverrides(): List<UserTermOverrideEntity>
+
     @Query("SELECT * FROM image_user_correction WHERE image_local_id = :imageLocalId LIMIT 1")
     suspend fun getCorrection(imageLocalId: Long): ImageUserCorrectionEntity?
 

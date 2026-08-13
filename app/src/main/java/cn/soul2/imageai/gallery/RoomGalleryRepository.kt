@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import androidx.sqlite.db.SimpleSQLiteQuery
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomGalleryRepository(
@@ -25,7 +26,9 @@ class RoomGalleryRepository(
     override fun observe(query: GalleryQuery): Flow<PagingData<GalleryImage>> = Pager(
         config = PAGING_CONFIG,
         pagingSourceFactory = {
-            when (query.source) {
+            if (query.sort != GallerySort.NEWEST && query.source.supportsCustomSort()) {
+                imageDao.pagingSorted(query.toSqlQuery())
+            } else when (query.source) {
                 GallerySource.Recent -> imageDao.pagingRecent()
                 GallerySource.All -> imageDao.pagingAll()
                 GallerySource.Analyzed -> imageDao.pagingAnalyzed()
@@ -215,6 +218,49 @@ class RoomGalleryRepository(
             enablePlaceholders = false,
         )
     }
+}
+
+private fun GallerySource.supportsCustomSort(): Boolean = when (this) {
+    GallerySource.Recent, GallerySource.All, GallerySource.Analyzed,
+    is GallerySource.Album, is GallerySource.Tag, is GallerySource.Category -> true
+    else -> false
+}
+
+private fun GalleryQuery.toSqlQuery(): SimpleSQLiteQuery {
+    val args = mutableListOf<Any>()
+    val sql = StringBuilder("SELECT image.* FROM image")
+    when (val source = source) {
+        GallerySource.Analyzed -> sql.append(" INNER JOIN active_image_analysis active ON active.image_local_id=image.local_id")
+        is GallerySource.Tag, is GallerySource.Category -> sql.append(" INNER JOIN effective_image_term term ON term.image_local_id=image.local_id")
+        else -> Unit
+    }
+    sql.append(" WHERE image.availability='AVAILABLE' AND image.partition='MAIN' AND image.missing_candidate_since_epoch_millis IS NULL")
+    when (val source = source) {
+        is GallerySource.Album -> {
+            if (source.bucketId != null) {
+                sql.append(" AND image.bucket_id=?")
+                args += source.bucketId
+            } else {
+                sql.append(" AND image.bucket_id IS NULL AND COALESCE(image.bucket_name,'')=?")
+                args += source.bucketName
+            }
+        }
+        is GallerySource.Tag -> {
+            sql.append(" AND term.kind='TAG' AND term.normalized_key=?")
+            args += source.normalizedKey
+        }
+        is GallerySource.Category -> {
+            sql.append(" AND term.kind='CATEGORY' AND term.normalized_key=?")
+            args += source.normalizedKey
+        }
+        else -> Unit
+    }
+    sql.append(when (sort) {
+        GallerySort.NEWEST -> " ORDER BY image.sort_time_epoch_millis DESC, image.local_id DESC"
+        GallerySort.NAME -> " ORDER BY image.display_name COLLATE NOCASE ASC, image.local_id DESC"
+        GallerySort.SIZE -> " ORDER BY image.size_bytes DESC, image.local_id DESC"
+    })
+    return SimpleSQLiteQuery(sql.toString(), args.toTypedArray())
 }
 
 private fun ImageEntity.toGalleryImage() = GalleryImage(

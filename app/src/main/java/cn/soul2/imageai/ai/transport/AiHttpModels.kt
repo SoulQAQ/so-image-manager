@@ -14,6 +14,16 @@ data class AiHttpRequest(
     val body: ByteArray? = null,
     val containsSensitiveData: Boolean = true,
     val bodyReplayable: Boolean = true,
+    val traceSink: ((AiHttpTrace) -> Unit)? = null,
+)
+
+data class AiHttpTrace(
+    val method: String,
+    val url: String,
+    val headerNames: List<String>,
+    val redactedRequestBody: String?,
+    val statusCode: Int,
+    val responseBody: String,
 )
 
 data class AiHttpResponse(

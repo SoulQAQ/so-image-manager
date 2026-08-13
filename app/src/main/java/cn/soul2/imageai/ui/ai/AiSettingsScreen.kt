@@ -55,6 +55,7 @@ import cn.soul2.imageai.ai.credential.AiCredentialStore
 import cn.soul2.imageai.data.db.entity.ModelProtocolType
 import cn.soul2.imageai.data.db.entity.ProviderAuthMode
 import cn.soul2.imageai.data.db.entity.ImagePartition
+import cn.soul2.imageai.ai.debug.AiProtocolDebugReport
 
 object AiSettingsDestination {
     const val providerIdArgument = "providerId"
@@ -76,6 +77,7 @@ fun AiSettingsScreen(
     providerId: String? = null,
     partition: ImagePartition = ImagePartition.MAIN,
     onBack: () -> Unit,
+    onDebugProtocol: (String, (Result<AiProtocolDebugReport>) -> Unit) -> Unit = { _, _ -> },
 ) {
     val viewModel: AiSettingsViewModel = viewModel(
         factory = AiSettingsViewModel.factory(repository, credentialStore, providerId, partition),
@@ -84,6 +86,9 @@ fun AiSettingsScreen(
     val snackbar = remember { SnackbarHostState() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val savedMessage = stringResource(R.string.ai_settings_saved)
+    var debugLoading by remember { mutableStateOf(false) }
+    var debugReport by remember { mutableStateOf<AiProtocolDebugReport?>(null) }
+    var debugError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(state.saveGeneration) {
         if (state.saveGeneration > 0) {
             keyboardController?.hide()
@@ -99,6 +104,19 @@ fun AiSettingsScreen(
         onFormChange = viewModel::updateForm,
         onSave = viewModel::save,
         onDelete = viewModel::delete,
+        onDebug = {
+            debugLoading = true
+            debugReport = null
+            debugError = null
+            onDebugProtocol(checkNotNull(state.savedProviderId)) { result ->
+                debugLoading = false
+                debugReport = result.getOrNull()
+                debugError = result.exceptionOrNull()?.message
+            }
+        },
+        debugLoading = debugLoading,
+        debugReport = debugReport,
+        debugError = debugError,
         onBack = onBack,
         isNew = providerId == null || providerId == "new",
         partitionLabel = if (partition == ImagePartition.MAIN) "主分区" else "隐私分区",
@@ -113,6 +131,10 @@ internal fun AiSettingsContent(
     onFormChange: (AiSettingsForm) -> Unit,
     onSave: () -> Unit,
     onDelete: () -> Unit = {},
+    onDebug: () -> Unit = {},
+    debugLoading: Boolean = false,
+    debugReport: AiProtocolDebugReport? = null,
+    debugError: String? = null,
     onBack: () -> Unit,
     isNew: Boolean = false,
     partitionLabel: String? = null,
@@ -159,6 +181,10 @@ internal fun AiSettingsContent(
                     onFormChange = onFormChange,
                     onSave = onSave,
                     onDelete = { confirmDelete = true },
+                    onDebug = onDebug,
+                    debugLoading = debugLoading,
+                    debugReport = debugReport,
+                    debugError = debugError,
                     partitionLabel = partitionLabel,
                     modifier = Modifier.padding(padding),
                 )
@@ -195,6 +221,10 @@ private fun AiSettingsFormContent(
     onFormChange: (AiSettingsForm) -> Unit,
     onSave: () -> Unit,
     onDelete: () -> Unit,
+    onDebug: () -> Unit,
+    debugLoading: Boolean,
+    debugReport: AiProtocolDebugReport?,
+    debugError: String?,
     partitionLabel: String? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -295,6 +325,9 @@ private fun AiSettingsFormContent(
             ChoiceRow(
                 options = listOf(
                     ModelProtocolType.OPENAI_RESPONSES to R.string.ai_settings_protocol_responses,
+                    ModelProtocolType.OPENAI_CHAT_COMPLETIONS to R.string.ai_settings_protocol_chat_completions,
+                    ModelProtocolType.ANTHROPIC_MESSAGES to R.string.ai_settings_protocol_anthropic,
+                    ModelProtocolType.GEMINI_GENERATE_CONTENT to R.string.ai_settings_protocol_gemini,
                     ModelProtocolType.CUSTOM_JSON to R.string.ai_settings_protocol_custom,
                 ),
                 selected = form.protocolType,
@@ -375,6 +408,25 @@ private fun AiSettingsFormContent(
             Spacer(Modifier.height(16.dp))
         }
         if (state.existingProvider) {
+            item { SectionTitle("协议调试") }
+            item {
+                Button(
+                    onClick = onDebug,
+                    enabled = !debugLoading,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (debugLoading) CircularProgressIndicator(Modifier.height(18.dp), strokeWidth = 2.dp)
+                    else Text("选择图片并测试")
+                }
+            }
+            debugError?.let { error -> item {
+                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            } }
+            debugReport?.let { report ->
+                item { DebugText("脱敏请求", report.requestSummary) }
+                item { DebugText("原始响应", report.responsePreview) }
+                item { DebugText("字段映射", report.mappedOutput) }
+            }
             item {
                 TextButton(
                     onClick = onDelete,
@@ -397,6 +449,21 @@ private fun SectionTitle(label: Int) {
         style = MaterialTheme.typography.labelLarge,
         modifier = Modifier.padding(top = 8.dp),
     )
+}
+
+@Composable
+private fun SectionTitle(label: String) {
+    Text(label, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.padding(top = 8.dp))
+}
+
+@Composable
+private fun DebugText(title: String, value: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Text(value.take(32 * 1_024), style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable

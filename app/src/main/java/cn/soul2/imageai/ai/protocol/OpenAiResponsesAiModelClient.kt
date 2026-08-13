@@ -32,6 +32,7 @@ class OpenAiResponsesAiModelClient(
                         quotaPolicy = invocation.quotaPolicy,
                         url = resolveEndpoint(invocation.configuration.provider.baseUrl),
                         body = requestBody,
+                        traceSink = invocation.traceSink,
                     ),
                 )
             } catch (error: AiTransportException) {
@@ -39,12 +40,17 @@ class OpenAiResponsesAiModelClient(
             } finally {
                 requestBody.fill(0)
             }
-            if (response.statusCode !in 200..299) {
-                response.body.fill(0)
-                throw AiModelException(AiModelFailure.PROVIDER_HTTP_ERROR)
-            }
+            requireSuccessfulResponse(response)
             try {
-                CanonicalAiPayloadParser.parse(extractOutputText(response.body))
+                val root = JSONObject(response.body.toString(Charsets.UTF_8))
+                val usage = root.optJSONObject("usage")
+                CanonicalAiPayloadParser.parse(extractOutputText(response.body)).copy(
+                    usageTokens = usage?.optLong("total_tokens")?.takeIf { it > 0L }
+                        ?: usage?.let {
+                            (it.optLong("input_tokens") + it.optLong("output_tokens"))
+                                .takeIf { total -> total > 0L }
+                        },
+                )
             } catch (error: IllegalArgumentException) {
                 throw AiModelException(AiModelFailure.RESPONSE_INVALID, error)
             } finally {

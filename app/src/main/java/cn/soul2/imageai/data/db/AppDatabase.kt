@@ -69,7 +69,7 @@ import cn.soul2.imageai.data.db.entity.ProviderRouteEntity
         BatchAnalysisItemEntity::class,
         ProviderRouteEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 @TypeConverters(RoomConverters::class)

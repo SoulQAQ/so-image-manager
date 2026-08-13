@@ -51,7 +51,8 @@ class CustomJsonAiModelClient(
                             provider = invocation.configuration.provider,
                             quotaPolicy = invocation.quotaPolicy,
                             url = endpoint,
-                            body = requestBody,
+                body = requestBody,
+                traceSink = invocation.traceSink,
                         ),
                     )
                 } catch (error: AiTransportException) {

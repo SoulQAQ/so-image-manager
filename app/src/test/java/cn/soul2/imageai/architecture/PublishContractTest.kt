@@ -231,12 +231,12 @@ class PublishContractTest {
     }
 
     @Test
-    fun latestRoomSchemaIsPinnedToVersionEightAiRuntimeControls() {
+    fun latestRoomSchemaIsPinnedToVersionTenAiRuntimeControls() {
         val schema = scriptText().substringAfter("function Test-LatestRoomSchema")
             .substringBefore("function Get-ApkSha256")
 
-        assertTrue(schema.contains("\$latest.BaseName -cne \"9\""))
-        assertTrue(schema.contains("[int] \$schema.database.version -ne 9"))
+        assertTrue(schema.contains("\$latest.BaseName -cne \"10\""))
+        assertTrue(schema.contains("[int] \$schema.database.version -ne 10"))
         assertTrue(schema.contains("app_setting"))
         assertTrue(schema.contains("media_sync_checkpoint"))
         assertTrue(schema.contains("media_sync_run"))

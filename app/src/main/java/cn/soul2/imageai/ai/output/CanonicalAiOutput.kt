@@ -13,6 +13,7 @@ data class CanonicalAiPayload(
     val tags: List<CanonicalTermInput>,
     val categories: List<CanonicalTermInput>,
     val searchTokens: List<String>,
+    val usageTokens: Long? = null,
 ) {
     fun toDraft(context: CanonicalAiDraftContext): CanonicalAnalysisDraft =
         CanonicalAnalysisDraft(

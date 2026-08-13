@@ -23,6 +23,9 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Upload
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
@@ -41,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -64,6 +68,10 @@ import java.io.File
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import cn.soul2.imageai.storage.AppStorageService
+import cn.soul2.imageai.storage.AppStorageSnapshot
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
@@ -74,12 +82,18 @@ fun SettingsScreen(
     onSelectDocumentImages: () -> Unit = {},
     documentImportNotice: String? = null,
     onDocumentImportNoticeConsumed: () -> Unit = {},
+    backupNotice: String? = null,
+    onBackupNoticeConsumed: () -> Unit = {},
+    onExportBackup: () -> Unit = {},
+    onRestoreBackup: () -> Unit = {},
     onRescan: () -> Unit,
     onOpenSystemSettings: () -> Unit,
     onOpenGeneralSettings: () -> Unit,
+    onOpenHomeModules: () -> Unit = {},
     onOpenAiSettings: () -> Unit,
     onOpenPrivateGallery: () -> Unit,
     onOpenUnprocessedGallery: () -> Unit,
+    storageService: AppStorageService? = null,
     appUpdateState: Flow<AppUpdateState> = flowOf(AppUpdateState.Idle),
     onCheckForUpdate: () -> Unit = {},
     onOpenUpdateDetails: () -> Unit = {},
@@ -93,6 +107,12 @@ fun SettingsScreen(
     val currentRescan by rememberUpdatedState(onRescan)
     val currentSystemSettings by rememberUpdatedState(onOpenSystemSettings)
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var storage by remember { mutableStateOf<AppStorageSnapshot?>(null) }
+    var confirmClearStorage by remember { mutableStateOf(false) }
+    LaunchedEffect(storageService) {
+        storage = storageService?.let { withContext(Dispatchers.IO) { it.measure() } }
+    }
     val rescanMessage = stringResource(R.string.settings_rescan_requested)
     LaunchedEffect(viewModel) {
         viewModel.commands.collect { command ->
@@ -113,16 +133,27 @@ fun SettingsScreen(
             onDocumentImportNoticeConsumed()
         }
     }
+    LaunchedEffect(backupNotice) {
+        backupNotice?.let {
+            snackbar.showSnackbar(it)
+            onBackupNoticeConsumed()
+        }
+    }
     Box(Modifier.fillMaxSize()) {
         SettingsContent(
             state = state,
             onGeneral = onOpenGeneralSettings,
+            onHomeModules = onOpenHomeModules,
             onProviders = onOpenAiSettings,
             onImport = viewModel::selectDocumentImages,
             onRescan = viewModel::rescan,
             onSystemSettings = viewModel::openSystemSettings,
             onPrivateGallery = onOpenPrivateGallery,
             onUnprocessedGallery = onOpenUnprocessedGallery,
+            onExportBackup = onExportBackup,
+            onRestoreBackup = onRestoreBackup,
+            storage = storage,
+            onClearStorage = { confirmClearStorage = true },
             updateState = updateState,
             onUpdate = {
                 when (updateState) {
@@ -143,6 +174,21 @@ fun SettingsScreen(
         )
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
+    if (confirmClearStorage) {
+        AlertDialog(
+            onDismissRequest = { confirmClearStorage = false },
+            title = { Text("清理缓存？") },
+            text = { Text("只删除可重新生成的缩略图缓存和临时文件，不会删除原图、AI 标注或设置。") },
+            confirmButton = { Button(onClick = {
+                confirmClearStorage = false
+                scope.launch {
+                    storage = withContext(Dispatchers.IO) { storageService?.clearRebuildableFiles() }
+                    snackbar.showSnackbar("缓存已清理")
+                }
+            }) { Text("清理") } },
+            dismissButton = { TextButton(onClick = { confirmClearStorage = false }) { Text("取消") } },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -150,12 +196,17 @@ fun SettingsScreen(
 private fun SettingsContent(
     state: SettingsUiState,
     onGeneral: () -> Unit,
+    onHomeModules: () -> Unit,
     onProviders: () -> Unit,
     onImport: () -> Unit,
     onRescan: () -> Unit,
     onSystemSettings: () -> Unit,
     onPrivateGallery: () -> Unit,
     onUnprocessedGallery: () -> Unit,
+    onExportBackup: () -> Unit,
+    onRestoreBackup: () -> Unit,
+    storage: AppStorageSnapshot?,
+    onClearStorage: () -> Unit,
     updateState: AppUpdateState,
     onUpdate: () -> Unit,
 ) {
@@ -191,6 +242,14 @@ private fun SettingsContent(
                     onClick = onGeneral,
                 )
             }
+            item {
+                SettingsRow(
+                    icon = Icons.Outlined.Tune,
+                    title = "首页模块",
+                    subtitle = "配置来源、布局和显示顺序",
+                    onClick = onHomeModules,
+                )
+            }
 
             item { SectionHeader("模型提供方") }
             item {
@@ -215,10 +274,41 @@ private fun SettingsContent(
             item {
                 SettingsRow(Icons.Outlined.FolderOpen, "未处理图片", "查看尚未经过 AI 分析的图片", onUnprocessedGallery)
             }
+            item { SectionHeader("备份与恢复") }
+            item {
+                SettingsRow(
+                    Icons.Outlined.Upload,
+                    "导出备份",
+                    "导出索引、AI 结果、用户修正和配置，不包含原图与 API Key",
+                    onExportBackup,
+                )
+            }
+            item {
+                SettingsRow(
+                    Icons.Outlined.Download,
+                    "恢复备份",
+                    "验证后合并数据，并按图库身份与文件指纹重新关联图片",
+                    onRestoreBackup,
+                )
+            }
 
             item { SectionHeader("APP 权限") }
             item {
                 SettingsRow(Icons.Outlined.Settings, "前往系统设置", "管理照片和后台运行权限", onSystemSettings)
+            }
+
+            item { SectionHeader("存储占用") }
+            item {
+                ListItem(
+                    headlineContent = { Text("SoIM 数据") },
+                    supportingContent = { Text(storage?.let {
+                        "数据库 ${formatBytes(it.databaseBytes)} · 缓存 ${formatBytes(it.cacheBytes)} · 临时文件 ${formatBytes(it.temporaryBytes)}"
+                    } ?: "正在统计…") },
+                    trailingContent = { Text(storage?.let { formatBytes(it.totalBytes) } ?: "-") },
+                )
+            }
+            item {
+                SettingsRow(Icons.Outlined.DeleteOutline, "清理缓存", "删除可重新生成的缓存和临时文件", onClearStorage)
             }
 
             item { SectionHeader("关于") }

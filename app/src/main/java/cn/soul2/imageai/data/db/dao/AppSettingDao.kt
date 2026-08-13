@@ -8,6 +8,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AppSettingDao {
+    @Query("SELECT * FROM app_setting ORDER BY `key` ASC")
+    suspend fun getAll(): List<AppSettingEntity>
+
     @Query("SELECT * FROM app_setting WHERE `key` = :key LIMIT 1")
     suspend fun getByKey(key: String): AppSettingEntity?
 
@@ -16,6 +19,9 @@ interface AppSettingDao {
 
     @Upsert
     suspend fun upsert(setting: AppSettingEntity)
+
+    @Upsert
+    suspend fun upsertAll(settings: List<AppSettingEntity>)
 
     @Query("DELETE FROM app_setting WHERE `key` = :key")
     suspend fun deleteByKey(key: String)

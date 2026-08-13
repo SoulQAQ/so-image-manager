@@ -13,6 +13,18 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 internal interface AiConfigurationDao {
+    @Query("SELECT * FROM provider_profile ORDER BY provider_id ASC")
+    suspend fun getAllProviders(): List<ProviderProfileEntity>
+
+    @Query("SELECT * FROM model_profile ORDER BY model_profile_id ASC")
+    suspend fun getAllModels(): List<ModelProfileEntity>
+
+    @Query("SELECT * FROM protocol_definition ORDER BY protocol_definition_id ASC")
+    suspend fun getAllProtocols(): List<ProtocolDefinitionEntity>
+
+    @Query("SELECT * FROM provider_route ORDER BY partition ASC, position ASC")
+    suspend fun getAllRoutes(): List<ProviderRouteEntity>
+
     @Query("SELECT * FROM provider_profile ORDER BY display_name ASC, provider_id ASC")
     fun observeProviders(): Flow<List<ProviderProfileEntity>>
 

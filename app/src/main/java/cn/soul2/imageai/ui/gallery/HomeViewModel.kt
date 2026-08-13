@@ -12,6 +12,7 @@ import cn.soul2.imageai.data.db.entity.AiRuntimeSettingEntity
 import cn.soul2.imageai.gallery.GalleryQuery
 import cn.soul2.imageai.gallery.GalleryRepository
 import cn.soul2.imageai.gallery.GallerySource
+import cn.soul2.imageai.gallery.GallerySort
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flatMapLatest
@@ -25,16 +26,18 @@ class HomeViewModel(
     repository: GalleryRepository,
     syncRuns: Flow<MediaSyncRunEntity?>,
     runtimeSettings: Flow<AiRuntimeSettingEntity?> = flowOf(null),
+    source: GallerySource = GallerySource.Recent,
+    sort: GallerySort = GallerySort.NEWEST,
 ) : ViewModel() {
     val images = runtimeSettings
         .flatMapLatest { runtime ->
             repository.observe(
                 GalleryQuery(
                     if (runtime?.onlyShowAnalyzed == true) {
-                        GallerySource.Analyzed
+                        if (source == GallerySource.Recent) GallerySource.Analyzed else source
                     } else {
-                        GallerySource.Recent
-                    },
+                        source
+                    }, sort,
                 ),
             )
         }
@@ -58,8 +61,10 @@ class HomeViewModel(
             repository: GalleryRepository,
             syncRuns: Flow<MediaSyncRunEntity?>,
             runtimeSettings: Flow<AiRuntimeSettingEntity?> = flowOf(null),
+            source: GallerySource = GallerySource.Recent,
+            sort: GallerySort = GallerySort.NEWEST,
         ): ViewModelProvider.Factory = viewModelFactory {
-            initializer { HomeViewModel(repository, syncRuns, runtimeSettings) }
+            initializer { HomeViewModel(repository, syncRuns, runtimeSettings, source, sort) }
         }
     }
 }
