@@ -31,6 +31,9 @@ class GithubReleasePublishContractTest {
             "apksigner.bat",
             "Signer #1 certificate SHA-256 digest:",
             "Refusing to publish a Debug-signed APK",
+            "Invoke-Observed",
+            "release not found",
+            "Unable to determine whether GitHub Release exists",
         ).forEach { token -> assertTrue("Missing release safety token: $token", text.contains(token)) }
     }
 

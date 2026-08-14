@@ -55,7 +55,7 @@ function Require-Environment {
     return $value.Trim()
 }
 
-function Invoke-Captured {
+function Invoke-Observed {
     param(
         [Parameter(Mandatory = $true)][string] $FilePath,
         [Parameter(Mandatory = $true)][string[]] $Arguments
@@ -69,10 +69,22 @@ function Invoke-Captured {
     finally {
         $ErrorActionPreference = $previous
     }
-    if ($code -ne 0) {
-        throw "$FilePath failed with exit code $code`n$($lines -join [Environment]::NewLine)"
+    return [PSCustomObject]@{
+        ExitCode = $code
+        Output = $lines -join [Environment]::NewLine
     }
-    return $lines -join [Environment]::NewLine
+}
+
+function Invoke-Captured {
+    param(
+        [Parameter(Mandatory = $true)][string] $FilePath,
+        [Parameter(Mandatory = $true)][string[]] $Arguments
+    )
+    $result = Invoke-Observed $FilePath $Arguments
+    if ($result.ExitCode -ne 0) {
+        throw "$FilePath failed with exit code $($result.ExitCode)`n$($result.Output)"
+    }
+    return $result.Output
 }
 
 if (-not [IO.File]::Exists($NotesPath)) {
@@ -185,8 +197,11 @@ if (-not $PSCmdlet.ShouldProcess("github.com/SoulQAQ/so-image-manager", "Create 
 }
 
 [void] (Invoke-Captured "gh" @("auth", "status"))
-$existing = & gh release view $tag --repo "SoulQAQ/so-image-manager" 2>$null
-if ($LASTEXITCODE -eq 0) { throw "GitHub Release already exists: $tag" }
+$existing = Invoke-Observed "gh" @("release", "view", $tag, "--repo", "SoulQAQ/so-image-manager")
+if ($existing.ExitCode -eq 0) { throw "GitHub Release already exists: $tag" }
+if ($existing.Output -notmatch "(?i)release not found") {
+    throw "Unable to determine whether GitHub Release exists: $tag`n$($existing.Output)"
+}
 $releaseArguments = @(
     "release", "create", $tag, $releaseAsset,
     "--repo", "SoulQAQ/so-image-manager",
