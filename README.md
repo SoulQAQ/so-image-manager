@@ -2,7 +2,7 @@
 
 SoIM 是一个本地优先的 Android AI 图片管理应用。它索引设备图库，不复制原图；AI 描述、标签、分类、搜索词和用户修正保存在本机，并通过结构化、全文、子串、拼音和有限拼写容错搜索。
 
-当前稳定版本是 `v0.18.2`；由于该包生成时正式证书尚未创建，将由 `v0.18.3` 携带固定证书身份并作为最终 Debug 迁移版本。发布状态以 GitHub Release 与版本记录为准。
+当前稳定版本是 `v0.18.3`，这是最终 Debug 签名迁移版本；`v0.19.0` 是首个长期正式签名候选，先以 prerelease 供迁移验证。发布状态以 GitHub Release 与版本记录为准。
 
 ## 产品能力
 
@@ -71,7 +71,7 @@ Debug APK 输出到 `app/build/outputs/apk/debug/app-debug.apk`。本地测试�
 
 历史安装包使用 Android Debug 证书。新的长期 Release Key 不能直接覆盖这些安装；正式切换前必须通过“导出备份 → 卸载 Debug 版 → 安装正式版 → 恢复备份”完成真机迁移演练。长期私钥必须由项目所有者创建、离线备份和保管。
 
-`v0.18.2` 仍使用 Debug 证书，作为旧测试安装的最后迁移准备版本。`v0.19.0` 必须使用仓库固定的长期证书，先以 prerelease 提供给迁移向导；`v0.19.1` 验证同签名覆盖更新后，才停止提交 APK 并清理历史包。
+`v0.18.3` 使用 Debug 证书，作为旧测试安装的最后迁移准备版本。`v0.19.0` 使用仓库固定的长期证书，先以 prerelease 提供给迁移向导；`v0.19.1` 验证同签名覆盖更新后，才停止提交 APK 并清理历史包。
 
 长期范围基线见 [重建设计](docs/superpowers/specs/2026-07-10-image-search-rebuild-design.md)，实际完成度见 [roadmap-status.md](docs/roadmap-status.md)。
 

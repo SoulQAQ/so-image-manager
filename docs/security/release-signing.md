@@ -54,4 +54,4 @@ Android 不允许使用新的、无 lineage 关系的 Release 证书覆盖当前
 
 脚本执行 Debug/Release 单元测试、Lint、AndroidTest 源码编译、Release 构建、APK 元数据、签名和证书指纹检查，然后直接把 `app-release.apk` 上传至 GitHub Release。更新说明只写用户可见变化，构建和验证结果留在发布日志中。
 
-从 `v0.19.0` 起，Gradle 本身也要求长期 keystore 和 64 位固定证书指纹；缺少任一项时构建直接失败。`v0.18.2` 仍允许生成 Debug 迁移准备包。
+从 `v0.19.0` 起，Gradle 本身也要求长期 keystore 和 64 位固定证书指纹；缺少任一项时构建直接失败。`v0.18.3` 是最后一个允许使用 Debug 签名的迁移准备包。
