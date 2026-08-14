@@ -82,10 +82,16 @@ if ([string]::IsNullOrWhiteSpace([IO.File]::ReadAllText($NotesPath, [Text.Encodi
     throw "Release notes must not be empty"
 }
 
-$storeFile = Require-Environment "SOIM_SIGNING_STORE_FILE"
-[void] (Require-Environment "SOIM_SIGNING_STORE_PASSWORD")
-[void] (Require-Environment "SOIM_SIGNING_KEY_ALIAS")
-[void] (Require-Environment "SOIM_SIGNING_KEY_PASSWORD")
+$localSigningProperties = Join-Path $Root "keystore.properties"
+if (-not [IO.File]::Exists($localSigningProperties)) {
+    $storeFile = Require-Environment "SOIM_SIGNING_STORE_FILE"
+    [void] (Require-Environment "SOIM_SIGNING_STORE_PASSWORD")
+    [void] (Require-Environment "SOIM_SIGNING_KEY_ALIAS")
+    [void] (Require-Environment "SOIM_SIGNING_KEY_PASSWORD")
+    if (-not [IO.File]::Exists($storeFile)) {
+        throw "Release keystore does not exist: $storeFile"
+    }
+}
 $identity = Read-KeyValueProperties $ReleaseIdentityFile
 foreach ($required in @("SOIM_OFFICIAL_PACKAGE_ID", "SOIM_FIRST_OFFICIAL_VERSION", "SOIM_FIRST_OFFICIAL_TAG", "SOIM_OFFICIAL_CERT_SHA256")) {
     if (-not $identity.ContainsKey($required)) { throw "release-identity.properties is missing $required" }
@@ -99,9 +105,6 @@ if ($null -eq $environmentCertValue) { $environmentCertValue = "" }
 $environmentCert = $environmentCertValue -replace "[^0-9A-Fa-f]", ""
 if ($environmentCert.Length -gt 0 -and $environmentCert.ToUpperInvariant() -cne $expectedCert.ToUpperInvariant()) {
     throw "SOIM_SIGNING_CERT_SHA256 does not match the tracked official certificate"
-}
-if (-not [IO.File]::Exists($storeFile)) {
-    throw "Release keystore does not exist: $storeFile"
 }
 
 $properties = Read-VersionProperties

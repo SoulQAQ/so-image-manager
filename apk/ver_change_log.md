@@ -665,3 +665,21 @@
 ### 鍒濆鐗堟湰
 - Android 宸ョ▼楠ㄦ灦锛圞otlin + Compose锛?- H5 宸ョ▼锛圴ue3 + Vant4锛?- WebView 瀹瑰櫒涓庡畨鍏ㄩ厤缃?- JSBridge 鍩虹閫氫俊锛坧ing, getDeviceInfo锛?- Debug/Release APK 鎵撳寘
 
+## v0.18.3 (2026-08-14)
+
+### 功能
+# SoIM v0.18.3
+
+- 固定长期正式版证书身份，迁移向导现在可以安全识别首个正式签名版本。
+- 正式版尚未发布时，迁移入口保持准备状态，不会信任其他签名的安装包。
+- 保持 Debug 签名覆盖升级，作为现有测试安装迁移到正式版前的最终准备版本。
+
+### 测试
+- 单元测试、Lint、AndroidTest 编译、Debug/Release 构建通过。
+- 当前连接设备安装 AndroidTest split APK 失败，未计入真机通过。
+
+### 签名与校验
+- Debug 签名：CN=Android Debug
+- SHA-256：89E121883649DD5821B3E2AA13084EF12DE421D0F9FF45AE65D5ABDE484B16DA
+
+---
