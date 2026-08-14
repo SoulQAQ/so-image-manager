@@ -88,6 +88,7 @@ fun SettingsScreen(
     onBackupNoticeConsumed: () -> Unit = {},
     onExportBackup: () -> Unit = {},
     onRestoreBackup: () -> Unit = {},
+    onOpenReleaseMigration: () -> Unit = {},
     onRescan: () -> Unit,
     onOpenSystemSettings: () -> Unit,
     onOpenGeneralSettings: () -> Unit,
@@ -154,6 +155,7 @@ fun SettingsScreen(
             onUnprocessedGallery = onOpenUnprocessedGallery,
             onExportBackup = onExportBackup,
             onRestoreBackup = onRestoreBackup,
+            onReleaseMigration = onOpenReleaseMigration,
             storage = storage,
             onClearStorage = { confirmClearStorage = true },
             updateState = updateState,
@@ -207,6 +209,7 @@ private fun SettingsContent(
     onUnprocessedGallery: () -> Unit,
     onExportBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
+    onReleaseMigration: () -> Unit,
     storage: AppStorageSnapshot?,
     onClearStorage: () -> Unit,
     updateState: AppUpdateState,
@@ -291,6 +294,14 @@ private fun SettingsContent(
                     "恢复备份",
                     "验证后合并数据，并按图库身份与文件指纹重新关联图片",
                     onRestoreBackup,
+                )
+            }
+            item {
+                SettingsRow(
+                    Icons.Outlined.SystemUpdate,
+                    "迁移到正式版",
+                    "备份数据并准备长期签名的正式安装包",
+                    onReleaseMigration,
                 )
             }
 

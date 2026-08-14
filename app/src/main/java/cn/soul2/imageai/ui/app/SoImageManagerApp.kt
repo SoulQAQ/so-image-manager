@@ -19,6 +19,7 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -74,10 +75,15 @@ import cn.soul2.imageai.ui.screens.SettingsScreen
 import cn.soul2.imageai.ui.screens.TasksScreen
 import cn.soul2.imageai.ui.screens.UpdateDialog
 import cn.soul2.imageai.ui.screens.ReleaseNotesMarkdownContent
+import cn.soul2.imageai.ui.screens.ReleaseMigrationDialog
 import cn.soul2.imageai.ui.search.SearchDestination
 import cn.soul2.imageai.ui.search.SearchScreen
 import cn.soul2.imageai.update.AppUpdateState
 import cn.soul2.imageai.update.InstalledUpdateNotice
+import cn.soul2.imageai.update.ReleaseMigrationState
+import cn.soul2.imageai.update.OfficialReleaseIdentity
+import cn.soul2.imageai.update.SemanticVersion
+import cn.soul2.imageai.BuildConfig
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 import kotlinx.coroutines.flow.Flow
@@ -171,6 +177,18 @@ fun SoImageManagerApp(
     onBackupNoticeConsumed: () -> Unit = {},
     onExportBackup: () -> Unit = {},
     onRestoreBackup: () -> Unit = {},
+    showLegacyRestorePrompt: Boolean = false,
+    onDismissLegacyRestorePrompt: () -> Unit = {},
+    releaseMigrationState: Flow<ReleaseMigrationState> = flowOf(
+        ReleaseMigrationState.Unavailable("长期正式版证书尚未配置"),
+    ),
+    releaseMigrationPrompt: Flow<Boolean> = flowOf(false),
+    onConsumeReleaseMigrationPrompt: () -> Unit = {},
+    onCreateMigrationBackup: () -> Unit = {},
+    onDownloadOfficialRelease: () -> Unit = {},
+    onSaveMigrationApk: (File) -> Unit = {},
+    onRetryReleaseMigration: () -> Unit = {},
+    onResetReleaseMigration: () -> Unit = {},
     onDebugProtocol: (String, ImagePartition, (Result<AiProtocolDebugReport>) -> Unit) -> Unit = { _, _, _ -> },
     onRetryGallerySync: () -> Unit = {},
     onRequestGalleryReconciliation: () -> Unit = {},
@@ -192,7 +210,13 @@ fun SoImageManagerApp(
     val context = LocalContext.current
     val updateState by appUpdateState.collectAsStateWithLifecycle(initialValue = AppUpdateState.Idle)
     val updateNotice by installedUpdateNotice.collectAsStateWithLifecycle(initialValue = null)
+    val migrationState by releaseMigrationState.collectAsStateWithLifecycle(
+        initialValue = ReleaseMigrationState.Unavailable("长期正式版证书尚未配置"),
+    )
+    val migrationPrompt by releaseMigrationPrompt.collectAsStateWithLifecycle(initialValue = false)
     var showUpdateDialog by remember { mutableStateOf(false) }
+    var showMigrationDialog by remember { mutableStateOf(false) }
+    var showLegacyRestoreDialog by remember { mutableStateOf(showLegacyRestorePrompt) }
     val updatePromptKey = when (val current = updateState) {
         is AppUpdateState.Available -> "available:${current.release.tagName}"
         is AppUpdateState.Ready -> "ready:${current.release.tagName}"
@@ -201,6 +225,15 @@ fun SoImageManagerApp(
     }
     LaunchedEffect(updatePromptKey) {
         if (updatePromptKey != null) showUpdateDialog = true
+    }
+    LaunchedEffect(migrationPrompt) {
+        if (migrationPrompt) {
+            showMigrationDialog = true
+            onConsumeReleaseMigrationPrompt()
+        }
+    }
+    LaunchedEffect(showLegacyRestorePrompt) {
+        if (showLegacyRestorePrompt) showLegacyRestoreDialog = true
     }
     val analysisTaskSnackbar = remember { SnackbarHostState() }
     val analyzeImages: (List<GalleryImage>) -> Unit = { images ->
@@ -216,6 +249,11 @@ fun SoImageManagerApp(
         }
     }
     val deniedState = galleryAccessState as? GalleryAccessState.Denied
+    val isOfficialBuild = remember {
+        SemanticVersion.parse(BuildConfig.VERSION_NAME)?.let { installed ->
+            installed >= OfficialReleaseIdentity.Current.firstVersion
+        } == true
+    }
     if (showGalleryOnboarding && deniedState != null) {
         GalleryOnboardingScreen(
             deniedState = deniedState,
@@ -224,6 +262,8 @@ fun SoImageManagerApp(
             onRequestPermission = onRequestGalleryPermission,
             onOpenAppSettings = onOpenAppSettings,
             onDismiss = onDismissGalleryOnboarding,
+            showLegacyRestore = isOfficialBuild,
+            onRestoreLegacyBackup = onRestoreBackup,
         )
         return
     }
@@ -475,6 +515,7 @@ fun SoImageManagerApp(
                         onBackupNoticeConsumed = onBackupNoticeConsumed,
                         onExportBackup = onExportBackup,
                         onRestoreBackup = onRestoreBackup,
+                        onOpenReleaseMigration = { showMigrationDialog = true },
                         onRescan = onRequestGalleryReconciliation,
                         onOpenSystemSettings = onOpenAppSettings,
                         onOpenGeneralSettings = { navController.navigate(AnalysisSettingsDestination.route) },
@@ -763,6 +804,40 @@ fun SoImageManagerApp(
         InstalledUpdateNoticeDialog(
             notice = checkNotNull(updateNotice),
             onDismiss = onDismissInstalledUpdateNotice,
+        )
+    } else if (showLegacyRestoreDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showLegacyRestoreDialog = false
+                onDismissLegacyRestorePrompt()
+            },
+            title = { Text("从旧版恢复") },
+            text = {
+                Text("如果你刚从 Debug 版迁移到正式版，可以先选择迁移备份，再申请图库权限。API Key 不在备份中，需要恢复后重新填写。")
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showLegacyRestoreDialog = false
+                    onDismissLegacyRestorePrompt()
+                    onRestoreBackup()
+                }) { Text("选择迁移备份") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showLegacyRestoreDialog = false
+                    onDismissLegacyRestorePrompt()
+                }) { Text("稍后在设置中恢复") }
+            },
+        )
+    } else if (showMigrationDialog) {
+        ReleaseMigrationDialog(
+            state = migrationState,
+            onDismiss = { showMigrationDialog = false },
+            onCreateBackup = onCreateMigrationBackup,
+            onDownload = onDownloadOfficialRelease,
+            onSaveApk = onSaveMigrationApk,
+            onRetry = onRetryReleaseMigration,
+            onReset = onResetReleaseMigration,
         )
     } else if (showUpdateDialog) {
         UpdateDialog(

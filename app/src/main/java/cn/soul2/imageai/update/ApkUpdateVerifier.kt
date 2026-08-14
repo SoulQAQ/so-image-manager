@@ -14,7 +14,10 @@ interface UpdateArtifactVerifier {
     fun verify(file: File, release: UpdateRelease): File
 }
 
-class ApkUpdateVerifier(context: Context) : UpdateArtifactVerifier {
+class ApkUpdateVerifier(
+    context: Context,
+    private val officialIdentity: OfficialReleaseIdentity = OfficialReleaseIdentity.Current,
+) : UpdateArtifactVerifier {
     private val applicationContext = context.applicationContext
     private val packageManager = applicationContext.packageManager
 
@@ -61,6 +64,9 @@ class ApkUpdateVerifier(context: Context) : UpdateArtifactVerifier {
             archiveSigningInfo.apkContentsSigners.orEmpty()
         }.map { signature -> sha256(signature.toByteArray()) }.toSet()
         if (installedSigners.isEmpty() || installedSigners.intersect(archiveHistory).isEmpty()) {
+            if (officialIdentity.certificateSha256 in archiveHistory) {
+                throw AppUpdateException("此版本使用长期正式证书，需要通过设置中的“迁移到正式版”完成升级")
+            }
             throw AppUpdateException("更新安装包签名与当前应用不匹配")
         }
         return file

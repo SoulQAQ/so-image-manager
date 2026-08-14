@@ -115,6 +115,7 @@ class TasksSettingsScreenTest {
         composeRule.onNodeWithText("重新选择照片").assertDoesNotExist()
         composeRule.onNodeWithText("添加图片").assertIsDisplayed()
         composeRule.onNodeWithText("未处理图片").assertIsDisplayed()
+        composeRule.onNodeWithText("迁移到正式版").assertIsDisplayed()
         composeRule.onNodeWithText("12").assertIsDisplayed()
         composeRule.onNodeWithText("3").assertIsDisplayed()
         listOf("添加图片", "重新扫描", "前往系统设置").forEach { action ->

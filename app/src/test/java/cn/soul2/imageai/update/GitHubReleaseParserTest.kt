@@ -36,11 +36,20 @@ class GitHubReleaseParserTest {
         }
     }
 
+    @Test
+    fun exactTagFlowAcceptsPrereleaseButStableFlowRejectsIt() {
+        val json = releaseJson(prerelease = true)
+
+        assertThrows(AppUpdateException::class.java) { GitHubReleaseParser.parse(json) }
+        assertEquals("v0.17.0", GitHubReleaseParser.parse(json, allowPrerelease = true).tagName)
+    }
+
     private fun releaseJson(
         digest: String = "sha256:${"a".repeat(64)}",
         downloadUrl: String =
             "https://github.com/SoulQAQ/so-image-manager/releases/download/v0.17.0/soim-v0.17.0-debug.apk",
         extraApk: Boolean = false,
+        prerelease: Boolean = false,
     ): String {
         val secondAsset = if (extraApk) {
             """,{
@@ -60,7 +69,7 @@ class GitHubReleaseParserTest {
               "published_at":"2026-07-29T00:00:00Z",
               "html_url":"https://github.com/SoulQAQ/so-image-manager/releases/tag/v0.17.0",
               "draft":false,
-              "prerelease":false,
+              "prerelease":$prerelease,
               "assets":[{
                 "name":"soim-v0.17.0-debug.apk",
                 "browser_download_url":"$downloadUrl",

@@ -39,6 +39,8 @@ fun GalleryOnboardingScreen(
     onRequestPermission: () -> Unit,
     onOpenAppSettings: () -> Unit,
     onDismiss: () -> Unit,
+    showLegacyRestore: Boolean = false,
+    onRestoreLegacyBackup: () -> Unit = {},
 ) {
     val requiresSettings = isPermissionRecovery && !deniedState.canRequestAgain
     val primaryLabel = when {
@@ -99,6 +101,14 @@ fun GalleryOnboardingScreen(
                 Icon(primaryIcon, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(primaryLabel))
+            }
+            if (showLegacyRestore) {
+                TextButton(
+                    onClick = onRestoreLegacyBackup,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("从旧版恢复")
+                }
             }
             if (isPermissionRecovery) {
                 TextButton(

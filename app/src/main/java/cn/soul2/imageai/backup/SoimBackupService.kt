@@ -33,6 +33,19 @@ data class BackupRestoreResult(
     val conflicts: Int,
 )
 
+data class BackupPreflightResult(
+    val format: String,
+    val version: Int,
+    val imageCount: Int,
+    val analysisCount: Int,
+    val correctionCount: Int,
+    val providerCount: Int,
+    val modelCount: Int,
+    val protocolCount: Int,
+    val credentialReentryCount: Int,
+    val credentialsIncluded: Boolean,
+)
+
 class SoimBackupService(
     private val database: AppDatabase,
     private val canonicalRepository: CanonicalMetadataRepository,
@@ -112,16 +125,12 @@ class SoimBackupService(
     }
 
     suspend fun restoreJson(text: String): BackupRestoreResult {
-        val root = runCatching { JSONObject(text) }
-            .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
-        require(root.optString("format") == FORMAT && root.optInt("version") == FORMAT_VERSION) {
-            "不支持的 SoIM 备份格式"
-        }
-        val configuration = parseAndValidateConfiguration(root)
-        validatePortableData(root)
+        val validated = validateBackup(text)
+        val root = validated.root
+        val configuration = validated.configuration
         restoreConfiguration(configuration)
         val currentImages = database.imageDao().getBackupCandidates()
-        val backupImages = root.requireArray("images").objects().map(::parseImageRef)
+        val backupImages = validated.images
         val mapping = matchImages(backupImages, currentImages)
         var restoredAnalyses = 0
         var conflicts = 0
@@ -176,6 +185,41 @@ class SoimBackupService(
             unmatchedImages = backupImages.size - mapping.size,
             restoredAnalyses = restoredAnalyses,
             conflicts = conflicts,
+        )
+    }
+
+    suspend fun preflightJson(text: String): BackupPreflightResult {
+        val validated = validateBackup(text)
+        val root = validated.root
+        val providers = root.requireArray("providers").objects().map(::parseProvider)
+        return BackupPreflightResult(
+            format = root.getString("format"),
+            version = root.getInt("version"),
+            imageCount = validated.images.size,
+            analysisCount = root.requireArray("analyses").length(),
+            correctionCount = root.requireArray("corrections").length() +
+                root.requireArray("termOverrides").length(),
+            providerCount = providers.size,
+            modelCount = root.requireArray("models").length(),
+            protocolCount = root.requireArray("protocols").length(),
+            credentialReentryCount = providers.count { it.authMode != ProviderAuthMode.NONE },
+            credentialsIncluded = false,
+        )
+    }
+
+    private suspend fun validateBackup(text: String): ValidatedBackup {
+        val root = runCatching { JSONObject(text) }
+            .getOrElse { throw IllegalArgumentException("备份文件不是有效 JSON") }
+        require(root.optString("format") == FORMAT && root.optInt("version") == FORMAT_VERSION) {
+            "不支持的 SoIM 备份格式"
+        }
+        require(!root.optBoolean("credentialsIncluded", true)) { "备份不得包含 API Key" }
+        val configuration = parseAndValidateConfiguration(root)
+        validatePortableData(root)
+        return ValidatedBackup(
+            root = root,
+            configuration = configuration,
+            images = root.requireArray("images").objects().map(::parseImageRef),
         )
     }
 
@@ -344,6 +388,12 @@ class SoimBackupService(
         val routes: List<ProviderRouteEntity>,
         val runtime: AiRuntimeSettingEntity?,
         val settings: List<AppSettingEntity>,
+    )
+
+    private data class ValidatedBackup(
+        val root: JSONObject,
+        val configuration: ImportedConfiguration,
+        val images: List<ImageRef>,
     )
 
     companion object {

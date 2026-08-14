@@ -48,6 +48,7 @@ import cn.soul2.imageai.gallery.GalleryImage
 import cn.soul2.imageai.data.db.entity.ImageSource
 import cn.soul2.imageai.update.AndroidUpdateDownloadGateway
 import cn.soul2.imageai.backup.SoimBackupService
+import cn.soul2.imageai.backup.BackupPreflightResult
 import cn.soul2.imageai.backup.readForSizeValidation
 import cn.soul2.imageai.ai.debug.AiProtocolDebugReport
 import java.nio.charset.StandardCharsets
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         container.appUpdateManager.onAppStarted()
+        container.releaseMigrationManager.onAppStarted()
         enableEdgeToEdge()
         setContent {
             SoImageManagerTheme {
@@ -69,6 +71,17 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun shouldOfferLegacyRestore(): Boolean =
+        cn.soul2.imageai.update.SemanticVersion.parse(BuildConfig.VERSION_NAME)?.let { installed ->
+            installed >= cn.soul2.imageai.update.OfficialReleaseIdentity.Current.firstVersion
+        } == true && !getSharedPreferences("migration_restore", MODE_PRIVATE)
+            .getBoolean("prompt_shown", false)
+
+    private fun markLegacyRestorePromptShown() {
+        getSharedPreferences("migration_restore", MODE_PRIVATE)
+            .edit().putBoolean("prompt_shown", true).apply()
     }
 
     @Composable
@@ -83,6 +96,8 @@ class MainActivity : ComponentActivity() {
         val coroutineScope = rememberCoroutineScope()
         var documentImportNotice by remember { mutableStateOf<String?>(null) }
         var backupNotice by remember { mutableStateOf<String?>(null) }
+        var pendingMigrationBackup by remember { mutableStateOf<Pair<String, BackupPreflightResult>?>(null) }
+        var pendingMigrationApk by remember { mutableStateOf<File?>(null) }
         var protocolDebugRequest by remember {
             mutableStateOf<Triple<String, cn.soul2.imageai.data.db.entity.ImagePartition, (Result<AiProtocolDebugReport>) -> Unit>?>(null)
         }
@@ -173,13 +188,63 @@ class MainActivity : ComponentActivity() {
                             input.readForSizeValidation(MAX_BACKUP_BYTES)
                         } ?: error("无法读取备份文件")
                         require(bytes.size <= MAX_BACKUP_BYTES) { "备份文件超过 32 MB" }
-                        container.backupService.restoreJson(bytes.toString(StandardCharsets.UTF_8))
+                        val text = bytes.toString(StandardCharsets.UTF_8)
+                        val preflight = container.backupService.preflightJson(text)
+                        container.backupService.restoreJson(text) to preflight
                     }
                     backupNotice = result.fold(
-                        onSuccess = {
-                            "恢复完成：关联 ${it.matchedImages} 张，未匹配 ${it.unmatchedImages} 张，恢复 ${it.restoredAnalyses} 条分析记录，冲突 ${it.conflicts} 条"
+                        onSuccess = { (restored, preflight) ->
+                            "恢复完成：关联 ${restored.matchedImages} 张，未匹配 ${restored.unmatchedImages} 张，" +
+                                "恢复 ${restored.restoredAnalyses} 条分析记录，冲突 ${restored.conflicts} 条；" +
+                                "${preflight.credentialReentryCount} 个供应方需要重新填写 API Key"
                         },
                         onFailure = { "恢复失败：${it.message ?: "备份内容无效"}" },
+                    )
+                }
+            }
+        }
+        val migrationBackupLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument(SoimBackupService.MIME_TYPE),
+        ) { uri ->
+            val pending = pendingMigrationBackup
+            pendingMigrationBackup = null
+            if (uri != null && pending != null) {
+                coroutineScope.launch {
+                    val result = runCatching {
+                        contentResolver.openOutputStream(uri, "wt")?.use { output ->
+                            output.write(pending.first.toByteArray(StandardCharsets.UTF_8))
+                        } ?: error("无法写入迁移备份")
+                        val reread = contentResolver.openInputStream(uri)?.use { input ->
+                            input.readForSizeValidation(MAX_BACKUP_BYTES)
+                        } ?: error("无法重新读取迁移备份")
+                        container.backupService.preflightJson(reread.toString(StandardCharsets.UTF_8))
+                    }
+                    result.onSuccess { summary ->
+                        container.releaseMigrationManager.recordBackupSaved(summary)
+                    }
+                    backupNotice = result.fold(
+                        onSuccess = { "迁移备份已保存并通过预检" },
+                        onFailure = { "迁移备份失败：${it.message ?: "文件无效"}" },
+                    )
+                }
+            }
+        }
+        val migrationApkLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument(AndroidUpdateDownloadGateway.APK_MIME_TYPE),
+        ) { uri ->
+            val apk = pendingMigrationApk
+            pendingMigrationApk = null
+            if (uri != null && apk != null) {
+                coroutineScope.launch {
+                    val result = runCatching {
+                        contentResolver.openOutputStream(uri, "w")?.use { output ->
+                            apk.inputStream().use { input -> input.copyTo(output) }
+                        } ?: error("无法保存正式版安装包")
+                    }
+                    if (result.isSuccess) container.releaseMigrationManager.markApkSaved()
+                    backupNotice = result.fold(
+                        onSuccess = { "正式版安装包已保存，请按迁移清单继续" },
+                        onFailure = { "保存安装包失败：${it.message ?: "无法写入文件"}" },
                     )
                 }
             }
@@ -337,8 +402,36 @@ class MainActivity : ComponentActivity() {
                     backupExportLauncher.launch(SoimBackupService.DEFAULT_FILE_NAME)
                 },
                 onRestoreBackup = {
+                    markLegacyRestorePromptShown()
                     backupRestoreLauncher.launch(arrayOf(SoimBackupService.MIME_TYPE, "text/json"))
                 },
+                showLegacyRestorePrompt = shouldOfferLegacyRestore(),
+                onDismissLegacyRestorePrompt = ::markLegacyRestorePromptShown,
+                releaseMigrationState = container.releaseMigrationManager.state,
+                releaseMigrationPrompt = container.releaseMigrationManager.promptRequested,
+                onConsumeReleaseMigrationPrompt = container.releaseMigrationManager::consumePrompt,
+                onCreateMigrationBackup = {
+                    coroutineScope.launch {
+                        val result = runCatching {
+                            val json = container.backupService.exportJson().first
+                            val summary = container.backupService.preflightJson(json)
+                            json to summary
+                        }
+                        result.onSuccess { artifact ->
+                            pendingMigrationBackup = artifact
+                            migrationBackupLauncher.launch("soim-migration-v0.19.0.json")
+                        }.onFailure {
+                            backupNotice = "无法生成迁移备份：${it.message ?: "备份失败"}"
+                        }
+                    }
+                },
+                onDownloadOfficialRelease = container.releaseMigrationManager::downloadOfficialRelease,
+                onSaveMigrationApk = { apk ->
+                    pendingMigrationApk = apk
+                    migrationApkLauncher.launch("soim-v0.19.0-release.apk")
+                },
+                onRetryReleaseMigration = container.releaseMigrationManager::retry,
+                onResetReleaseMigration = container.releaseMigrationManager::reset,
                 onDebugProtocol = { providerId, partition, callback ->
                     protocolDebugRequest = Triple(providerId, partition, callback)
                     protocolDebugPicker.launch(arrayOf("image/*"))

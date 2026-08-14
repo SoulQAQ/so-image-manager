@@ -5,6 +5,8 @@ param(
 
     [switch] $Publish,
 
+    [switch] $Prerelease,
+
     [string] $Target = "HEAD"
 )
 
@@ -17,6 +19,7 @@ $OutputEncoding = $utf8
 
 $Root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $VersionFile = Join-Path $Root "version.properties"
+$ReleaseIdentityFile = Join-Path $Root "release-identity.properties"
 $NotesPath = if ([IO.Path]::IsPathRooted($Notes)) { $Notes } else { Join-Path $Root $Notes }
 
 function Read-VersionProperties {
@@ -28,6 +31,17 @@ function Read-VersionProperties {
     }
     if (-not $values.ContainsKey("SOIM_VERSION_NAME") -or -not $values.ContainsKey("SOIM_VERSION_CODE")) {
         throw "version.properties is incomplete"
+    }
+    return $values
+}
+
+function Read-KeyValueProperties {
+    param([Parameter(Mandatory = $true)][string] $Path)
+    $values = @{}
+    foreach ($line in [IO.File]::ReadAllLines($Path, [Text.Encoding]::UTF8)) {
+        if ($line -match "^(?<key>[A-Z0-9_]+)=(?<value>.*)$") {
+            $values[$Matches["key"]] = $Matches["value"].Trim()
+        }
     }
     return $values
 }
@@ -72,9 +86,19 @@ $storeFile = Require-Environment "SOIM_SIGNING_STORE_FILE"
 [void] (Require-Environment "SOIM_SIGNING_STORE_PASSWORD")
 [void] (Require-Environment "SOIM_SIGNING_KEY_ALIAS")
 [void] (Require-Environment "SOIM_SIGNING_KEY_PASSWORD")
-$expectedCert = (Require-Environment "SOIM_SIGNING_CERT_SHA256") -replace "[^0-9A-Fa-f]", ""
+$identity = Read-KeyValueProperties $ReleaseIdentityFile
+foreach ($required in @("SOIM_OFFICIAL_PACKAGE_ID", "SOIM_FIRST_OFFICIAL_VERSION", "SOIM_FIRST_OFFICIAL_TAG", "SOIM_OFFICIAL_CERT_SHA256")) {
+    if (-not $identity.ContainsKey($required)) { throw "release-identity.properties is missing $required" }
+}
+$expectedCert = ([string] $identity["SOIM_OFFICIAL_CERT_SHA256"]) -replace "[^0-9A-Fa-f]", ""
 if ($expectedCert.Length -ne 64) {
-    throw "SOIM_SIGNING_CERT_SHA256 must contain exactly 64 hexadecimal characters"
+    throw "Tracked official certificate SHA-256 is not configured"
+}
+$environmentCertValue = [Environment]::GetEnvironmentVariable("SOIM_SIGNING_CERT_SHA256")
+if ($null -eq $environmentCertValue) { $environmentCertValue = "" }
+$environmentCert = $environmentCertValue -replace "[^0-9A-Fa-f]", ""
+if ($environmentCert.Length -gt 0 -and $environmentCert.ToUpperInvariant() -cne $expectedCert.ToUpperInvariant()) {
+    throw "SOIM_SIGNING_CERT_SHA256 does not match the tracked official certificate"
 }
 if (-not [IO.File]::Exists($storeFile)) {
     throw "Release keystore does not exist: $storeFile"
@@ -84,6 +108,12 @@ $properties = Read-VersionProperties
 $version = [string] $properties["SOIM_VERSION_NAME"]
 $code = [int] $properties["SOIM_VERSION_CODE"]
 $tag = "v$version"
+if ($version -eq [string] $identity["SOIM_FIRST_OFFICIAL_VERSION"] -and $tag -ne [string] $identity["SOIM_FIRST_OFFICIAL_TAG"]) {
+    throw "First official release tag does not match release identity"
+}
+if ($version -eq [string] $identity["SOIM_FIRST_OFFICIAL_VERSION"] -and -not $Prerelease) {
+    throw "The first official release must initially be published with -Prerelease"
+}
 
 Push-Location $Root
 try {
@@ -116,7 +146,7 @@ $apksigner = Join-Path $tools.FullName "apksigner.bat"
 
 $badging = Invoke-Captured $aapt @("dump", "badging", $apk)
 foreach ($token in @(
-    "package: name='cn.soul2.imageai'",
+    "package: name='$([string] $identity["SOIM_OFFICIAL_PACKAGE_ID"])'",
     "versionName='$version'",
     "versionCode='$code'",
     "sdkVersion:'29'",
@@ -154,11 +184,13 @@ if (-not $PSCmdlet.ShouldProcess("github.com/SoulQAQ/so-image-manager", "Create 
 [void] (Invoke-Captured "gh" @("auth", "status"))
 $existing = & gh release view $tag --repo "SoulQAQ/so-image-manager" 2>$null
 if ($LASTEXITCODE -eq 0) { throw "GitHub Release already exists: $tag" }
-[void] (Invoke-Captured "gh" @(
+$releaseArguments = @(
     "release", "create", $tag, $releaseAsset,
     "--repo", "SoulQAQ/so-image-manager",
     "--target", $Target,
     "--title", "SoIM $tag",
     "--notes-file", $NotesPath
-))
+)
+if ($Prerelease) { $releaseArguments += "--prerelease" }
+[void] (Invoke-Captured "gh" $releaseArguments)
 Write-Output "PUBLISHED_RELEASE=https://github.com/SoulQAQ/so-image-manager/releases/tag/$tag"

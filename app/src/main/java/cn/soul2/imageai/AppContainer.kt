@@ -45,6 +45,7 @@ import cn.soul2.imageai.search.ImageSearchRepository
 import cn.soul2.imageai.search.SearchIndexBackfill
 import cn.soul2.imageai.ui.onboarding.GalleryOnboardingRepository
 import cn.soul2.imageai.update.AppUpdateManager
+import cn.soul2.imageai.update.ReleaseMigrationManager
 import cn.soul2.imageai.backup.SoimBackupService
 import cn.soul2.imageai.home.HomeConfigurationRepository
 import cn.soul2.imageai.storage.AppStorageService
@@ -70,6 +71,7 @@ class AppContainer(
     val aiQuotaCoordinator = AiQuotaCoordinator(applicationContext)
     val aiTokenUsageLedger = AiTokenUsageLedger(applicationContext)
     val appUpdateManager = AppUpdateManager(applicationContext, processScope)
+    val releaseMigrationManager = ReleaseMigrationManager(applicationContext, processScope)
     val aiHttpTransport = SecureAiHttpTransport(aiCredentialStore, aiQuotaCoordinator)
     val imagePreprocessor = ContentImagePreprocessor(applicationContext.contentResolver)
     val documentImageImporter = DocumentImageImporter(

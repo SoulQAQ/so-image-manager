@@ -28,6 +28,22 @@ val soimVersionCode = rawSoimVersionCode.toIntOrNull()
     ?: error("SoIM version code must be a positive integer")
 require(soimVersionCode > 0) { "SoIM version code must be a positive integer" }
 
+val releaseIdentityFile = rootProject.file("release-identity.properties")
+val releaseIdentity = Properties().apply {
+    require(releaseIdentityFile.isFile) { "Missing public release identity: ${releaseIdentityFile.path}" }
+    releaseIdentityFile.inputStream().use(::load)
+}
+fun releaseIdentityValue(name: String): String = releaseIdentity.getProperty(name).orEmpty().trim()
+val officialPackageId = releaseIdentityValue("SOIM_OFFICIAL_PACKAGE_ID")
+val firstOfficialVersion = releaseIdentityValue("SOIM_FIRST_OFFICIAL_VERSION")
+val firstOfficialTag = releaseIdentityValue("SOIM_FIRST_OFFICIAL_TAG")
+val officialCertSha256 = releaseIdentityValue("SOIM_OFFICIAL_CERT_SHA256")
+require(officialPackageId == "cn.soul2.imageai") { "Unexpected official package ID" }
+require(firstOfficialTag == "v$firstOfficialVersion") { "Official release tag/version mismatch" }
+require(officialCertSha256.isEmpty() || officialCertSha256.matches(Regex("^[0-9A-Fa-f]{64}$"))) {
+    "Official release certificate SHA-256 must be empty or exactly 64 hexadecimal characters"
+}
+
 val releaseSigningProperties = Properties().apply {
     val signingFile = rootProject.file("keystore.properties")
     if (signingFile.isFile) signingFile.inputStream().use(::load)
@@ -46,6 +62,18 @@ val hasReleaseSigning = listOf(
     releaseKeyAlias,
     releaseKeyPassword,
 ).all { it != null }
+fun semanticParts(value: String): List<Int> = value.split('.').map { part ->
+    part.toIntOrNull() ?: error("SoIM version must use strict numeric SemVer")
+}.also { require(it.size == 3) { "SoIM version must use strict SemVer" } }
+val requiresOfficialSigning = semanticParts(soimVersionName).let { current ->
+    val first = semanticParts(firstOfficialVersion)
+    current.zip(first).firstOrNull { (left, right) -> left != right }?.let { (left, right) -> left > right }
+        ?: true
+}
+if (requiresOfficialSigning) {
+    require(officialCertSha256.isNotEmpty()) { "Official releases require a pinned certificate SHA-256" }
+    require(hasReleaseSigning) { "Official releases require the long-term release keystore" }
+}
 
 ksp {
     arg("room.schemaLocation", file("$projectDir/schemas").path)
@@ -57,13 +85,18 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "cn.soul2.imageai"
+        applicationId = officialPackageId
         minSdk = 29
         targetSdk = 36
         versionCode = soimVersionCode
         versionName = soimVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "SOIM_OFFICIAL_PACKAGE_ID", "\"$officialPackageId\"")
+        buildConfigField("String", "SOIM_FIRST_OFFICIAL_VERSION", "\"$firstOfficialVersion\"")
+        buildConfigField("String", "SOIM_FIRST_OFFICIAL_TAG", "\"$firstOfficialTag\"")
+        buildConfigField("String", "SOIM_OFFICIAL_CERT_SHA256", "\"${officialCertSha256.lowercase()}\"")
 
     }
 
@@ -114,6 +147,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {

@@ -11,6 +11,10 @@ fun interface ReleaseUpdateSource {
     suspend fun latestRelease(): UpdateRelease
 }
 
+fun interface TaggedReleaseSource {
+    suspend fun release(tag: String): UpdateRelease
+}
+
 class GitHubReleaseUpdateSource(
     private val client: OkHttpClient = OkHttpClient(),
     private val endpoint: String = LATEST_RELEASE_ENDPOINT,
@@ -30,7 +34,7 @@ class GitHubReleaseUpdateSource(
                 }
                 val body = response.body?.string()
                     ?: throw AppUpdateException("GitHub 未返回版本信息")
-                GitHubReleaseParser.parse(body)
+                GitHubReleaseParser.parse(body, allowPrerelease = false)
             }
         }.getOrElse { error ->
             if (error is AppUpdateException) throw error
@@ -44,15 +48,48 @@ class GitHubReleaseUpdateSource(
     }
 }
 
+class GitHubTaggedReleaseSource(
+    private val client: OkHttpClient = OkHttpClient(),
+    private val repositoryApi: String = REPOSITORY_API,
+) : TaggedReleaseSource {
+    override suspend fun release(tag: String): UpdateRelease = withContext(Dispatchers.IO) {
+        require(TAG.matches(tag)) { "迁移版本标签无效" }
+        val request = Request.Builder()
+            .url("$repositoryApi/releases/tags/$tag")
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .header("User-Agent", "SoIM-Android-Migration")
+            .get()
+            .build()
+        runCatching {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw AppUpdateException("获取正式版失败（HTTP ${response.code}）")
+                val body = response.body?.string() ?: throw AppUpdateException("GitHub 未返回正式版信息")
+                GitHubReleaseParser.parse(body, allowPrerelease = true).also { parsed ->
+                    if (parsed.tagName != tag) throw AppUpdateException("GitHub 返回了错误的正式版标签")
+                }
+            }
+        }.getOrElse { error ->
+            if (error is AppUpdateException) throw error
+            throw AppUpdateException("无法连接 GitHub Release", error)
+        }
+    }
+
+    companion object {
+        const val REPOSITORY_API = "https://api.github.com/repos/SoulQAQ/so-image-manager"
+        private val TAG = Regex("^v[0-9]+\\.[0-9]+\\.[0-9]+$")
+    }
+}
+
 internal object GitHubReleaseParser {
     private val APK_NAME = Regex("^soim-v[0-9]+\\.[0-9]+\\.[0-9]+-(?:debug|release)\\.apk$")
     private val SHA256 = Regex("^[0-9a-fA-F]{64}$")
     private val ALLOWED_DOWNLOAD_HOSTS = setOf("github.com", "objects.githubusercontent.com")
 
-    fun parse(json: String): UpdateRelease {
+    fun parse(json: String, allowPrerelease: Boolean = false): UpdateRelease {
         val root = runCatching { JSONObject(json) }
             .getOrElse { throw AppUpdateException("GitHub 版本信息格式错误", it) }
-        if (root.optBoolean("draft") || root.optBoolean("prerelease")) {
+        if (root.optBoolean("draft") || (!allowPrerelease && root.optBoolean("prerelease"))) {
             throw AppUpdateException("最新版本不是公开稳定版本")
         }
         val tagName = root.requiredString("tag_name")

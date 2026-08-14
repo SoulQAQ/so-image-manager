@@ -142,6 +142,35 @@ class SoimBackupServiceTest {
         assertEquals(0, target.analysisDao().countAnalyses(99L))
     }
 
+    @Test
+    fun preflightUsesRestoreValidationAndDoesNotWriteTargetDatabase() = runTest {
+        source.imageDao().upsert(listOf(image(1L, "external", 10L, "fingerprint", ImagePartition.MAIN)))
+        source.aiConfigurationDao().upsertProvider(provider("credential-source"))
+        val json = SoimBackupService(source, CanonicalMetadataRepository(source)).exportJson().first
+        val service = SoimBackupService(target, CanonicalMetadataRepository(target))
+
+        val preflight = service.preflightJson(json)
+
+        assertEquals("soim-portable-backup", preflight.format)
+        assertEquals(1, preflight.version)
+        assertEquals(1, preflight.imageCount)
+        assertEquals(1, preflight.providerCount)
+        assertEquals(1, preflight.credentialReentryCount)
+        assertFalse(preflight.credentialsIncluded)
+        assertTrue(target.imageDao().getBackupCandidates().isEmpty())
+        assertNull(target.aiConfigurationDao().getProvider(PROVIDER_ID))
+    }
+
+    @Test
+    fun preflightAndRestoreBothRejectCredentialBearingBackup() = runTest {
+        val json = SoimBackupService(source, CanonicalMetadataRepository(source)).exportJson().first
+        val invalid = JSONObject(json).put("credentialsIncluded", true).toString()
+        val service = SoimBackupService(target, CanonicalMetadataRepository(target))
+
+        assertTrue(runCatching { service.preflightJson(invalid) }.exceptionOrNull() is IllegalArgumentException)
+        assertTrue(runCatching { service.restoreJson(invalid) }.exceptionOrNull() is IllegalArgumentException)
+    }
+
     private fun draft(id: String, imageId: Long, caption: String) = CanonicalAnalysisDraft(
         analysisId = id,
         imageLocalId = imageId,
